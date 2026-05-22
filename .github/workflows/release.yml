@@ -1,0 +1,86 @@
+name: Build and Release
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build release assets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and verify release package
+        run: npm run release:prepare
+
+      - name: Read plugin version
+        id: plugin
+        run: |
+          version="$(node -p "require('./manifest.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "zip=release/flowdesk-dashboard-$version.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flowdesk-dashboard-${{ steps.plugin.outputs.version }}
+          path: |
+            main.js
+            manifest.json
+            styles.css
+            versions.json
+            ${{ steps.plugin.outputs.zip }}
+          if-no-files-found: error
+
+      - name: Validate release tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          expected="v${{ steps.plugin.outputs.version }}"
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "Release tag $GITHUB_REF_NAME must match manifest version $expected" >&2
+            exit 1
+          fi
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+          VERSION: ${{ steps.plugin.outputs.version }}
+          ZIP_PATH: ${{ steps.plugin.outputs.zip }}
+        run: |
+          assets=(
+            "main.js"
+            "manifest.json"
+            "styles.css"
+            "versions.json"
+            "$ZIP_PATH"
+          )
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG_NAME" "${assets[@]}" \
+              --title "FlowDesk Dashboard $VERSION" \
+              --notes "Third-party Obsidian plugin release for FlowDesk Dashboard $VERSION."
+          fi
