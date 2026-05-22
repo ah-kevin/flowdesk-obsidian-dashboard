@@ -10,6 +10,7 @@ import {
 } from "obsidian";
 import { execFile } from "child_process";
 import { existsSync } from "fs";
+import { homedir } from "os";
 import * as path from "path";
 import { promisify } from "util";
 
@@ -218,7 +219,7 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     const flowdeskRoot = this.resolveFlowDeskRoot();
     const cli = path.join(flowdeskRoot, "bin", "flowdesk-execution-snapshot");
     const workingDirectory =
-      this.settings.workingDirectory.trim() || flowdeskRoot;
+      expandHomePath(this.settings.workingDirectory.trim()) || flowdeskRoot;
 
     const args = [
       taskPath,
@@ -275,8 +276,8 @@ export default class FlowDeskDashboardPlugin extends Plugin {
 
   private resolveFlowDeskRoot(): string {
     const candidates = [
-      this.settings.flowdeskRoot.trim(),
-      process.env.FLOWDESK_PLUGIN_ROOT || "",
+      expandHomePath(this.settings.flowdeskRoot.trim()),
+      expandHomePath(process.env.FLOWDESK_PLUGIN_ROOT || ""),
       path.resolve(__dirname, "..", ".."),
     ].filter(Boolean);
 
@@ -289,6 +290,16 @@ export default class FlowDeskDashboardPlugin extends Plugin {
 
     throw new Error("未找到 FlowDesk 仓库路径，请在插件设置里配置 FlowDesk repo path。");
   }
+}
+
+function expandHomePath(value: string): string {
+  if (value === "~") {
+    return homedir();
+  }
+  if (value.startsWith("~/")) {
+    return path.join(homedir(), value.slice(2));
+  }
+  return value;
 }
 
 class FlowDeskDashboardView extends ItemView {

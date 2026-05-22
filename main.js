@@ -37,6 +37,7 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var import_child_process = require("child_process");
 var import_fs = require("fs");
+var import_os = require("os");
 var path = __toESM(require("path"));
 var import_util = require("util");
 var FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
@@ -140,7 +141,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
   async loadSnapshot(taskPath) {
     const flowdeskRoot = this.resolveFlowDeskRoot();
     const cli = path.join(flowdeskRoot, "bin", "flowdesk-execution-snapshot");
-    const workingDirectory = this.settings.workingDirectory.trim() || flowdeskRoot;
+    const workingDirectory = expandHomePath(this.settings.workingDirectory.trim()) || flowdeskRoot;
     const args = [
       taskPath,
       "--working-directory",
@@ -187,8 +188,8 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
   }
   resolveFlowDeskRoot() {
     const candidates = [
-      this.settings.flowdeskRoot.trim(),
-      process.env.FLOWDESK_PLUGIN_ROOT || "",
+      expandHomePath(this.settings.flowdeskRoot.trim()),
+      expandHomePath(process.env.FLOWDESK_PLUGIN_ROOT || ""),
       path.resolve(__dirname, "..", "..")
     ].filter(Boolean);
     for (const candidate of candidates) {
@@ -200,6 +201,15 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     throw new Error("\u672A\u627E\u5230 FlowDesk \u4ED3\u5E93\u8DEF\u5F84\uFF0C\u8BF7\u5728\u63D2\u4EF6\u8BBE\u7F6E\u91CC\u914D\u7F6E FlowDesk repo path\u3002");
   }
 };
+function expandHomePath(value) {
+  if (value === "~") {
+    return (0, import_os.homedir)();
+  }
+  if (value.startsWith("~/")) {
+    return path.join((0, import_os.homedir)(), value.slice(2));
+  }
+  return value;
+}
 var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
