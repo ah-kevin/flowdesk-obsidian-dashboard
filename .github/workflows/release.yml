@@ -26,9 +26,10 @@ jobs:
         with:
           node-version: "20"
           cache: npm
+          registry-url: "https://registry.npmjs.org"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --registry=https://registry.npmjs.org
 
       - name: Build and verify release package
         run: npm run release:prepare
