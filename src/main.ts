@@ -104,6 +104,12 @@ interface EvidenceItem {
   items?: string[];
 }
 
+interface ExecFileFailure extends Error {
+  code?: number | string;
+  stderr?: string;
+  stdout?: string;
+}
+
 export default class FlowDeskDashboardPlugin extends Plugin {
   settings!: FlowDeskDashboardSettings;
 
@@ -116,7 +122,7 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     );
 
     this.addRibbonIcon("layout-dashboard", "FlowDesk Dashboard", () => {
-      void this.openDashboardForActiveTask();
+      void this.refreshDashboard();
     });
 
     this.addCommand({
@@ -132,10 +138,36 @@ export default class FlowDeskDashboardPlugin extends Plugin {
           new Notice("请先打开一个 Tasks/*.md 任务文件。");
           return false;
         }
-        void this.activateDashboard(file.path);
+        void this.refreshDashboard();
         return true;
       },
     });
+
+    this.registerEvent(
+      this.app.workspace.on("file-open", (file) => {
+        const view = this.getDashboardView();
+        if (view && this.isTaskFile(file)) {
+          void view.loadTask(file.path);
+          return;
+        }
+        view?.refreshActiveFileState();
+      })
+    );
+
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", () => {
+        this.getDashboardView()?.refreshActiveFileState();
+      })
+    );
+
+    this.registerEvent(
+      this.app.vault.on("modify", (file) => {
+        const view = this.getDashboardView();
+        if (view && file instanceof TFile && file.path === view.currentTaskPath) {
+          void view.refreshCurrentTask();
+        }
+      })
+    );
 
     this.addSettingTab(new FlowDeskDashboardSettingTab(this.app, this));
   }
@@ -145,12 +177,17 @@ export default class FlowDeskDashboardPlugin extends Plugin {
   }
 
   async openDashboardForActiveTask() {
+    await this.refreshDashboard();
+  }
+
+  async refreshDashboard(fallbackTaskPath = "") {
     const file = this.app.workspace.getActiveFile();
-    if (!file || !this.isTaskFile(file)) {
+    const taskPath = this.isTaskFile(file) ? file.path : fallbackTaskPath;
+    if (!taskPath) {
       new Notice("请先打开一个 Tasks/*.md 任务文件。");
       return;
     }
-    await this.activateDashboard(file.path);
+    await this.activateDashboard(taskPath);
   }
 
   async activateDashboard(taskPath: string) {
@@ -172,6 +209,11 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     workspace.revealLeaf(leaf);
   }
 
+  private getDashboardView(): FlowDeskDashboardView | null {
+    const leaf = this.app.workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE)[0];
+    return leaf?.view instanceof FlowDeskDashboardView ? leaf.view : null;
+  }
+
   async loadSnapshot(taskPath: string): Promise<ExecutionSnapshot> {
     const flowdeskRoot = this.resolveFlowDeskRoot();
     const cli = path.join(flowdeskRoot, "bin", "flowdesk-execution-snapshot");
@@ -191,10 +233,16 @@ export default class FlowDeskDashboardPlugin extends Plugin {
       args.splice(1, 0, "--api-url", apiUrl);
     }
 
-    const { stdout } = await execFileAsync(cli, args, {
-      cwd: flowdeskRoot,
-      maxBuffer: MAX_SNAPSHOT_BUFFER,
-    });
+    let stdout: string;
+    try {
+      const result = await execFileAsync(cli, args, {
+        cwd: flowdeskRoot,
+        maxBuffer: MAX_SNAPSHOT_BUFFER,
+      });
+      stdout = result.stdout;
+    } catch (error) {
+      throw new Error(formatSnapshotCommandError(error));
+    }
 
     try {
       return JSON.parse(stdout) as ExecutionSnapshot;
@@ -220,6 +268,11 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     );
   }
 
+  getActiveTaskPath(): string | null {
+    const file = this.app.workspace.getActiveFile();
+    return this.isTaskFile(file) ? file.path : null;
+  }
+
   private resolveFlowDeskRoot(): string {
     const candidates = [
       this.settings.flowdeskRoot.trim(),
@@ -243,6 +296,9 @@ class FlowDeskDashboardView extends ItemView {
   private snapshot: ExecutionSnapshot | null = null;
   private error = "";
   private loading = false;
+  private lastUpdatedAt = "";
+  private queuedTaskPath: string | null = null;
+  private refreshPromise: Promise<void> | null = null;
 
   constructor(leaf: WorkspaceLeaf, private plugin: FlowDeskDashboardPlugin) {
     super(leaf);
@@ -264,16 +320,57 @@ class FlowDeskDashboardView extends ItemView {
     this.render();
   }
 
+  get currentTaskPath(): string {
+    return this.taskPath;
+  }
+
+  refreshActiveFileState() {
+    this.render();
+  }
+
   async loadTask(taskPath: string) {
+    this.queuedTaskPath = taskPath;
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
+    this.refreshPromise = this.drainRefreshQueue();
+    try {
+      await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
+    }
+  }
+
+  async refreshCurrentTask() {
+    if (this.taskPath) {
+      await this.loadTask(this.taskPath);
+    }
+  }
+
+  private async drainRefreshQueue() {
+    while (this.queuedTaskPath) {
+      const taskPath = this.queuedTaskPath;
+      this.queuedTaskPath = null;
+      await this.loadTaskNow(taskPath);
+    }
+  }
+
+  private async loadTaskNow(taskPath: string) {
+    const previousTaskPath = this.taskPath;
     this.taskPath = taskPath;
+    if (previousTaskPath !== taskPath) {
+      this.snapshot = null;
+      this.lastUpdatedAt = "";
+    }
     this.loading = true;
     this.error = "";
     this.render();
 
     try {
       this.snapshot = await this.plugin.loadSnapshot(taskPath);
+      this.lastUpdatedAt = formatTime(new Date());
     } catch (error) {
-      this.snapshot = null;
       this.error = error instanceof Error ? error.message : String(error);
     } finally {
       this.loading = false;
@@ -288,6 +385,13 @@ class FlowDeskDashboardView extends ItemView {
 
     this.renderHeader(container);
 
+    if (this.isPinnedToPreviousTask()) {
+      container.createDiv({
+        cls: "flowdesk-pinned-note",
+        text: "Pinned: 当前文件不是 TaskNotes task，面板显示的是上一次任务。",
+      });
+    }
+
     if (!this.taskPath) {
       container.createDiv({
         cls: "flowdesk-empty",
@@ -296,19 +400,25 @@ class FlowDeskDashboardView extends ItemView {
       return;
     }
 
-    if (this.loading) {
-      container.createDiv({ cls: "flowdesk-empty", text: "Loading snapshot..." });
+    if (this.loading && !this.snapshot) {
+      container.createDiv({ cls: "flowdesk-empty", text: "正在读取 snapshot..." });
       return;
     }
 
     if (this.error) {
       container.createDiv({ cls: "flowdesk-error", text: this.error });
-      return;
+      if (!this.snapshot) {
+        return;
+      }
     }
 
     if (!this.snapshot) {
-      container.createDiv({ cls: "flowdesk-empty", text: "No snapshot loaded." });
+      container.createDiv({ cls: "flowdesk-empty", text: "尚未读取 snapshot。" });
       return;
+    }
+
+    if (this.loading) {
+      container.createDiv({ cls: "flowdesk-refreshing", text: "正在刷新 snapshot..." });
     }
 
     this.renderSummary(container, this.snapshot);
@@ -330,19 +440,25 @@ class FlowDeskDashboardView extends ItemView {
       cls: "flowdesk-dashboard-path",
       text: this.taskPath || "No task selected",
     });
+    titleBlock.createDiv({
+      cls: "flowdesk-dashboard-meta",
+      text: this.lastUpdatedAt ? `上次刷新 ${this.lastUpdatedAt}` : "等待刷新",
+    });
 
     const toolbar = header.createDiv({ cls: "flowdesk-dashboard-toolbar" });
-    const refresh = toolbar.createEl("button", { text: "Refresh" });
+    const refresh = toolbar.createEl("button", {
+      cls: "flowdesk-refresh-button",
+      text: this.loading ? "刷新中" : "刷新",
+    });
     refresh.disabled = !this.taskPath || this.loading;
+    refresh.title = "重新读取当前 TaskNotes task 的 FlowDesk snapshot";
     refresh.addEventListener("click", () => {
-      if (this.taskPath) {
-        void this.loadTask(this.taskPath);
-      }
+      void this.plugin.refreshDashboard(this.taskPath);
     });
   }
 
   private renderSummary(container: HTMLElement, snapshot: ExecutionSnapshot) {
-    const section = createSection(container, "Summary");
+    const section = createSection(container, "Summary（概览）");
     const grid = section.createDiv({ cls: "flowdesk-summary-grid" });
     const state = snapshot.state ?? {};
     const flow = snapshot.flow_graph ?? {};
@@ -365,13 +481,20 @@ class FlowDeskDashboardView extends ItemView {
     );
 
     const progressRow = grid.createDiv({ cls: "flowdesk-summary-row" });
-    progressRow.createSpan({ cls: "flowdesk-status-dot flowdesk-status-done", text: "●" });
+    progressRow.createSpan({
+      cls: `flowdesk-status-dot flowdesk-status-${progress.status}`,
+      text: "●",
+    });
     progressRow.createSpan({ cls: "flowdesk-summary-label", text: "Progress:" });
     const progressWrap = progressRow.createSpan({ cls: "flowdesk-progress-wrap" });
-    const bar = progressWrap.createSpan({ cls: "flowdesk-progress-bar" });
-    bar.createSpan({ cls: "flowdesk-progress-fill" }).style.width = `${progress.percent}%`;
+    if (progress.total) {
+      const bar = progressWrap.createSpan({ cls: "flowdesk-progress-bar" });
+      bar.createSpan({ cls: "flowdesk-progress-fill" }).style.width = `${progress.percent}%`;
+    }
     progressWrap.createSpan({
-      text: `${progress.done}/${progress.total} ${progress.unit} (${progress.percent}% complete)`,
+      text: progress.total
+        ? `${progress.done}/${progress.total} ${progress.unit} (${progress.percent}% complete)`
+        : "No progress data",
     });
 
     summaryRow(
@@ -387,7 +510,7 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   private renderFlowGraph(container: HTMLElement, snapshot: ExecutionSnapshot) {
-    const section = createSection(container, "Flow Graph");
+    const section = createSection(container, "Graph（流程）");
     const list = section.createDiv({ cls: "flowdesk-flow-list" });
     const nodes = snapshot.flow_graph?.nodes ?? [];
     if (!nodes.length) {
@@ -401,10 +524,10 @@ class FlowDeskDashboardView extends ItemView {
         cls: `flowdesk-flow-row flowdesk-task-state-${status}`,
       });
       row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${status}`, text: statusSymbol(status) });
-      const body = row.createDiv();
+      const body = row.createDiv({ cls: "flowdesk-row-body" });
       body.createDiv({
         cls: "flowdesk-main-text",
-        text: `[${status.toUpperCase()}] ${node.label ?? node.id ?? ""} (${node.id ?? ""})`,
+        text: `[${status.toUpperCase()}] ${node.label ?? node.id ?? ""} (${formatFlowNodeId(node.id)})`,
       });
       if (node.missing_deps?.length) {
         body.createDiv({
@@ -416,7 +539,7 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   private renderContract(container: HTMLElement, snapshot: ExecutionSnapshot) {
-    const section = createSection(container, "Contract");
+    const section = createSection(container, "Contract（契约）");
     const list = section.createDiv({ cls: "flowdesk-contract-list" });
     const contract = snapshot.spec_contract ?? {};
     contractRow(list, "Requirements", contract.requirements?.ids);
@@ -443,7 +566,7 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   private renderChildTasks(container: HTMLElement, tasks: ChildTask[]) {
-    const section = createSection(container, "Child Tasks");
+    const section = createSection(container, "Task Evidence");
     const list = section.createDiv({ cls: "flowdesk-task-list" });
 
     for (const task of tasks) {
@@ -452,8 +575,13 @@ class FlowDeskDashboardView extends ItemView {
         cls: `flowdesk-child-task flowdesk-task-state-${state}`,
       });
       row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${state}`, text: statusSymbol(state) });
-      const body = row.createDiv();
-      body.createDiv({ cls: "flowdesk-main-text", text: `[${state.toUpperCase()}] ${task.title ?? ""}` });
+      const body = row.createDiv({ cls: "flowdesk-row-body" });
+      const title = body.createDiv({ cls: "flowdesk-task-title-row" });
+      title.createSpan({ cls: "flowdesk-task-badge", text: "Task" });
+      title.createSpan({
+        cls: "flowdesk-main-text",
+        text: `[${state.toUpperCase()}] ${task.title ?? ""}`,
+      });
       if (task.id) {
         body.createDiv({ cls: "flowdesk-subline", text: `id: ${task.id}` });
       }
@@ -466,7 +594,35 @@ class FlowDeskDashboardView extends ItemView {
       if (task.covers_unresolved) {
         body.createDiv({ cls: "flowdesk-warning", text: task.limitation ?? "Task covers unresolved." });
       }
+      if (task.id) {
+        const openButton = row.createEl("button", {
+          cls: "flowdesk-task-open-button",
+          text: "打开",
+        });
+        openButton.title = `打开 ${task.id}`;
+        openButton.addEventListener("click", () => {
+          void this.openTask(task.id);
+        });
+      }
     }
+  }
+
+  private async openTask(taskPath: string | undefined) {
+    if (!taskPath) {
+      return;
+    }
+
+    const file = this.app.vault.getAbstractFileByPath(taskPath);
+    if (!(file instanceof TFile)) {
+      new Notice(`未找到任务文件：${taskPath}`);
+      return;
+    }
+
+    await this.app.workspace.getLeaf(false).openFile(file);
+  }
+
+  private isPinnedToPreviousTask(): boolean {
+    return Boolean(this.taskPath && !this.plugin.getActiveTaskPath());
   }
 
   private renderTaskEvidence(container: HTMLElement, snapshot: ExecutionSnapshot) {
@@ -486,7 +642,7 @@ class FlowDeskDashboardView extends ItemView {
         cls: `flowdesk-status-dot flowdesk-status-${unchecked ? "ready" : "done"}`,
         text: statusSymbol(unchecked ? "ready" : "done"),
       });
-      const body = row.createDiv();
+      const body = row.createDiv({ cls: "flowdesk-row-body" });
       body.createDiv({
         cls: "flowdesk-main-text",
         text: `Checklist: ${numberValue(checklist.checked)}/${numberValue(checklist.total)} checked`,
@@ -614,7 +770,7 @@ function summaryRow(container: HTMLElement, status: string, label: string, value
   const normalized = normalizeStatus(status);
   row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${normalized}`, text: "●" });
   row.createSpan({ cls: "flowdesk-summary-label", text: `${label}:` });
-  row.createSpan({ text: value });
+  row.createSpan({ cls: "flowdesk-summary-value", text: value });
 }
 
 function contractRow(container: HTMLElement, label: string, ids?: string[]) {
@@ -628,7 +784,7 @@ function evidenceRow(container: HTMLElement, label: string, item?: EvidenceItem)
   const status = exists ? "done" : "blocked";
   const row = container.createDiv({ cls: "flowdesk-evidence-row" });
   row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${status}`, text: statusSymbol(status) });
-  const body = row.createDiv();
+  const body = row.createDiv({ cls: "flowdesk-row-body" });
   const items = item?.items ?? [];
   body.createDiv({
     cls: "flowdesk-main-text",
@@ -636,6 +792,13 @@ function evidenceRow(container: HTMLElement, label: string, item?: EvidenceItem)
   });
   for (const detail of items.slice(0, 2)) {
     body.createDiv({ cls: "flowdesk-subline", text: `- ${detail}` });
+  }
+  if (items.length > 2) {
+    const details = body.createEl("details", { cls: "flowdesk-evidence-details" });
+    details.createEl("summary", { text: `显示剩余 ${items.length - 2} 条` });
+    for (const detail of items.slice(2)) {
+      details.createDiv({ cls: "flowdesk-subline", text: `- ${detail}` });
+    }
   }
 }
 
@@ -654,6 +817,7 @@ function computeProgress(snapshot: ExecutionSnapshot) {
     total: progressTotal,
     unit: total ? "tasks" : "stages",
     percent,
+    status: percent >= 100 ? "done" : percent > 0 ? "running" : "blocked",
   };
 }
 
@@ -704,4 +868,54 @@ function formatAction(action: Record<string, unknown>): string {
 
 function numberValue(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function formatSnapshotCommandError(error: unknown): string {
+  const failure = error as Partial<ExecFileFailure>;
+  const stderr = typeof failure.stderr === "string" ? failure.stderr.trim() : "";
+  const stdout = typeof failure.stdout === "string" ? failure.stdout.trim() : "";
+  const message = error instanceof Error ? error.message : String(error);
+  const output = stderr || stdout || message;
+
+  const tasknotesUnavailable = output.match(/TaskNotes HTTP API unavailable at (\S+)/);
+  if (tasknotesUnavailable) {
+    return [
+      `TaskNotes HTTP API 尚未就绪：${tasknotesUnavailable[1]}`,
+      "请确认 Obsidian 和 TaskNotes HTTP API 已启动后再刷新。",
+    ].join("\n");
+  }
+
+  if (output.includes("Connection refused")) {
+    return [
+      "TaskNotes HTTP API 连接被拒绝，可能还在启动中。",
+      "请稍后点击刷新；如果一直失败，请检查插件设置里的 TaskNotes API URL。",
+    ].join("\n");
+  }
+
+  const runtimeError = output.match(/RuntimeError: ([\s\S]+)$/);
+  if (runtimeError) {
+    return `FlowDesk snapshot 读取失败：${runtimeError[1].trim()}`;
+  }
+
+  return `FlowDesk snapshot 命令失败：${message}`;
+}
+
+function formatFlowNodeId(id: unknown): string {
+  const value = String(id ?? "");
+  const labels: Record<string, string> = {
+    spec_contract: "规格契约",
+    task_breakdown: "任务拆分",
+    implementation: "实现",
+    verification: "验证",
+    delivery: "交付",
+  };
+  return labels[value] ?? value;
+}
+
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }

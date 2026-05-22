@@ -56,7 +56,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
       (leaf) => new FlowDeskDashboardView(leaf, this)
     );
     this.addRibbonIcon("layout-dashboard", "FlowDesk Dashboard", () => {
-      void this.openDashboardForActiveTask();
+      void this.refreshDashboard();
     });
     this.addCommand({
       id: "show-current-task-dashboard",
@@ -71,22 +71,50 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
           new import_obsidian.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A Tasks/*.md \u4EFB\u52A1\u6587\u4EF6\u3002");
           return false;
         }
-        void this.activateDashboard(file.path);
+        void this.refreshDashboard();
         return true;
       }
     });
+    this.registerEvent(
+      this.app.workspace.on("file-open", (file) => {
+        const view = this.getDashboardView();
+        if (view && this.isTaskFile(file)) {
+          void view.loadTask(file.path);
+          return;
+        }
+        view == null ? void 0 : view.refreshActiveFileState();
+      })
+    );
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", () => {
+        var _a;
+        (_a = this.getDashboardView()) == null ? void 0 : _a.refreshActiveFileState();
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on("modify", (file) => {
+        const view = this.getDashboardView();
+        if (view && file instanceof import_obsidian.TFile && file.path === view.currentTaskPath) {
+          void view.refreshCurrentTask();
+        }
+      })
+    );
     this.addSettingTab(new FlowDeskDashboardSettingTab(this.app, this));
   }
   async onunload() {
     this.app.workspace.detachLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE);
   }
   async openDashboardForActiveTask() {
+    await this.refreshDashboard();
+  }
+  async refreshDashboard(fallbackTaskPath = "") {
     const file = this.app.workspace.getActiveFile();
-    if (!file || !this.isTaskFile(file)) {
+    const taskPath = this.isTaskFile(file) ? file.path : fallbackTaskPath;
+    if (!taskPath) {
       new import_obsidian.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A Tasks/*.md \u4EFB\u52A1\u6587\u4EF6\u3002");
       return;
     }
-    await this.activateDashboard(file.path);
+    await this.activateDashboard(taskPath);
   }
   async activateDashboard(taskPath) {
     var _a;
@@ -105,6 +133,10 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     }
     workspace.revealLeaf(leaf);
   }
+  getDashboardView() {
+    const leaf = this.app.workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE)[0];
+    return (leaf == null ? void 0 : leaf.view) instanceof FlowDeskDashboardView ? leaf.view : null;
+  }
   async loadSnapshot(taskPath) {
     const flowdeskRoot = this.resolveFlowDeskRoot();
     const cli = path.join(flowdeskRoot, "bin", "flowdesk-execution-snapshot");
@@ -121,10 +153,16 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     if (apiUrl) {
       args.splice(1, 0, "--api-url", apiUrl);
     }
-    const { stdout } = await execFileAsync(cli, args, {
-      cwd: flowdeskRoot,
-      maxBuffer: MAX_SNAPSHOT_BUFFER
-    });
+    let stdout;
+    try {
+      const result = await execFileAsync(cli, args, {
+        cwd: flowdeskRoot,
+        maxBuffer: MAX_SNAPSHOT_BUFFER
+      });
+      stdout = result.stdout;
+    } catch (error) {
+      throw new Error(formatSnapshotCommandError(error));
+    }
     try {
       return JSON.parse(stdout);
     } catch (error) {
@@ -142,6 +180,10 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     return Boolean(
       file && file.extension === "md" && (file.path.startsWith("Tasks/") || file.path.startsWith("TaskNotes/"))
     );
+  }
+  getActiveTaskPath() {
+    const file = this.app.workspace.getActiveFile();
+    return this.isTaskFile(file) ? file.path : null;
   }
   resolveFlowDeskRoot() {
     const candidates = [
@@ -166,6 +208,9 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     this.snapshot = null;
     this.error = "";
     this.loading = false;
+    this.lastUpdatedAt = "";
+    this.queuedTaskPath = null;
+    this.refreshPromise = null;
   }
   getViewType() {
     return FLOWDESK_DASHBOARD_VIEW_TYPE;
@@ -179,15 +224,50 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   async onOpen() {
     this.render();
   }
+  get currentTaskPath() {
+    return this.taskPath;
+  }
+  refreshActiveFileState() {
+    this.render();
+  }
   async loadTask(taskPath) {
+    this.queuedTaskPath = taskPath;
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+    this.refreshPromise = this.drainRefreshQueue();
+    try {
+      await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
+    }
+  }
+  async refreshCurrentTask() {
+    if (this.taskPath) {
+      await this.loadTask(this.taskPath);
+    }
+  }
+  async drainRefreshQueue() {
+    while (this.queuedTaskPath) {
+      const taskPath = this.queuedTaskPath;
+      this.queuedTaskPath = null;
+      await this.loadTaskNow(taskPath);
+    }
+  }
+  async loadTaskNow(taskPath) {
+    const previousTaskPath = this.taskPath;
     this.taskPath = taskPath;
+    if (previousTaskPath !== taskPath) {
+      this.snapshot = null;
+      this.lastUpdatedAt = "";
+    }
     this.loading = true;
     this.error = "";
     this.render();
     try {
       this.snapshot = await this.plugin.loadSnapshot(taskPath);
+      this.lastUpdatedAt = formatTime(/* @__PURE__ */ new Date());
     } catch (error) {
-      this.snapshot = null;
       this.error = error instanceof Error ? error.message : String(error);
     } finally {
       this.loading = false;
@@ -199,6 +279,12 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     container.empty();
     container.addClass("flowdesk-dashboard");
     this.renderHeader(container);
+    if (this.isPinnedToPreviousTask()) {
+      container.createDiv({
+        cls: "flowdesk-pinned-note",
+        text: "Pinned: \u5F53\u524D\u6587\u4EF6\u4E0D\u662F TaskNotes task\uFF0C\u9762\u677F\u663E\u793A\u7684\u662F\u4E0A\u4E00\u6B21\u4EFB\u52A1\u3002"
+      });
+    }
     if (!this.taskPath) {
       container.createDiv({
         cls: "flowdesk-empty",
@@ -206,17 +292,22 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       });
       return;
     }
-    if (this.loading) {
-      container.createDiv({ cls: "flowdesk-empty", text: "Loading snapshot..." });
+    if (this.loading && !this.snapshot) {
+      container.createDiv({ cls: "flowdesk-empty", text: "\u6B63\u5728\u8BFB\u53D6 snapshot..." });
       return;
     }
     if (this.error) {
       container.createDiv({ cls: "flowdesk-error", text: this.error });
-      return;
+      if (!this.snapshot) {
+        return;
+      }
     }
     if (!this.snapshot) {
-      container.createDiv({ cls: "flowdesk-empty", text: "No snapshot loaded." });
+      container.createDiv({ cls: "flowdesk-empty", text: "\u5C1A\u672A\u8BFB\u53D6 snapshot\u3002" });
       return;
+    }
+    if (this.loading) {
+      container.createDiv({ cls: "flowdesk-refreshing", text: "\u6B63\u5728\u5237\u65B0 snapshot..." });
     }
     this.renderSummary(container, this.snapshot);
     this.renderFlowGraph(container, this.snapshot);
@@ -236,18 +327,24 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       cls: "flowdesk-dashboard-path",
       text: this.taskPath || "No task selected"
     });
+    titleBlock.createDiv({
+      cls: "flowdesk-dashboard-meta",
+      text: this.lastUpdatedAt ? `\u4E0A\u6B21\u5237\u65B0 ${this.lastUpdatedAt}` : "\u7B49\u5F85\u5237\u65B0"
+    });
     const toolbar = header.createDiv({ cls: "flowdesk-dashboard-toolbar" });
-    const refresh = toolbar.createEl("button", { text: "Refresh" });
+    const refresh = toolbar.createEl("button", {
+      cls: "flowdesk-refresh-button",
+      text: this.loading ? "\u5237\u65B0\u4E2D" : "\u5237\u65B0"
+    });
     refresh.disabled = !this.taskPath || this.loading;
+    refresh.title = "\u91CD\u65B0\u8BFB\u53D6\u5F53\u524D TaskNotes task \u7684 FlowDesk snapshot";
     refresh.addEventListener("click", () => {
-      if (this.taskPath) {
-        void this.loadTask(this.taskPath);
-      }
+      void this.plugin.refreshDashboard(this.taskPath);
     });
   }
   renderSummary(container, snapshot) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n;
-    const section = createSection(container, "Summary");
+    const section = createSection(container, "Summary\uFF08\u6982\u89C8\uFF09");
     const grid = section.createDiv({ cls: "flowdesk-summary-grid" });
     const state = (_a = snapshot.state) != null ? _a : {};
     const flow = (_b = snapshot.flow_graph) != null ? _b : {};
@@ -268,13 +365,18 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       `${numberValue(counts.total)} total, ${numberValue(counts.ready)} ready, ${numberValue(counts.running)} running, ${numberValue(counts.blocked)} blocked, ${numberValue(counts.done)} done`
     );
     const progressRow = grid.createDiv({ cls: "flowdesk-summary-row" });
-    progressRow.createSpan({ cls: "flowdesk-status-dot flowdesk-status-done", text: "\u25CF" });
+    progressRow.createSpan({
+      cls: `flowdesk-status-dot flowdesk-status-${progress.status}`,
+      text: "\u25CF"
+    });
     progressRow.createSpan({ cls: "flowdesk-summary-label", text: "Progress:" });
     const progressWrap = progressRow.createSpan({ cls: "flowdesk-progress-wrap" });
-    const bar = progressWrap.createSpan({ cls: "flowdesk-progress-bar" });
-    bar.createSpan({ cls: "flowdesk-progress-fill" }).style.width = `${progress.percent}%`;
+    if (progress.total) {
+      const bar = progressWrap.createSpan({ cls: "flowdesk-progress-bar" });
+      bar.createSpan({ cls: "flowdesk-progress-fill" }).style.width = `${progress.percent}%`;
+    }
     progressWrap.createSpan({
-      text: `${progress.done}/${progress.total} ${progress.unit} (${progress.percent}% complete)`
+      text: progress.total ? `${progress.done}/${progress.total} ${progress.unit} (${progress.percent}% complete)` : "No progress data"
     });
     summaryRow(
       grid,
@@ -287,8 +389,8 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     }
   }
   renderFlowGraph(container, snapshot) {
-    var _a, _b, _c, _d, _e, _f;
-    const section = createSection(container, "Flow Graph");
+    var _a, _b, _c, _d, _e;
+    const section = createSection(container, "Graph\uFF08\u6D41\u7A0B\uFF09");
     const list = section.createDiv({ cls: "flowdesk-flow-list" });
     const nodes = (_b = (_a = snapshot.flow_graph) == null ? void 0 : _a.nodes) != null ? _b : [];
     if (!nodes.length) {
@@ -301,12 +403,12 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         cls: `flowdesk-flow-row flowdesk-task-state-${status}`
       });
       row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${status}`, text: statusSymbol(status) });
-      const body = row.createDiv();
+      const body = row.createDiv({ cls: "flowdesk-row-body" });
       body.createDiv({
         cls: "flowdesk-main-text",
-        text: `[${status.toUpperCase()}] ${(_d = (_c = node.label) != null ? _c : node.id) != null ? _d : ""} (${(_e = node.id) != null ? _e : ""})`
+        text: `[${status.toUpperCase()}] ${(_d = (_c = node.label) != null ? _c : node.id) != null ? _d : ""} (${formatFlowNodeId(node.id)})`
       });
-      if ((_f = node.missing_deps) == null ? void 0 : _f.length) {
+      if ((_e = node.missing_deps) == null ? void 0 : _e.length) {
         body.createDiv({
           cls: "flowdesk-subline",
           text: `blocked by: ${formatIds(node.missing_deps)}`
@@ -316,7 +418,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   }
   renderContract(container, snapshot) {
     var _a, _b, _c, _d, _e, _f;
-    const section = createSection(container, "Contract");
+    const section = createSection(container, "Contract\uFF08\u5951\u7EA6\uFF09");
     const list = section.createDiv({ cls: "flowdesk-contract-list" });
     const contract = (_a = snapshot.spec_contract) != null ? _a : {};
     contractRow(list, "Requirements", (_b = contract.requirements) == null ? void 0 : _b.ids);
@@ -342,7 +444,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   }
   renderChildTasks(container, tasks) {
     var _a, _b, _c, _d;
-    const section = createSection(container, "Child Tasks");
+    const section = createSection(container, "Task Evidence");
     const list = section.createDiv({ cls: "flowdesk-task-list" });
     for (const task of tasks) {
       const state = normalizeStatus(task.state);
@@ -350,8 +452,13 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         cls: `flowdesk-child-task flowdesk-task-state-${state}`
       });
       row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${state}`, text: statusSymbol(state) });
-      const body = row.createDiv();
-      body.createDiv({ cls: "flowdesk-main-text", text: `[${state.toUpperCase()}] ${(_a = task.title) != null ? _a : ""}` });
+      const body = row.createDiv({ cls: "flowdesk-row-body" });
+      const title = body.createDiv({ cls: "flowdesk-task-title-row" });
+      title.createSpan({ cls: "flowdesk-task-badge", text: "Task" });
+      title.createSpan({
+        cls: "flowdesk-main-text",
+        text: `[${state.toUpperCase()}] ${(_a = task.title) != null ? _a : ""}`
+      });
       if (task.id) {
         body.createDiv({ cls: "flowdesk-subline", text: `id: ${task.id}` });
       }
@@ -364,7 +471,31 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       if (task.covers_unresolved) {
         body.createDiv({ cls: "flowdesk-warning", text: (_d = task.limitation) != null ? _d : "Task covers unresolved." });
       }
+      if (task.id) {
+        const openButton = row.createEl("button", {
+          cls: "flowdesk-task-open-button",
+          text: "\u6253\u5F00"
+        });
+        openButton.title = `\u6253\u5F00 ${task.id}`;
+        openButton.addEventListener("click", () => {
+          void this.openTask(task.id);
+        });
+      }
     }
+  }
+  async openTask(taskPath) {
+    if (!taskPath) {
+      return;
+    }
+    const file = this.app.vault.getAbstractFileByPath(taskPath);
+    if (!(file instanceof import_obsidian.TFile)) {
+      new import_obsidian.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${taskPath}`);
+      return;
+    }
+    await this.app.workspace.getLeaf(false).openFile(file);
+  }
+  isPinnedToPreviousTask() {
+    return Boolean(this.taskPath && !this.plugin.getActiveTaskPath());
   }
   renderTaskEvidence(container, snapshot) {
     var _a, _b, _c;
@@ -382,7 +513,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         cls: `flowdesk-status-dot flowdesk-status-${unchecked ? "ready" : "done"}`,
         text: statusSymbol(unchecked ? "ready" : "done")
       });
-      const body = row.createDiv();
+      const body = row.createDiv({ cls: "flowdesk-row-body" });
       body.createDiv({
         cls: "flowdesk-main-text",
         text: `Checklist: ${numberValue(checklist.checked)}/${numberValue(checklist.total)} checked`
@@ -477,7 +608,7 @@ function summaryRow(container, status, label, value) {
   const normalized = normalizeStatus(status);
   row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${normalized}`, text: "\u25CF" });
   row.createSpan({ cls: "flowdesk-summary-label", text: `${label}:` });
-  row.createSpan({ text: value });
+  row.createSpan({ cls: "flowdesk-summary-value", text: value });
 }
 function contractRow(container, label, ids) {
   const row = container.createDiv();
@@ -490,7 +621,7 @@ function evidenceRow(container, label, item) {
   const status = exists ? "done" : "blocked";
   const row = container.createDiv({ cls: "flowdesk-evidence-row" });
   row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${status}`, text: statusSymbol(status) });
-  const body = row.createDiv();
+  const body = row.createDiv({ cls: "flowdesk-row-body" });
   const items = (_a = item == null ? void 0 : item.items) != null ? _a : [];
   body.createDiv({
     cls: "flowdesk-main-text",
@@ -498,6 +629,13 @@ function evidenceRow(container, label, item) {
   });
   for (const detail of items.slice(0, 2)) {
     body.createDiv({ cls: "flowdesk-subline", text: `- ${detail}` });
+  }
+  if (items.length > 2) {
+    const details = body.createEl("details", { cls: "flowdesk-evidence-details" });
+    details.createEl("summary", { text: `\u663E\u793A\u5269\u4F59 ${items.length - 2} \u6761` });
+    for (const detail of items.slice(2)) {
+      details.createDiv({ cls: "flowdesk-subline", text: `- ${detail}` });
+    }
   }
 }
 function computeProgress(snapshot) {
@@ -515,7 +653,8 @@ function computeProgress(snapshot) {
     done: progressDone,
     total: progressTotal,
     unit: total ? "tasks" : "stages",
-    percent
+    percent,
+    status: percent >= 100 ? "done" : percent > 0 ? "running" : "blocked"
   };
 }
 function normalizeStatus(status) {
@@ -560,6 +699,50 @@ function formatAction(action) {
 }
 function numberValue(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+function formatSnapshotCommandError(error) {
+  const failure = error;
+  const stderr = typeof failure.stderr === "string" ? failure.stderr.trim() : "";
+  const stdout = typeof failure.stdout === "string" ? failure.stdout.trim() : "";
+  const message = error instanceof Error ? error.message : String(error);
+  const output = stderr || stdout || message;
+  const tasknotesUnavailable = output.match(/TaskNotes HTTP API unavailable at (\S+)/);
+  if (tasknotesUnavailable) {
+    return [
+      `TaskNotes HTTP API \u5C1A\u672A\u5C31\u7EEA\uFF1A${tasknotesUnavailable[1]}`,
+      "\u8BF7\u786E\u8BA4 Obsidian \u548C TaskNotes HTTP API \u5DF2\u542F\u52A8\u540E\u518D\u5237\u65B0\u3002"
+    ].join("\n");
+  }
+  if (output.includes("Connection refused")) {
+    return [
+      "TaskNotes HTTP API \u8FDE\u63A5\u88AB\u62D2\u7EDD\uFF0C\u53EF\u80FD\u8FD8\u5728\u542F\u52A8\u4E2D\u3002",
+      "\u8BF7\u7A0D\u540E\u70B9\u51FB\u5237\u65B0\uFF1B\u5982\u679C\u4E00\u76F4\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u63D2\u4EF6\u8BBE\u7F6E\u91CC\u7684 TaskNotes API URL\u3002"
+    ].join("\n");
+  }
+  const runtimeError = output.match(/RuntimeError: ([\s\S]+)$/);
+  if (runtimeError) {
+    return `FlowDesk snapshot \u8BFB\u53D6\u5931\u8D25\uFF1A${runtimeError[1].trim()}`;
+  }
+  return `FlowDesk snapshot \u547D\u4EE4\u5931\u8D25\uFF1A${message}`;
+}
+function formatFlowNodeId(id) {
+  var _a;
+  const value = String(id != null ? id : "");
+  const labels = {
+    spec_contract: "\u89C4\u683C\u5951\u7EA6",
+    task_breakdown: "\u4EFB\u52A1\u62C6\u5206",
+    implementation: "\u5B9E\u73B0",
+    verification: "\u9A8C\u8BC1",
+    delivery: "\u4EA4\u4ED8"
+  };
+  return (_a = labels[value]) != null ? _a : value;
+}
+function formatTime(date) {
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
