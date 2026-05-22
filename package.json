@@ -1,0 +1,17 @@
+{
+  "name": "flowdesk-dashboard-obsidian-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local Obsidian plugin for rendering FlowDesk execution snapshots.",
+  "main": "main.js",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --external:obsidian --platform=node --target=es2018 --format=cjs --outfile=main.js",
+    "dev": "esbuild src/main.ts --bundle --external:obsidian --platform=node --target=es2018 --format=cjs --outfile=main.js --watch"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "esbuild": "^0.25.0",
+    "obsidian": "^1.5.12",
+    "typescript": "^5.4.5"
+  }
+}

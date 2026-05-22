@@ -1,0 +1,10 @@
+{
+  "id": "flowdesk-dashboard",
+  "name": "FlowDesk Dashboard",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Read-only FlowDesk execution dashboard for the current TaskNotes task.",
+  "author": "FlowDesk",
+  "main": "main.js",
+  "isDesktopOnly": true
+}

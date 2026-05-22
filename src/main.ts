@@ -1,0 +1,707 @@
+import {
+  App,
+  ItemView,
+  Notice,
+  Plugin,
+  PluginSettingTab,
+  Setting,
+  TFile,
+  WorkspaceLeaf,
+} from "obsidian";
+import { execFile } from "child_process";
+import { existsSync } from "fs";
+import * as path from "path";
+import { promisify } from "util";
+
+export const FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
+
+const execFileAsync = promisify(execFile);
+const MAX_SNAPSHOT_BUFFER = 8 * 1024 * 1024;
+
+interface FlowDeskDashboardSettings {
+  flowdeskRoot: string;
+  workingDirectory: string;
+  schema: string;
+  apiUrl: string;
+}
+
+const DEFAULT_SETTINGS: FlowDeskDashboardSettings = {
+  flowdeskRoot: "",
+  workingDirectory: "",
+  schema: "sdd-poc",
+  apiUrl: "",
+};
+
+interface ExecutionSnapshot {
+  state?: {
+    value?: string;
+    blocked_reason?: string;
+    read_only?: boolean;
+  };
+  flow_graph?: {
+    mode?: string;
+    current?: string;
+    nodes?: FlowNode[];
+  };
+  task_graph?: {
+    parent?: {
+      id?: string;
+      title?: string;
+      status?: string;
+    };
+    counts?: Record<string, number>;
+    tasks?: ChildTask[];
+  };
+  spec_contract?: {
+    requirements?: IdList;
+    scenarios?: IdList;
+    tasks?: IdList;
+    checklist?: {
+      total?: number;
+      checked?: number;
+      unchecked?: number;
+    };
+    open_questions?: {
+      count?: number;
+      items?: string[];
+    };
+    evidence?: Record<string, EvidenceItem>;
+  };
+  notepad?: {
+    exists?: boolean;
+    priority?: string;
+    authoritative?: boolean;
+  };
+  next_actions?: Record<string, unknown>[];
+}
+
+interface FlowNode {
+  id?: string;
+  label?: string;
+  status?: string;
+  missing_deps?: string[];
+  evidence?: unknown[];
+}
+
+interface ChildTask {
+  id?: string;
+  title?: string;
+  status?: string;
+  state?: string;
+  covers?: string[];
+  blocked_by?: unknown[];
+  limitation?: string;
+  covers_unresolved?: boolean;
+}
+
+interface IdList {
+  count?: number;
+  ids?: string[];
+}
+
+interface EvidenceItem {
+  exists?: boolean;
+  items?: string[];
+}
+
+export default class FlowDeskDashboardPlugin extends Plugin {
+  settings!: FlowDeskDashboardSettings;
+
+  async onload() {
+    await this.loadSettings();
+
+    this.registerView(
+      FLOWDESK_DASHBOARD_VIEW_TYPE,
+      (leaf) => new FlowDeskDashboardView(leaf, this)
+    );
+
+    this.addRibbonIcon("layout-dashboard", "FlowDesk Dashboard", () => {
+      void this.openDashboardForActiveTask();
+    });
+
+    this.addCommand({
+      id: "show-current-task-dashboard",
+      name: "Show dashboard for current TaskNotes task",
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        const canRun = this.isTaskFile(file);
+        if (checking) {
+          return canRun;
+        }
+        if (!file || !canRun) {
+          new Notice("请先打开一个 Tasks/*.md 任务文件。");
+          return false;
+        }
+        void this.activateDashboard(file.path);
+        return true;
+      },
+    });
+
+    this.addSettingTab(new FlowDeskDashboardSettingTab(this.app, this));
+  }
+
+  async onunload() {
+    this.app.workspace.detachLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE);
+  }
+
+  async openDashboardForActiveTask() {
+    const file = this.app.workspace.getActiveFile();
+    if (!file || !this.isTaskFile(file)) {
+      new Notice("请先打开一个 Tasks/*.md 任务文件。");
+      return;
+    }
+    await this.activateDashboard(file.path);
+  }
+
+  async activateDashboard(taskPath: string) {
+    const { workspace } = this.app;
+    let leaf = workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE)[0];
+
+    if (!leaf) {
+      leaf = workspace.getRightLeaf(false) ?? workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: FLOWDESK_DASHBOARD_VIEW_TYPE,
+        active: true,
+      });
+    }
+
+    const view = leaf.view;
+    if (view instanceof FlowDeskDashboardView) {
+      await view.loadTask(taskPath);
+    }
+    workspace.revealLeaf(leaf);
+  }
+
+  async loadSnapshot(taskPath: string): Promise<ExecutionSnapshot> {
+    const flowdeskRoot = this.resolveFlowDeskRoot();
+    const cli = path.join(flowdeskRoot, "bin", "flowdesk-execution-snapshot");
+    const workingDirectory =
+      this.settings.workingDirectory.trim() || flowdeskRoot;
+
+    const args = [
+      taskPath,
+      "--working-directory",
+      workingDirectory,
+      "--schema",
+      this.settings.schema.trim() || DEFAULT_SETTINGS.schema,
+    ];
+    args.push("--format", "json");
+    const apiUrl = this.settings.apiUrl.trim();
+    if (apiUrl) {
+      args.splice(1, 0, "--api-url", apiUrl);
+    }
+
+    const { stdout } = await execFileAsync(cli, args, {
+      cwd: flowdeskRoot,
+      maxBuffer: MAX_SNAPSHOT_BUFFER,
+    });
+
+    try {
+      return JSON.parse(stdout) as ExecutionSnapshot;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Snapshot JSON 解析失败：${message}`);
+    }
+  }
+
+  async loadSettings() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
+
+  async saveSettings() {
+    await this.saveData(this.settings);
+  }
+
+  isTaskFile(file: TFile | null): file is TFile {
+    return Boolean(
+      file &&
+        file.extension === "md" &&
+        (file.path.startsWith("Tasks/") || file.path.startsWith("TaskNotes/"))
+    );
+  }
+
+  private resolveFlowDeskRoot(): string {
+    const candidates = [
+      this.settings.flowdeskRoot.trim(),
+      process.env.FLOWDESK_PLUGIN_ROOT || "",
+      path.resolve(__dirname, "..", ".."),
+    ].filter(Boolean);
+
+    for (const candidate of candidates) {
+      const cli = path.join(candidate, "bin", "flowdesk-execution-snapshot");
+      if (existsSync(cli)) {
+        return candidate;
+      }
+    }
+
+    throw new Error("未找到 FlowDesk 仓库路径，请在插件设置里配置 FlowDesk repo path。");
+  }
+}
+
+class FlowDeskDashboardView extends ItemView {
+  private taskPath = "";
+  private snapshot: ExecutionSnapshot | null = null;
+  private error = "";
+  private loading = false;
+
+  constructor(leaf: WorkspaceLeaf, private plugin: FlowDeskDashboardPlugin) {
+    super(leaf);
+  }
+
+  getViewType(): string {
+    return FLOWDESK_DASHBOARD_VIEW_TYPE;
+  }
+
+  getDisplayText(): string {
+    return "FlowDesk Dashboard";
+  }
+
+  getIcon(): string {
+    return "layout-dashboard";
+  }
+
+  async onOpen() {
+    this.render();
+  }
+
+  async loadTask(taskPath: string) {
+    this.taskPath = taskPath;
+    this.loading = true;
+    this.error = "";
+    this.render();
+
+    try {
+      this.snapshot = await this.plugin.loadSnapshot(taskPath);
+    } catch (error) {
+      this.snapshot = null;
+      this.error = error instanceof Error ? error.message : String(error);
+    } finally {
+      this.loading = false;
+      this.render();
+    }
+  }
+
+  private render() {
+    const container = this.contentEl;
+    container.empty();
+    container.addClass("flowdesk-dashboard");
+
+    this.renderHeader(container);
+
+    if (!this.taskPath) {
+      container.createDiv({
+        cls: "flowdesk-empty",
+        text: "打开一个 Tasks/*.md 文件后，执行 FlowDesk Dashboard 命令。",
+      });
+      return;
+    }
+
+    if (this.loading) {
+      container.createDiv({ cls: "flowdesk-empty", text: "Loading snapshot..." });
+      return;
+    }
+
+    if (this.error) {
+      container.createDiv({ cls: "flowdesk-error", text: this.error });
+      return;
+    }
+
+    if (!this.snapshot) {
+      container.createDiv({ cls: "flowdesk-empty", text: "No snapshot loaded." });
+      return;
+    }
+
+    this.renderSummary(container, this.snapshot);
+    this.renderFlowGraph(container, this.snapshot);
+    this.renderContract(container, this.snapshot);
+    this.renderTasksOrEvidence(container, this.snapshot);
+    this.renderNotepad(container, this.snapshot);
+    this.renderNextActions(container, this.snapshot);
+  }
+
+  private renderHeader(container: HTMLElement) {
+    const header = container.createDiv({ cls: "flowdesk-dashboard-header" });
+    const titleBlock = header.createDiv();
+    titleBlock.createDiv({
+      cls: "flowdesk-dashboard-title",
+      text: "FlowDesk Execution Dashboard",
+    });
+    titleBlock.createDiv({
+      cls: "flowdesk-dashboard-path",
+      text: this.taskPath || "No task selected",
+    });
+
+    const toolbar = header.createDiv({ cls: "flowdesk-dashboard-toolbar" });
+    const refresh = toolbar.createEl("button", { text: "Refresh" });
+    refresh.disabled = !this.taskPath || this.loading;
+    refresh.addEventListener("click", () => {
+      if (this.taskPath) {
+        void this.loadTask(this.taskPath);
+      }
+    });
+  }
+
+  private renderSummary(container: HTMLElement, snapshot: ExecutionSnapshot) {
+    const section = createSection(container, "Summary");
+    const grid = section.createDiv({ cls: "flowdesk-summary-grid" });
+    const state = snapshot.state ?? {};
+    const flow = snapshot.flow_graph ?? {};
+    const parent = snapshot.task_graph?.parent ?? {};
+    const counts = snapshot.task_graph?.counts ?? {};
+    const contract = snapshot.spec_contract ?? {};
+    const requirements = contract.requirements ?? {};
+    const scenarios = contract.scenarios ?? {};
+    const contractTasks = contract.tasks ?? {};
+    const progress = computeProgress(snapshot);
+
+    summaryRow(grid, "ready", "State", `${state.value ?? "unknown"}${state.read_only ? " (read-only)" : ""}`);
+    summaryRow(grid, "ready", "Task", `${parent.title ?? ""} [${parent.status ?? ""}]`);
+    summaryRow(grid, "ready", "Flow", `${flow.mode ?? ""} / ${flow.current || "none"}`);
+    summaryRow(
+      grid,
+      "running",
+      "Tasks",
+      `${numberValue(counts.total)} total, ${numberValue(counts.ready)} ready, ${numberValue(counts.running)} running, ${numberValue(counts.blocked)} blocked, ${numberValue(counts.done)} done`
+    );
+
+    const progressRow = grid.createDiv({ cls: "flowdesk-summary-row" });
+    progressRow.createSpan({ cls: "flowdesk-status-dot flowdesk-status-done", text: "●" });
+    progressRow.createSpan({ cls: "flowdesk-summary-label", text: "Progress:" });
+    const progressWrap = progressRow.createSpan({ cls: "flowdesk-progress-wrap" });
+    const bar = progressWrap.createSpan({ cls: "flowdesk-progress-bar" });
+    bar.createSpan({ cls: "flowdesk-progress-fill" }).style.width = `${progress.percent}%`;
+    progressWrap.createSpan({
+      text: `${progress.done}/${progress.total} ${progress.unit} (${progress.percent}% complete)`,
+    });
+
+    summaryRow(
+      grid,
+      "done",
+      "Spec Contract",
+      `${numberValue(requirements.count)} requirements, ${numberValue(scenarios.count)} scenarios, ${numberValue(contractTasks.count)} tasks`
+    );
+
+    if (state.blocked_reason) {
+      summaryRow(grid, "blocked", "Blocked", state.blocked_reason);
+    }
+  }
+
+  private renderFlowGraph(container: HTMLElement, snapshot: ExecutionSnapshot) {
+    const section = createSection(container, "Flow Graph");
+    const list = section.createDiv({ cls: "flowdesk-flow-list" });
+    const nodes = snapshot.flow_graph?.nodes ?? [];
+    if (!nodes.length) {
+      list.createDiv({ cls: "flowdesk-muted", text: "No flow nodes." });
+      return;
+    }
+
+    for (const node of nodes) {
+      const status = normalizeStatus(node.status);
+      const row = list.createDiv({
+        cls: `flowdesk-flow-row flowdesk-task-state-${status}`,
+      });
+      row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${status}`, text: statusSymbol(status) });
+      const body = row.createDiv();
+      body.createDiv({
+        cls: "flowdesk-main-text",
+        text: `[${status.toUpperCase()}] ${node.label ?? node.id ?? ""} (${node.id ?? ""})`,
+      });
+      if (node.missing_deps?.length) {
+        body.createDiv({
+          cls: "flowdesk-subline",
+          text: `blocked by: ${formatIds(node.missing_deps)}`,
+        });
+      }
+    }
+  }
+
+  private renderContract(container: HTMLElement, snapshot: ExecutionSnapshot) {
+    const section = createSection(container, "Contract");
+    const list = section.createDiv({ cls: "flowdesk-contract-list" });
+    const contract = snapshot.spec_contract ?? {};
+    contractRow(list, "Requirements", contract.requirements?.ids);
+    contractRow(list, "Scenarios", contract.scenarios?.ids);
+    contractRow(list, "Tasks", contract.tasks?.ids);
+
+    const questions = contract.open_questions?.items ?? [];
+    if (questions.length) {
+      const row = list.createDiv();
+      row.createDiv({ cls: "flowdesk-main-text", text: "Open Questions" });
+      for (const question of questions) {
+        row.createDiv({ cls: "flowdesk-subline", text: `- ${question}` });
+      }
+    }
+  }
+
+  private renderTasksOrEvidence(container: HTMLElement, snapshot: ExecutionSnapshot) {
+    const tasks = snapshot.task_graph?.tasks ?? [];
+    if (tasks.length) {
+      this.renderChildTasks(container, tasks);
+      return;
+    }
+    this.renderTaskEvidence(container, snapshot);
+  }
+
+  private renderChildTasks(container: HTMLElement, tasks: ChildTask[]) {
+    const section = createSection(container, "Child Tasks");
+    const list = section.createDiv({ cls: "flowdesk-task-list" });
+
+    for (const task of tasks) {
+      const state = normalizeStatus(task.state);
+      const row = list.createDiv({
+        cls: `flowdesk-child-task flowdesk-task-state-${state}`,
+      });
+      row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${state}`, text: statusSymbol(state) });
+      const body = row.createDiv();
+      body.createDiv({ cls: "flowdesk-main-text", text: `[${state.toUpperCase()}] ${task.title ?? ""}` });
+      if (task.id) {
+        body.createDiv({ cls: "flowdesk-subline", text: `id: ${task.id}` });
+      }
+      if (task.covers?.length) {
+        body.createDiv({ cls: "flowdesk-subline", text: `Covers: ${formatIds(task.covers)}` });
+      }
+      if (task.blocked_by?.length) {
+        body.createDiv({ cls: "flowdesk-subline", text: `Blocked by: ${formatIds(task.blocked_by)}` });
+      }
+      if (task.covers_unresolved) {
+        body.createDiv({ cls: "flowdesk-warning", text: task.limitation ?? "Task covers unresolved." });
+      }
+    }
+  }
+
+  private renderTaskEvidence(container: HTMLElement, snapshot: ExecutionSnapshot) {
+    const section = createSection(container, "Task Evidence");
+    const list = section.createDiv({ cls: "flowdesk-evidence-list" });
+    const evidence = snapshot.spec_contract?.evidence ?? {};
+
+    evidenceRow(list, "Execution Result", evidence.execution_result);
+    evidenceRow(list, "Verification Result", evidence.verification_result);
+    evidenceRow(list, "Delivery Record", evidence.delivery_record);
+
+    const checklist = snapshot.spec_contract?.checklist;
+    if (checklist?.total) {
+      const unchecked = numberValue(checklist.unchecked);
+      const row = list.createDiv({ cls: "flowdesk-evidence-row" });
+      row.createSpan({
+        cls: `flowdesk-status-dot flowdesk-status-${unchecked ? "ready" : "done"}`,
+        text: statusSymbol(unchecked ? "ready" : "done"),
+      });
+      const body = row.createDiv();
+      body.createDiv({
+        cls: "flowdesk-main-text",
+        text: `Checklist: ${numberValue(checklist.checked)}/${numberValue(checklist.total)} checked`,
+      });
+      if (unchecked) {
+        body.createDiv({
+          cls: "flowdesk-warning",
+          text: "提醒：仍有未勾选 checklist 项。",
+        });
+      }
+    }
+  }
+
+  private renderNotepad(container: HTMLElement, snapshot: ExecutionSnapshot) {
+    const section = createSection(container, "Notepad");
+    const notepad = snapshot.notepad ?? {};
+    if (!notepad.exists) {
+      section.createDiv({ cls: "flowdesk-muted", text: "Notepad: missing" });
+      return;
+    }
+
+    section.createDiv({
+      cls: "flowdesk-main-text",
+      text: "Notepad: present, non-authoritative",
+    });
+    const priority = (notepad.priority ?? "").trim();
+    if (priority) {
+      for (const line of priority.split("\n").slice(0, 5)) {
+        section.createDiv({ cls: "flowdesk-subline", text: line });
+      }
+    }
+  }
+
+  private renderNextActions(container: HTMLElement, snapshot: ExecutionSnapshot) {
+    const section = createSection(container, "Next Actions");
+    const list = section.createDiv({ cls: "flowdesk-next-list" });
+    const actions = snapshot.next_actions ?? [];
+    if (!actions.length) {
+      list.createDiv({ cls: "flowdesk-muted", text: "No next actions." });
+      return;
+    }
+
+    for (const action of actions) {
+      list.createDiv({
+        cls: "flowdesk-next-action",
+        text: `→ ${formatAction(action)}`,
+      });
+    }
+  }
+}
+
+class FlowDeskDashboardSettingTab extends PluginSettingTab {
+  constructor(app: App, private plugin: FlowDeskDashboardPlugin) {
+    super(app, plugin);
+  }
+
+  display(): void {
+    const { containerEl } = this;
+    containerEl.empty();
+    containerEl.createEl("h2", { text: "FlowDesk Dashboard" });
+
+    new Setting(containerEl)
+      .setName("FlowDesk repo path")
+      .setDesc("本地 FlowDesk-Plugin 仓库路径；symlink 安装时通常可以留空。")
+      .addText((text) =>
+        text
+          .setPlaceholder("/Users/bjke/workspaces/flowdesk-plugin")
+          .setValue(this.plugin.settings.flowdeskRoot)
+          .onChange(async (value) => {
+            this.plugin.settings.flowdeskRoot = value.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Working directory")
+      .setDesc("传给 --working-directory，用于读取 .flowdesk/notepad.md；留空时使用 FlowDesk repo path。")
+      .addText((text) =>
+        text
+          .setPlaceholder("/Users/bjke/workspaces/flowdesk-plugin")
+          .setValue(this.plugin.settings.workingDirectory)
+          .onChange(async (value) => {
+            this.plugin.settings.workingDirectory = value.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Schema")
+      .setDesc("传给 --schema，默认 sdd-poc。")
+      .addText((text) =>
+        text
+          .setPlaceholder("sdd-poc")
+          .setValue(this.plugin.settings.schema)
+          .onChange(async (value) => {
+            this.plugin.settings.schema = value.trim() || DEFAULT_SETTINGS.schema;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("TaskNotes API URL")
+      .setDesc("可选；留空时使用 FlowDesk CLI 默认值。")
+      .addText((text) =>
+        text
+          .setPlaceholder("http://127.0.0.1:18090")
+          .setValue(this.plugin.settings.apiUrl)
+          .onChange(async (value) => {
+            this.plugin.settings.apiUrl = value.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+  }
+}
+
+function createSection(container: HTMLElement, title: string): HTMLElement {
+  const section = container.createDiv({ cls: "flowdesk-dashboard-section" });
+  section.createDiv({ cls: "flowdesk-dashboard-section-title", text: title });
+  section.createDiv({ cls: "flowdesk-dashboard-rule" });
+  return section;
+}
+
+function summaryRow(container: HTMLElement, status: string, label: string, value: string) {
+  const row = container.createDiv({ cls: "flowdesk-summary-row" });
+  const normalized = normalizeStatus(status);
+  row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${normalized}`, text: "●" });
+  row.createSpan({ cls: "flowdesk-summary-label", text: `${label}:` });
+  row.createSpan({ text: value });
+}
+
+function contractRow(container: HTMLElement, label: string, ids?: string[]) {
+  const row = container.createDiv();
+  row.createSpan({ cls: "flowdesk-summary-label", text: `${label}: ` });
+  row.createSpan({ text: formatIds(ids) });
+}
+
+function evidenceRow(container: HTMLElement, label: string, item?: EvidenceItem) {
+  const exists = Boolean(item?.exists);
+  const status = exists ? "done" : "blocked";
+  const row = container.createDiv({ cls: "flowdesk-evidence-row" });
+  row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${status}`, text: statusSymbol(status) });
+  const body = row.createDiv();
+  const items = item?.items ?? [];
+  body.createDiv({
+    cls: "flowdesk-main-text",
+    text: `${label}: ${exists ? `present (${items.length} items)` : "missing"}`,
+  });
+  for (const detail of items.slice(0, 2)) {
+    body.createDiv({ cls: "flowdesk-subline", text: `- ${detail}` });
+  }
+}
+
+function computeProgress(snapshot: ExecutionSnapshot) {
+  const counts = snapshot.task_graph?.counts ?? {};
+  const nodes = snapshot.flow_graph?.nodes ?? [];
+  const total = numberValue(counts.total);
+  const done = numberValue(counts.done);
+  const stageTotal = nodes.length;
+  const stageDone = nodes.filter((node) => node.status === "done").length;
+  const progressTotal = total || stageTotal;
+  const progressDone = total ? done : stageDone;
+  const percent = progressTotal ? Math.round((progressDone / progressTotal) * 100) : 0;
+  return {
+    done: progressDone,
+    total: progressTotal,
+    unit: total ? "tasks" : "stages",
+    percent,
+  };
+}
+
+function normalizeStatus(status: unknown): string {
+  const value = String(status || "unknown").toLowerCase().replace(/_/g, "-");
+  if (["done", "running", "ready", "blocked"].includes(value)) {
+    return value;
+  }
+  return "blocked";
+}
+
+function statusSymbol(status: string): string {
+  if (status === "done") return "✓";
+  if (status === "running") return "◉";
+  if (status === "ready") return "●";
+  if (status === "blocked") return "○";
+  return "•";
+}
+
+function formatIds(value: unknown): string {
+  if (!value) {
+    return "none";
+  }
+  if (Array.isArray(value)) {
+    if (!value.length) {
+      return "none";
+    }
+    return value.map((item) => formatId(item)).join(", ");
+  }
+  return formatId(value);
+}
+
+function formatId(value: unknown): string {
+  if (typeof value === "object" && value !== null) {
+    const record = value as Record<string, unknown>;
+    return String(record.uid ?? record.id ?? JSON.stringify(record));
+  }
+  return String(value);
+}
+
+function formatAction(action: Record<string, unknown>): string {
+  const kind = String(action.kind ?? "unknown");
+  const fields = Object.entries(action)
+    .filter(([key]) => key !== "kind")
+    .map(([key, value]) => `${key}=${formatIds(value)}`);
+  return fields.length ? `${kind} (${fields.join("; ")})` : kind;
+}
+
+function numberValue(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}

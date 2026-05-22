@@ -1,0 +1,175 @@
+.flowdesk-dashboard {
+  --flowdesk-ready: #62d0d5;
+  --flowdesk-running: #d7db4a;
+  --flowdesk-done: #61c946;
+  --flowdesk-blocked: #9aa0a6;
+  --flowdesk-error: #e06c75;
+  --flowdesk-panel-border: var(--background-modifier-border);
+  --flowdesk-panel-bg: var(--background-secondary);
+  color: var(--text-normal);
+  font-family: var(--font-monospace), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  padding: 12px;
+}
+
+.flowdesk-dashboard * {
+  box-sizing: border-box;
+}
+
+.flowdesk-dashboard-header {
+  align-items: center;
+  border-bottom: 1px solid var(--flowdesk-panel-border);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+}
+
+.flowdesk-dashboard-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.flowdesk-dashboard-path {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-dashboard-toolbar {
+  display: flex;
+  gap: 8px;
+}
+
+.flowdesk-dashboard-section {
+  margin-bottom: 18px;
+}
+
+.flowdesk-dashboard-section-title {
+  color: var(--text-accent);
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.flowdesk-dashboard-rule {
+  border-top: 1px solid var(--flowdesk-panel-border);
+  margin: 8px 0 10px;
+}
+
+.flowdesk-summary-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.flowdesk-summary-row,
+.flowdesk-flow-row,
+.flowdesk-child-task,
+.flowdesk-evidence-row,
+.flowdesk-next-action {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+  line-height: 1.45;
+}
+
+.flowdesk-summary-label {
+  color: var(--text-muted);
+}
+
+.flowdesk-status-dot {
+  flex: 0 0 auto;
+  line-height: 1.45;
+}
+
+.flowdesk-task-state-ready,
+.flowdesk-status-ready {
+  color: var(--flowdesk-ready);
+}
+
+.flowdesk-task-state-running,
+.flowdesk-status-running {
+  color: var(--flowdesk-running);
+}
+
+.flowdesk-task-state-done,
+.flowdesk-status-done {
+  color: var(--flowdesk-done);
+}
+
+.flowdesk-task-state-blocked,
+.flowdesk-status-blocked {
+  color: var(--flowdesk-blocked);
+}
+
+.flowdesk-progress-wrap {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.flowdesk-progress-bar {
+  background: var(--background-modifier-border);
+  border-radius: 2px;
+  height: 10px;
+  overflow: hidden;
+  width: 150px;
+}
+
+.flowdesk-progress-fill {
+  background: var(--flowdesk-done);
+  height: 100%;
+}
+
+.flowdesk-flow-list,
+.flowdesk-task-list,
+.flowdesk-evidence-list,
+.flowdesk-next-list,
+.flowdesk-contract-list {
+  display: grid;
+  gap: 8px;
+}
+
+.flowdesk-flow-row,
+.flowdesk-child-task,
+.flowdesk-evidence-row,
+.flowdesk-next-action {
+  background: var(--flowdesk-panel-bg);
+  border: 1px solid var(--flowdesk-panel-border);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.flowdesk-main-text {
+  font-weight: 600;
+}
+
+.flowdesk-muted,
+.flowdesk-subline {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.flowdesk-subline {
+  margin-top: 4px;
+}
+
+.flowdesk-warning {
+  color: var(--flowdesk-running);
+  margin-top: 6px;
+}
+
+.flowdesk-error {
+  border: 1px solid var(--flowdesk-error);
+  border-radius: 6px;
+  color: var(--flowdesk-error);
+  padding: 10px;
+  white-space: pre-wrap;
+}
+
+.flowdesk-empty {
+  color: var(--text-muted);
+  padding: 12px 0;
+}
