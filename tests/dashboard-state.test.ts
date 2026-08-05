@@ -4,9 +4,11 @@ import test from "node:test";
 import {
   collectObservedTaskPaths,
   isCurrentSnapshotRequest,
+  resolveRefreshFailureDisplay,
   resolveDetailsOpen,
   resolveDashboardContext,
   TrailingRefreshScheduler,
+  validateSnapshotEnvelope,
 } from "../src/dashboard-state.ts";
 
 test("活动文件解析为任务、非任务或空上下文", () => {
@@ -162,5 +164,44 @@ test("首次打开 task 会形成可加载上下文，切到非 task 后不再�
       2
     ),
     false
+  );
+});
+
+test("旧 root-centric schema 3 缺少 model marker 时加载 fail-closed", () => {
+  assert.equal(
+    validateSnapshotEnvelope(
+      { snapshot_schema_version: 3, task_tree: {} },
+      "Tasks/A.md"
+    ),
+    "Snapshot model 不受支持：需要 task-centric；请求 Tasks/A.md，实际 model 未提供。"
+  );
+  assert.equal(
+    validateSnapshotEnvelope(
+      {
+        snapshot_schema_version: 3,
+        snapshot_model: "task-centric",
+        source_task_id: "Tasks/A.md",
+      },
+      "Tasks/A.md"
+    ),
+    null
+  );
+});
+
+test("stale 只复用同一 task，跨 task 刷新失败清空旧 snapshot", () => {
+  const taskA = {
+    taskPath: "Tasks/A.md",
+    snapshot: { source_task_id: "Tasks/A.md" },
+    loadedAt: "12:00:00",
+    staleReason: "",
+  };
+
+  assert.equal(
+    resolveRefreshFailureDisplay(taskA, "Tasks/B.md", "B 刷新失败"),
+    null
+  );
+  assert.deepEqual(
+    resolveRefreshFailureDisplay(taskA, "Tasks/A.md", "A 刷新失败"),
+    { ...taskA, staleReason: "A 刷新失败" }
   );
 });

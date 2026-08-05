@@ -81,3 +81,20 @@ test("相对仓库和工作目录会转换为不依赖当前终端目录的绝�
     path.join(expectedRoot, "projects/demo"),
   ]);
 });
+
+test("当前 task CLI 以 child path 为首个参数且无 parent 假设", () => {
+  const invocation = buildSnapshotInvocation(
+    {
+      flowdeskRoot: "/opt/flowdesk",
+      taskPath: "Tasks/Child.md",
+      workingDirectory: "/work/project",
+      apiUrl: "",
+    },
+    "dashboard"
+  );
+
+  assert.equal(invocation.args[0], "Tasks/Child.md");
+  assert.equal(invocation.args.includes("--parent"), false);
+  assert.equal(invocation.args.includes("--root"), false);
+  assert.equal(formatShellCommand(invocation).includes("--parent"), false);
+});

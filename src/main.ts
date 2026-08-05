@@ -18,9 +18,11 @@ import {
   collectObservedTaskPaths,
   isCurrentSnapshotRequest,
   isTaskPath,
+  resolveRefreshFailureDisplay,
   resolveDetailsOpen,
   resolveDashboardContext,
   TrailingRefreshScheduler,
+  validateSnapshotEnvelope,
   type DashboardContext,
   type SnapshotRequestIdentity,
 } from "./dashboard-state";
@@ -40,7 +42,6 @@ import {
   formatCurrentTaskProgress,
   formatRollupState,
   resolveDiagnosticTarget,
-  validateSnapshotSource,
   type DashboardViewModel,
   type EvidenceHealth,
   type ExecutionSnapshot,
@@ -353,14 +354,9 @@ class FlowDeskDashboardView extends ItemView {
     try {
       const snapshot = await this.plugin.loadSnapshot(request.taskPath);
       if (!isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) return;
-      if (snapshot.snapshot_schema_version !== 3) {
-        throw new Error("unsupported_snapshot_schema：Dashboard 只支持 snapshot schema 3。");
-      }
-      const sourceIdentity = validateSnapshotSource(snapshot, request.taskPath);
-      if (sourceIdentity !== true) {
-        throw new Error(
-          `Snapshot source identity 不匹配：请求 ${request.taskPath}，返回 ${snapshot.source_task_id ?? "未提供"}。`
-        );
+      const envelopeError = validateSnapshotEnvelope(snapshot, request.taskPath);
+      if (envelopeError) {
+        throw new Error(envelopeError);
       }
       this.displayState = {
         taskPath: request.taskPath,
@@ -371,10 +367,11 @@ class FlowDeskDashboardView extends ItemView {
     } catch (error) {
       if (!isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) return;
       this.error = error instanceof Error ? error.message : String(error);
-      this.displayState =
-        this.displayState?.taskPath === request.taskPath
-          ? { ...this.displayState, staleReason: this.error }
-          : null;
+      this.displayState = resolveRefreshFailureDisplay(
+        this.displayState,
+        request.taskPath,
+        this.error
+      );
     } finally {
       if (isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) {
         this.loading = false;
@@ -417,7 +414,13 @@ class FlowDeskDashboardView extends ItemView {
       staleReason: displayState?.staleReason,
     });
     if (model.errorCode) {
-      container.createDiv({ cls: "flowdesk-error", text: "Dashboard 只支持 snapshot schema 3。" });
+      container.createDiv({
+        cls: "flowdesk-error",
+        text:
+          model.errorCode === "unsupported_snapshot_model"
+            ? "Snapshot model 不受支持：需要 task-centric。"
+            : "Snapshot schema 不受支持：需要 3。",
+      });
       return;
     }
     this.renderBreadcrumb(container, model);
