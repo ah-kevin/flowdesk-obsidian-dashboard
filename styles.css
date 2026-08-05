@@ -4,6 +4,7 @@
   --flowdesk-done: #61c946;
   --flowdesk-blocked: #9aa0a6;
   --flowdesk-error: #e06c75;
+  --flowdesk-unknown: var(--text-faint);
   --flowdesk-warning-bg: var(--background-secondary-alt);
   --flowdesk-panel-border: var(--background-modifier-border);
   --flowdesk-panel-bg: var(--background-primary);
@@ -61,6 +62,311 @@
   min-width: 58px;
   white-space: nowrap;
   user-select: none;
+}
+
+.flowdesk-trust-strip {
+  align-items: center;
+  background: var(--background-secondary);
+  border: 1px solid var(--flowdesk-panel-border);
+  border-radius: 7px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 9px;
+  margin-bottom: 10px;
+  padding: 7px 8px;
+}
+
+.flowdesk-trust-badge,
+.flowdesk-state-pill {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.5;
+  padding: 1px 6px;
+}
+
+.flowdesk-trust-healthy .flowdesk-trust-badge {
+  color: var(--flowdesk-done);
+}
+
+.flowdesk-trust-degraded .flowdesk-trust-badge {
+  color: var(--flowdesk-running);
+}
+
+.flowdesk-trust-error .flowdesk-trust-badge {
+  color: var(--flowdesk-error);
+}
+
+.flowdesk-trust-stale {
+  border-color: var(--flowdesk-running);
+}
+
+.flowdesk-trust-stale .flowdesk-trust-badge {
+  color: var(--flowdesk-running);
+}
+
+.flowdesk-trust-unknown .flowdesk-trust-badge {
+  color: var(--flowdesk-unknown);
+}
+
+.flowdesk-trust-contract {
+  color: var(--text-normal);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.flowdesk-trust-generated {
+  color: var(--text-faint);
+  font-size: 10px;
+  margin-left: auto;
+}
+
+.flowdesk-stale-reason {
+  border-top: 1px solid var(--flowdesk-panel-border);
+  color: var(--flowdesk-running);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  padding-top: 6px;
+  width: 100%;
+}
+
+.flowdesk-hero,
+.flowdesk-primary-status,
+.flowdesk-primary-issue,
+.flowdesk-primary-action {
+  background: var(--background-primary-alt);
+  border: 1px solid var(--flowdesk-panel-border);
+  border-radius: 8px;
+  margin-bottom: 10px;
+  padding: 10px;
+}
+
+.flowdesk-hero-title-row {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.flowdesk-hero-title {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-state-done {
+  color: var(--flowdesk-done);
+}
+
+.flowdesk-state-running,
+.flowdesk-state-ready {
+  color: var(--flowdesk-running);
+}
+
+.flowdesk-state-blocked,
+.flowdesk-state-error {
+  color: var(--flowdesk-error);
+}
+
+.flowdesk-state-unknown {
+  color: var(--flowdesk-unknown);
+}
+
+.flowdesk-hero-metrics {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 10px;
+}
+
+.flowdesk-metric {
+  background: var(--background-secondary);
+  border-radius: 5px;
+  min-width: 0;
+  padding: 7px;
+}
+
+.flowdesk-metric-label,
+.flowdesk-card-kicker {
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.flowdesk-metric-value {
+  font-size: 12px;
+  font-weight: 650;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-hero-blocked {
+  border-top: 1px solid var(--flowdesk-panel-border);
+  color: var(--flowdesk-error);
+  margin-top: 9px;
+  padding-top: 8px;
+}
+
+.flowdesk-primary-status.is-clear {
+  border-left: 3px solid var(--flowdesk-done);
+}
+
+.flowdesk-primary-status.is-unknown {
+  border-left: 3px solid var(--flowdesk-unknown);
+}
+
+.flowdesk-primary-issue {
+  border-left: 3px solid var(--flowdesk-error);
+}
+
+.flowdesk-primary-action {
+  border-left: 3px solid var(--interactive-accent);
+}
+
+.flowdesk-primary-title {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-card-copy,
+.flowdesk-diagnostic-row,
+.flowdesk-diagnostic-location {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-diagnostic-code {
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
+  font-size: 10px;
+  margin-top: 3px;
+}
+
+.flowdesk-diagnostic-excerpt {
+  background: var(--background-secondary);
+  display: block;
+  font-size: 11px;
+  margin-top: 6px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 5px 6px;
+  white-space: pre-wrap;
+}
+
+.flowdesk-diagnostic-label {
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.flowdesk-diagnostic-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.flowdesk-diagnostic-locate {
+  font-size: 11px;
+  min-height: 26px;
+  padding: 2px 10px;
+  user-select: none;
+}
+
+.flowdesk-stage-rail {
+  display: grid;
+  gap: 5px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.flowdesk-stage-item {
+  align-items: center;
+  border: 1px solid var(--flowdesk-panel-border);
+  border-radius: 5px;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 6px;
+}
+
+.flowdesk-stage-done {
+  color: var(--flowdesk-done);
+}
+
+.flowdesk-stage-running,
+.flowdesk-stage-ready {
+  color: var(--flowdesk-running);
+}
+
+.flowdesk-stage-blocked,
+.flowdesk-stage-error {
+  color: var(--text-muted);
+}
+
+.flowdesk-stage-unknown {
+  color: var(--flowdesk-unknown);
+}
+
+.flowdesk-stage-label {
+  color: var(--text-normal);
+  font-size: 11px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-detail-group {
+  border-top: 1px solid var(--flowdesk-panel-border);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+
+.flowdesk-detail-group > summary {
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  user-select: none;
+}
+
+.flowdesk-detail-body {
+  margin-top: 10px;
+}
+
+.flowdesk-inline-task-list,
+.flowdesk-diagnostic-list {
+  display: grid;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.flowdesk-inline-task {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.flowdesk-inferred-label {
+  border: 1px solid var(--flowdesk-panel-border);
+  border-radius: 3px;
+  color: var(--text-faint);
+  font-size: 9px;
+  margin-left: auto;
+  padding: 0 4px;
+}
+
+.flowdesk-diagnostic-item {
+  background: var(--background-secondary);
+  border-radius: 5px;
+  padding: 7px;
 }
 
 .flowdesk-dashboard-section {
@@ -140,6 +446,16 @@
 .flowdesk-task-state-blocked,
 .flowdesk-status-blocked {
   color: var(--flowdesk-blocked);
+}
+
+.flowdesk-task-state-error,
+.flowdesk-status-error {
+  color: var(--flowdesk-error);
+}
+
+.flowdesk-task-state-unknown,
+.flowdesk-status-unknown {
+  color: var(--flowdesk-unknown);
 }
 
 .flowdesk-progress-wrap {
@@ -288,5 +604,15 @@
 
   .flowdesk-summary-row {
     grid-template-columns: 14px minmax(58px, 76px) minmax(0, 1fr);
+  }
+
+  .flowdesk-hero-metrics,
+  .flowdesk-stage-rail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .flowdesk-trust-generated {
+    margin-left: 0;
+    width: 100%;
   }
 }

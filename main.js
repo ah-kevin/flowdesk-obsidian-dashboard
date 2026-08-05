@@ -40,6 +40,255 @@ var import_fs = require("fs");
 var import_os = require("os");
 var path = __toESM(require("path"));
 var import_util = require("util");
+
+// src/snapshot-model.ts
+function createDashboardViewModel(snapshot, options = {}) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s;
+  const schemaVersion = Number(snapshot.snapshot_schema_version);
+  const health = normalizeObservationHealth((_a = snapshot.observation) == null ? void 0 : _a.health);
+  const compatibility = createCompatibility(snapshot);
+  const inlineExecution = (_c = snapshot.inline_execution) != null ? _c : (_b = snapshot.task_graph) == null ? void 0 : _b.inline_execution;
+  const semanticDiagnostics = (_f = (_e = (_d = snapshot.spec_contract) == null ? void 0 : _d.semantic_validation) == null ? void 0 : _e.errors) != null ? _f : [];
+  const inlineDiagnostics = (_g = inlineExecution == null ? void 0 : inlineExecution.diagnostics) != null ? _g : [];
+  const observationDiagnostics = (_i = (_h = snapshot.observation) == null ? void 0 : _h.diagnostics) != null ? _i : [];
+  const diagnostics = [
+    ...semanticDiagnostics,
+    ...inlineDiagnostics,
+    ...observationDiagnostics
+  ].map(normalizeDiagnostic);
+  const inlineProgress = inlineExecution ? {
+    completed: typeof inlineExecution.completed === "number" ? inlineExecution.completed : null,
+    total: typeof inlineExecution.total === "number" ? inlineExecution.total : 0,
+    status: normalizeText(inlineExecution.status, "unknown"),
+    explicit: inlineExecution.explicit === true,
+    tasks: Object.entries((_j = inlineExecution.statuses) != null ? _j : {}).map(([id, item]) => ({
+      id,
+      status: normalizeText(item.status, "unknown"),
+      inferred: item.inferred === true
+    }))
+  } : null;
+  const hero = createHero(snapshot, inlineProgress);
+  const staleReason = normalizeText(options.staleReason, "");
+  const sourceIdentity = validateSnapshotSource(
+    snapshot,
+    normalizeText(options.expectedTaskPath, "")
+  );
+  const hasObservedSource = Boolean((_l = (_k = snapshot.observation) == null ? void 0 : _k.source_task_id) == null ? void 0 : _l.trim());
+  return {
+    schemaLabel: schemaVersion === 2 ? "snapshot v2" : "\u65E7\u7248 snapshot",
+    state: normalizeText((_m = snapshot.state) == null ? void 0 : _m.value, "unknown"),
+    hero,
+    compatibility,
+    observation: {
+      health,
+      generatedAt: normalizeText((_n = snapshot.observation) == null ? void 0 : _n.generated_at, "\u672A\u63D0\u4F9B"),
+      sourceTaskId: normalizeText((_o = snapshot.observation) == null ? void 0 : _o.source_task_id, ""),
+      coverage: Object.entries((_q = (_p = snapshot.observation) == null ? void 0 : _p.coverage) != null ? _q : {}).map(
+        ([key, value]) => ({ key, value: normalizeText(value, "unknown") })
+      ),
+      isTrustworthy: schemaVersion === 2 && health === "healthy" && hasObservedSource && sourceIdentity !== false && !staleReason,
+      isStale: Boolean(staleReason),
+      staleReason,
+      loadedAt: normalizeText(options.loadedAt, "\u672A\u63D0\u4F9B"),
+      sourceIdentity
+    },
+    inlineProgress,
+    primaryDiagnostic: (_r = diagnostics[0]) != null ? _r : null,
+    diagnostics,
+    nextAction: formatNextAction((_s = snapshot.next_actions) == null ? void 0 : _s[0])
+  };
+}
+function validateSnapshotSource(snapshot, expectedTaskPath) {
+  var _a;
+  const actual = normalizeText((_a = snapshot.observation) == null ? void 0 : _a.source_task_id, "");
+  const expected = normalizeText(expectedTaskPath, "");
+  if (!actual || !expected) {
+    return "unknown";
+  }
+  return actual === expected;
+}
+function shouldResetDisplayState(currentTaskPath, nextTaskPath) {
+  return currentTaskPath !== nextTaskPath;
+}
+function isSnapshotRequestCurrent(requestedTaskPath, currentTaskPath) {
+  return requestedTaskPath === currentTaskPath;
+}
+function createHero(snapshot, inlineProgress) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o;
+  const nodes = (_b = (_a = snapshot.flow_graph) == null ? void 0 : _a.nodes) != null ? _b : [];
+  const completedStages = nodes.filter((node) => node.status === "done").length;
+  const progressLabel = nodes.length ? `${completedStages}/${nodes.length} \u9636\u6BB5` : "\u9636\u6BB5\u672A\u77E5";
+  const parent = (_c = snapshot.task_graph) == null ? void 0 : _c.parent;
+  const counts = (_e = (_d = snapshot.task_graph) == null ? void 0 : _d.counts) != null ? _e : {};
+  const childTotal = finiteNumber(counts.total);
+  const childDone = finiteNumber(counts.done);
+  if (inlineProgress) {
+    const completed = (_f = inlineProgress.completed) != null ? _f : "?";
+    const inlineLabel = `${completed}/${inlineProgress.total} TASK`;
+    return {
+      title: normalizeText(parent == null ? void 0 : parent.title, "\u672A\u63D0\u4F9B\u4EFB\u52A1\u6807\u9898"),
+      status: normalizeText(parent == null ? void 0 : parent.status, normalizeText((_g = snapshot.state) == null ? void 0 : _g.value, "unknown")),
+      currentStage: normalizeText((_h = snapshot.flow_graph) == null ? void 0 : _h.current, "\u672A\u63D0\u4F9B"),
+      progressLabel,
+      workProgressKind: "inline",
+      workProgressLabel: inlineLabel,
+      inlineLabel
+    };
+  }
+  const materializationMode = normalizeText(
+    (_i = snapshot.task_materialization) == null ? void 0 : _i.mode,
+    normalizeText((_k = (_j = snapshot.task_graph) == null ? void 0 : _j.task_materialization) == null ? void 0 : _k.mode, "")
+  );
+  if (materializationMode === "children" || childTotal > 0) {
+    return {
+      title: normalizeText(parent == null ? void 0 : parent.title, "\u672A\u63D0\u4F9B\u4EFB\u52A1\u6807\u9898"),
+      status: normalizeText(parent == null ? void 0 : parent.status, normalizeText((_l = snapshot.state) == null ? void 0 : _l.value, "unknown")),
+      currentStage: normalizeText((_m = snapshot.flow_graph) == null ? void 0 : _m.current, "\u672A\u63D0\u4F9B"),
+      progressLabel,
+      workProgressKind: "children",
+      workProgressLabel: `${childDone}/${childTotal} \u5B50\u4EFB\u52A1`,
+      inlineLabel: null
+    };
+  }
+  return {
+    title: normalizeText(parent == null ? void 0 : parent.title, "\u672A\u63D0\u4F9B\u4EFB\u52A1\u6807\u9898"),
+    status: normalizeText(parent == null ? void 0 : parent.status, normalizeText((_n = snapshot.state) == null ? void 0 : _n.value, "unknown")),
+    currentStage: normalizeText((_o = snapshot.flow_graph) == null ? void 0 : _o.current, "\u672A\u63D0\u4F9B"),
+    progressLabel,
+    workProgressKind: "unknown",
+    workProgressLabel: "\u4EFB\u52A1\u8FDB\u5EA6\u672A\u77E5",
+    inlineLabel: null
+  };
+}
+function formatNextAction(action) {
+  var _a;
+  if (!action) {
+    return null;
+  }
+  const kind = normalizeText(action.kind, "unknown");
+  const labels = {
+    complete_parent_task: "\u5B8C\u6210\u7236\u4EFB\u52A1",
+    continue_inline_implementation: "\u7EE7\u7EED inline \u5B9E\u65BD",
+    create_task_breakdown: "\u8865\u5145\u4EFB\u52A1\u62C6\u5206",
+    dispatch_ready_task: "\u6D3E\u53D1\u5C31\u7EEA\u4EFB\u52A1",
+    materialize_missing_tasks: "\u7269\u5316\u7F3A\u5931\u4EFB\u52A1",
+    reconcile_plan_revision: "\u5BF9\u9F50\u8BA1\u5212\u7248\u672C",
+    record_delivery: "\u8BB0\u5F55\u4EA4\u4ED8\u7ED3\u679C",
+    refine_spec_contract: "\u5B8C\u5584 Spec Contract",
+    refine_task_granularity: "\u8C03\u6574\u4EFB\u52A1\u7C92\u5EA6",
+    resolve_blockers: "\u5904\u7406\u963B\u585E\u9879",
+    resolve_inline_execution_conflict: "\u5904\u7406 inline \u6267\u884C\u51B2\u7A81",
+    resolve_materialization_conflict: "\u5904\u7406\u4EFB\u52A1\u7269\u5316\u51B2\u7A81",
+    start_implementation: "\u5F00\u59CB\u5B9E\u65BD",
+    verify_scenarios: "\u9A8C\u8BC1\u9A8C\u6536\u573A\u666F",
+    wait_for_running_task: "\u7B49\u5F85\u8FD0\u884C\u4E2D\u7684\u4EFB\u52A1"
+  };
+  const ids = Array.isArray(action.task_ids) ? action.task_ids.map(String).filter(Boolean) : [];
+  const label = (_a = labels[kind]) != null ? _a : kind;
+  return ids.length ? `${label}\uFF1A${ids.join("\u3001")}` : label;
+}
+function resolveDiagnosticTarget(taskPath, source) {
+  const line = typeof (source == null ? void 0 : source.line_start) === "number" && source.line_start > 0 ? source.line_start : null;
+  const heading = line === null ? normalizeText(source == null ? void 0 : source.after_section, normalizeText(source == null ? void 0 : source.section, "")) : normalizeText(source == null ? void 0 : source.section, "");
+  return {
+    linkText: heading ? `${taskPath}#${heading}` : taskPath,
+    line
+  };
+}
+function formatDiagnosticReason(value) {
+  const diagnostic = isRecord(value) ? value : {};
+  const hasWrapper = "reason" in diagnostic || "message" in diagnostic;
+  const reason = hasWrapper ? diagnostic.reason : value;
+  const message = hasWrapper ? diagnostic.message : void 0;
+  if (isRecord(reason)) {
+    return normalizeText(
+      reason.actual,
+      normalizeText(reason.expected, normalizeText(message, "producer \u672A\u63D0\u4F9B"))
+    );
+  }
+  return normalizeText(reason, normalizeText(message, "producer \u672A\u63D0\u4F9B"));
+}
+function formatDiagnosticRemediation(value) {
+  const diagnostic = isRecord(value) ? value : {};
+  const remediation = "remediation" in diagnostic ? diagnostic.remediation : value;
+  if (isRecord(remediation)) {
+    return normalizeText(
+      remediation.summary,
+      normalizeText(remediation.example, "producer \u672A\u63D0\u4F9B")
+    );
+  }
+  return normalizeText(remediation, "producer \u672A\u63D0\u4F9B");
+}
+function createCompatibility(snapshot) {
+  var _a, _b, _c, _d, _e, _f;
+  const profile = normalizeText(
+    (_a = snapshot.compatibility) == null ? void 0 : _a.profile,
+    normalizeText(
+      (_b = snapshot.spec_contract) == null ? void 0 : _b.execution_mode,
+      normalizeText((_c = snapshot.task_materialization) == null ? void 0 : _c.mode, "unknown")
+    )
+  );
+  const producerLabel = normalizeText((_d = snapshot.compatibility) == null ? void 0 : _d.label, "");
+  if (producerLabel) {
+    return { label: producerLabel, profile };
+  }
+  const contractVersion = normalizeText(
+    (_e = snapshot.compatibility) == null ? void 0 : _e.contract_version,
+    normalizeText((_f = snapshot.spec_contract) == null ? void 0 : _f.version, "")
+  );
+  if (contractVersion) {
+    return {
+      label: `SDD ${contractVersion}${profile !== "unknown" ? ` \xB7 ${profile}` : ""}`,
+      profile
+    };
+  }
+  return { label: "\u65E7\u7248 snapshot \xB7 \u80FD\u529B\u672A\u77E5", profile: "unknown" };
+}
+function normalizeDiagnostic(value) {
+  if (typeof value === "string") {
+    return {
+      code: value,
+      message: value,
+      reason: value,
+      remediation: "producer \u672A\u63D0\u4F9B"
+    };
+  }
+  const diagnostic = isRecord(value) ? value : {};
+  const code = normalizeText(diagnostic.code, "unknown_diagnostic");
+  return {
+    code,
+    message: normalizeText(diagnostic.message, code),
+    reason: formatDiagnosticReason(diagnostic),
+    remediation: formatDiagnosticRemediation(diagnostic),
+    source: isRecord(diagnostic.source) ? diagnostic.source : void 0,
+    severity: normalizeOptionalText(diagnostic.severity),
+    path: normalizeOptionalText(diagnostic.path)
+  };
+}
+function normalizeObservationHealth(value) {
+  return value === "healthy" || value === "degraded" || value === "error" ? value : "unknown";
+}
+function normalizeText(value, fallback) {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return fallback;
+}
+function normalizeOptionalText(value) {
+  const normalized = normalizeText(value, "");
+  return normalized || void 0;
+}
+function finiteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// src/main.ts
 var FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
 var execFileAsync = (0, import_util.promisify)(import_child_process.execFile);
 var MAX_SNAPSHOT_BUFFER = 8 * 1024 * 1024;
@@ -215,10 +464,9 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     super(leaf);
     this.plugin = plugin;
     this.taskPath = "";
-    this.snapshot = null;
+    this.displayState = null;
     this.error = "";
     this.loading = false;
-    this.lastUpdatedAt = "";
     this.queuedTaskPath = null;
     this.refreshPromise = null;
   }
@@ -241,6 +489,13 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     this.render();
   }
   async loadTask(taskPath) {
+    if (shouldResetDisplayState(this.taskPath, taskPath)) {
+      this.taskPath = taskPath;
+      this.displayState = null;
+      this.error = "";
+      this.loading = true;
+      this.render();
+    }
     this.queuedTaskPath = taskPath;
     if (this.refreshPromise) {
       return this.refreshPromise;
@@ -265,30 +520,55 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     }
   }
   async loadTaskNow(taskPath) {
-    const previousTaskPath = this.taskPath;
-    this.taskPath = taskPath;
-    if (previousTaskPath !== taskPath) {
-      this.snapshot = null;
-      this.lastUpdatedAt = "";
-    }
+    var _a, _b, _c;
     this.loading = true;
     this.error = "";
     this.render();
     try {
-      this.snapshot = await this.plugin.loadSnapshot(taskPath);
-      this.lastUpdatedAt = formatTime(/* @__PURE__ */ new Date());
+      const snapshot = await this.plugin.loadSnapshot(taskPath);
+      if (!isSnapshotRequestCurrent(taskPath, this.taskPath)) {
+        return;
+      }
+      const sourceIdentity = validateSnapshotSource(snapshot, taskPath);
+      if (sourceIdentity === false) {
+        throw new Error(
+          `Snapshot source identity \u4E0D\u5339\u914D\uFF1A\u8BF7\u6C42 ${taskPath}\uFF0C\u8FD4\u56DE ${(_b = (_a = snapshot.observation) == null ? void 0 : _a.source_task_id) != null ? _b : "\u672A\u63D0\u4F9B"}\u3002`
+        );
+      }
+      this.displayState = {
+        taskPath,
+        snapshot,
+        loadedAt: formatTime(/* @__PURE__ */ new Date()),
+        staleReason: ""
+      };
     } catch (error) {
+      if (!isSnapshotRequestCurrent(taskPath, this.taskPath)) {
+        return;
+      }
       this.error = error instanceof Error ? error.message : String(error);
+      if (((_c = this.displayState) == null ? void 0 : _c.taskPath) === taskPath) {
+        this.displayState = {
+          ...this.displayState,
+          staleReason: this.error
+        };
+      } else {
+        this.displayState = null;
+      }
     } finally {
-      this.loading = false;
-      this.render();
+      if (isSnapshotRequestCurrent(taskPath, this.taskPath)) {
+        this.loading = false;
+        this.render();
+      }
     }
   }
   render() {
+    var _a, _b;
     const container = this.contentEl;
     container.empty();
     container.addClass("flowdesk-dashboard");
     this.renderHeader(container);
+    const displayState = ((_a = this.displayState) == null ? void 0 : _a.taskPath) === this.taskPath ? this.displayState : null;
+    const snapshot = (_b = displayState == null ? void 0 : displayState.snapshot) != null ? _b : null;
     if (this.isPinnedToPreviousTask()) {
       container.createDiv({
         cls: "flowdesk-pinned-note",
@@ -302,31 +582,37 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       });
       return;
     }
-    if (this.loading && !this.snapshot) {
+    if (this.loading && !snapshot) {
       container.createDiv({ cls: "flowdesk-empty", text: "\u6B63\u5728\u8BFB\u53D6 snapshot..." });
       return;
     }
     if (this.error) {
-      container.createDiv({ cls: "flowdesk-error", text: this.error });
-      if (!this.snapshot) {
+      if (!snapshot) {
+        container.createDiv({ cls: "flowdesk-error", text: this.error });
         return;
       }
     }
-    if (!this.snapshot) {
+    if (!snapshot) {
       container.createDiv({ cls: "flowdesk-empty", text: "\u5C1A\u672A\u8BFB\u53D6 snapshot\u3002" });
       return;
     }
     if (this.loading) {
       container.createDiv({ cls: "flowdesk-refreshing", text: "\u6B63\u5728\u5237\u65B0 snapshot..." });
     }
-    this.renderSummary(container, this.snapshot);
-    this.renderFlowGraph(container, this.snapshot);
-    this.renderContract(container, this.snapshot);
-    this.renderTasksOrEvidence(container, this.snapshot);
-    this.renderNotepad(container, this.snapshot);
-    this.renderNextActions(container, this.snapshot);
+    const model = createDashboardViewModel(snapshot, {
+      expectedTaskPath: this.taskPath,
+      loadedAt: displayState == null ? void 0 : displayState.loadedAt,
+      staleReason: displayState == null ? void 0 : displayState.staleReason
+    });
+    this.renderTrustStrip(container, model);
+    this.renderTaskHero(container, model, snapshot);
+    this.renderPrimaryDiagnostic(container, model);
+    this.renderPrimaryNextAction(container, model);
+    this.renderStageRail(container, snapshot);
+    this.renderDetails(container, snapshot, model);
   }
   renderHeader(container) {
+    var _a;
     const header = container.createDiv({ cls: "flowdesk-dashboard-header" });
     const titleBlock = header.createDiv();
     titleBlock.createDiv({
@@ -339,7 +625,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     });
     titleBlock.createDiv({
       cls: "flowdesk-dashboard-meta",
-      text: this.lastUpdatedAt ? `\u4E0A\u6B21\u5237\u65B0 ${this.lastUpdatedAt}` : "\u7B49\u5F85\u5237\u65B0"
+      text: ((_a = this.displayState) == null ? void 0 : _a.loadedAt) ? `\u672C\u5730\u8BFB\u53D6 ${this.displayState.loadedAt}` : "\u7B49\u5F85\u5237\u65B0"
     });
     const toolbar = header.createDiv({ cls: "flowdesk-dashboard-toolbar" });
     const refresh = toolbar.createEl("button", {
@@ -352,50 +638,273 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       void this.plugin.refreshDashboard(this.taskPath);
     });
   }
-  renderSummary(container, snapshot) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n;
-    const section = createSection(container, "Summary\uFF08\u6982\u89C8\uFF09");
-    const grid = section.createDiv({ cls: "flowdesk-summary-grid" });
-    const state = (_a = snapshot.state) != null ? _a : {};
-    const flow = (_b = snapshot.flow_graph) != null ? _b : {};
-    const parent = (_d = (_c = snapshot.task_graph) == null ? void 0 : _c.parent) != null ? _d : {};
-    const counts = (_f = (_e = snapshot.task_graph) == null ? void 0 : _e.counts) != null ? _f : {};
-    const contract = (_g = snapshot.spec_contract) != null ? _g : {};
-    const requirements = (_h = contract.requirements) != null ? _h : {};
-    const scenarios = (_i = contract.scenarios) != null ? _i : {};
-    const contractTasks = (_j = contract.tasks) != null ? _j : {};
-    const progress = computeProgress(snapshot);
-    summaryRow(grid, "ready", "State", `${(_k = state.value) != null ? _k : "unknown"}${state.read_only ? " (read-only)" : ""}`);
-    summaryRow(grid, "ready", "Task", `${(_l = parent.title) != null ? _l : ""} [${(_m = parent.status) != null ? _m : ""}]`);
-    summaryRow(grid, "ready", "Flow", `${(_n = flow.mode) != null ? _n : ""} / ${flow.current || "none"}`);
-    summaryRow(
-      grid,
-      "running",
-      "Tasks",
-      `${numberValue(counts.total)} total, ${numberValue(counts.ready)} ready, ${numberValue(counts.running)} running, ${numberValue(counts.blocked)} blocked, ${numberValue(counts.done)} done`
-    );
-    const progressRow = grid.createDiv({ cls: "flowdesk-summary-row" });
-    progressRow.createSpan({
-      cls: `flowdesk-status-dot flowdesk-status-${progress.status}`,
-      text: "\u25CF"
+  renderTrustStrip(container, model) {
+    var _a;
+    const trustState = model.observation.isStale ? "stale" : model.observation.health;
+    const strip = container.createDiv({
+      cls: `flowdesk-trust-strip flowdesk-trust-${trustState}`
     });
-    progressRow.createSpan({ cls: "flowdesk-summary-label", text: "Progress:" });
-    const progressWrap = progressRow.createSpan({ cls: "flowdesk-progress-wrap" });
-    if (progress.total) {
-      const bar = progressWrap.createSpan({ cls: "flowdesk-progress-bar" });
-      bar.createSpan({ cls: "flowdesk-progress-fill" }).style.width = `${progress.percent}%`;
+    const labels = {
+      healthy: "\u89C2\u6D4B\u5065\u5EB7",
+      degraded: "\u89C2\u6D4B\u964D\u7EA7",
+      error: "\u89C2\u6D4B\u5F02\u5E38",
+      unknown: "\u89C2\u6D4B\u672A\u77E5"
+    };
+    strip.createSpan({
+      cls: "flowdesk-trust-badge",
+      text: model.observation.isStale ? "\u65E7\u6570\u636E" : (_a = labels[model.observation.health]) != null ? _a : "\u89C2\u6D4B\u672A\u77E5"
+    });
+    strip.createSpan({
+      cls: "flowdesk-trust-contract",
+      text: `${model.schemaLabel} \xB7 ${model.compatibility.label}`
+    });
+    strip.createSpan({
+      cls: "flowdesk-trust-generated",
+      text: `producer ${model.observation.generatedAt} \xB7 \u672C\u5730 ${model.observation.loadedAt}`
+    });
+    if (model.observation.isStale) {
+      strip.createDiv({
+        cls: "flowdesk-stale-reason",
+        text: `\u5237\u65B0\u5931\u8D25\uFF1A${model.observation.staleReason}`
+      });
     }
-    progressWrap.createSpan({
-      text: progress.total ? `${progress.done}/${progress.total} ${progress.unit} (${progress.percent}% complete)` : "No progress data"
+  }
+  renderTaskHero(container, model, snapshot) {
+    var _a;
+    const hero = container.createDiv({ cls: "flowdesk-hero" });
+    const titleRow = hero.createDiv({ cls: "flowdesk-hero-title-row" });
+    titleRow.createDiv({ cls: "flowdesk-hero-title", text: model.hero.title });
+    titleRow.createSpan({
+      cls: `flowdesk-state-pill flowdesk-state-${normalizeStatus(model.hero.status)}`,
+      text: model.hero.status
     });
-    summaryRow(
-      grid,
-      "done",
-      "Spec Contract",
-      `${numberValue(requirements.count)} requirements, ${numberValue(scenarios.count)} scenarios, ${numberValue(contractTasks.count)} tasks`
+    const metrics = hero.createDiv({ cls: "flowdesk-hero-metrics" });
+    metricCard(metrics, "\u5F53\u524D\u9636\u6BB5", formatFlowNodeId(model.hero.currentStage));
+    metricCard(metrics, "\u6D41\u7A0B\u8FDB\u5EA6", model.hero.progressLabel);
+    metricCard(
+      metrics,
+      model.hero.workProgressKind === "inline" ? "Inline \u8FDB\u5EA6" : "\u4EFB\u52A1\u8FDB\u5EA6",
+      model.hero.workProgressLabel
     );
-    if (state.blocked_reason) {
-      summaryRow(grid, "blocked", "Blocked", state.blocked_reason);
+    if ((_a = snapshot.state) == null ? void 0 : _a.blocked_reason) {
+      hero.createDiv({
+        cls: "flowdesk-hero-blocked",
+        text: `\u963B\u585E\u539F\u56E0\uFF1A${snapshot.state.blocked_reason}`
+      });
+    }
+  }
+  renderPrimaryDiagnostic(container, model) {
+    const diagnostic = model.primaryDiagnostic;
+    if (!diagnostic) {
+      const empty = container.createDiv({
+        cls: `flowdesk-primary-status ${model.observation.isTrustworthy ? "is-clear" : "is-unknown"}`
+      });
+      empty.createDiv({ cls: "flowdesk-card-kicker", text: "\u9996\u8981\u95EE\u9898" });
+      empty.createDiv({
+        cls: "flowdesk-primary-title",
+        text: model.observation.isTrustworthy ? "\u672A\u53D1\u73B0\u5408\u540C\u6216\u6267\u884C\u8BCA\u65AD" : "\u5F53\u524D\u6CA1\u6709\u53EF\u9A8C\u8BC1\u7684\u8BCA\u65AD\u7ED3\u8BBA"
+      });
+      if (!model.observation.isTrustworthy) {
+        empty.createDiv({
+          cls: "flowdesk-card-copy",
+          text: "\u89C2\u6D4B\u5E76\u975E healthy v2\uFF0C\u4E0D\u80FD\u636E\u6B64\u5224\u65AD\u4EFB\u52A1\u6CA1\u6709\u95EE\u9898\u3002"
+        });
+      }
+      return;
+    }
+    const card = container.createDiv({ cls: "flowdesk-primary-issue" });
+    card.createDiv({ cls: "flowdesk-card-kicker", text: "\u9996\u8981\u95EE\u9898" });
+    card.createDiv({
+      cls: "flowdesk-primary-title",
+      text: diagnostic.message || diagnostic.code
+    });
+    card.createDiv({ cls: "flowdesk-diagnostic-code", text: diagnostic.code });
+    this.renderDiagnosticBody(card, diagnostic);
+  }
+  renderDiagnosticBody(container, diagnostic) {
+    const source = diagnostic.source;
+    if (source) {
+      const location = [
+        source.section ? `\xA7 ${source.section}` : "",
+        source.field ? `\u5B57\u6BB5 ${source.field}` : "",
+        source.line_start ? `\u7B2C ${source.line_start} \u884C` : ""
+      ].filter(Boolean).join(" \xB7 ");
+      if (location) {
+        container.createDiv({ cls: "flowdesk-diagnostic-location", text: location });
+      }
+      if (source.excerpt) {
+        container.createEl("code", {
+          cls: "flowdesk-diagnostic-excerpt",
+          text: source.excerpt
+        });
+      }
+    } else {
+      container.createDiv({
+        cls: "flowdesk-diagnostic-location",
+        text: "\u4F4D\u7F6E\uFF1Aproducer \u672A\u63D0\u4F9B"
+      });
+    }
+    diagnosticRow(container, "\u539F\u56E0", diagnostic.reason);
+    diagnosticRow(container, "\u5EFA\u8BAE\u4FEE\u6CD5", diagnostic.remediation);
+    const canLocate = Boolean(
+      (source == null ? void 0 : source.line_start) || (source == null ? void 0 : source.section) || (source == null ? void 0 : source.after_section)
+    );
+    if (canLocate) {
+      const actions = container.createDiv({ cls: "flowdesk-diagnostic-actions" });
+      const locate = actions.createEl("button", {
+        cls: "flowdesk-diagnostic-locate",
+        text: "\u5B9A\u4F4D"
+      });
+      locate.title = "\u53EA\u8BFB\u6253\u5F00\u8BCA\u65AD\u6240\u5728\u7684 TaskNotes \u4F4D\u7F6E";
+      locate.addEventListener("click", () => {
+        void this.openDiagnosticLocation(diagnostic);
+      });
+    }
+  }
+  async openDiagnosticLocation(diagnostic) {
+    var _a;
+    const file = this.app.vault.getAbstractFileByPath(this.taskPath);
+    if (!(file instanceof import_obsidian.TFile)) {
+      new import_obsidian.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${this.taskPath}`);
+      return;
+    }
+    const target = resolveDiagnosticTarget(this.taskPath, diagnostic.source);
+    if (target.linkText === this.taskPath && target.line === null) {
+      new import_obsidian.Notice("producer \u672A\u63D0\u4F9B\u53EF\u5B9A\u4F4D\u7684 section \u6216\u884C\u53F7\u3002");
+      return;
+    }
+    try {
+      await this.app.workspace.openLinkText(target.linkText, this.taskPath, false);
+      if (target.line === null) {
+        return;
+      }
+      const view = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+      if (!view || ((_a = view.file) == null ? void 0 : _a.path) !== this.taskPath) {
+        new import_obsidian.Notice("\u4EFB\u52A1\u5DF2\u6253\u5F00\uFF0C\u4F46\u5F53\u524D\u89C6\u56FE\u65E0\u6CD5\u5B9A\u4F4D\u5230\u5177\u4F53\u884C\u3002");
+        return;
+      }
+      const line = target.line - 1;
+      if (line < 0 || line >= view.editor.lineCount()) {
+        new import_obsidian.Notice(`\u8BCA\u65AD\u884C\u53F7\u5DF2\u8D85\u51FA\u5F53\u524D\u6587\u4EF6\u8303\u56F4\uFF1A${target.line}`);
+        return;
+      }
+      const position = { line, ch: 0 };
+      view.editor.setCursor(position);
+      view.editor.scrollIntoView({ from: position, to: position }, true);
+      view.editor.focus();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new import_obsidian.Notice(`\u65E0\u6CD5\u5B9A\u4F4D\u8BCA\u65AD\u4F4D\u7F6E\uFF1A${message}`);
+    }
+  }
+  renderPrimaryNextAction(container, model) {
+    var _a;
+    const card = container.createDiv({ cls: "flowdesk-primary-action" });
+    card.createDiv({ cls: "flowdesk-card-kicker", text: "\u4E0B\u4E00\u52A8\u4F5C" });
+    const noAction = model.state === "done" && model.observation.isTrustworthy ? "\u65E0\u540E\u7EED\u52A8\u4F5C" : "snapshot \u672A\u63D0\u4F9B\u4E0B\u4E00\u52A8\u4F5C";
+    card.createDiv({
+      cls: "flowdesk-primary-title",
+      text: (_a = model.nextAction) != null ? _a : noAction
+    });
+  }
+  renderStageRail(container, snapshot) {
+    var _a, _b;
+    const section = createSection(container, "\u6267\u884C\u9636\u6BB5");
+    const rail = section.createDiv({ cls: "flowdesk-stage-rail" });
+    const nodes = (_b = (_a = snapshot.flow_graph) == null ? void 0 : _a.nodes) != null ? _b : [];
+    if (!nodes.length) {
+      rail.createDiv({ cls: "flowdesk-muted", text: "\u672A\u63D0\u4F9B\u9636\u6BB5\u6570\u636E\u3002" });
+      return;
+    }
+    for (const node of nodes) {
+      const status = normalizeStatus(node.status);
+      const item = rail.createDiv({
+        cls: `flowdesk-stage-item flowdesk-stage-${status}`
+      });
+      item.createSpan({ cls: "flowdesk-stage-symbol", text: statusSymbol(status) });
+      item.createSpan({
+        cls: "flowdesk-stage-label",
+        text: formatFlowNodeId(node.id) || node.label || "\u672A\u547D\u540D\u9636\u6BB5"
+      });
+    }
+  }
+  renderDetails(container, snapshot, model) {
+    const details = container.createEl("details", { cls: "flowdesk-detail-group" });
+    details.open = model.diagnostics.length > 0;
+    details.createEl("summary", { text: "\u67E5\u770B\u6267\u884C\u8BE6\u60C5" });
+    const body = details.createDiv({ cls: "flowdesk-detail-body" });
+    this.renderObservationDetails(body, model);
+    this.renderInlineExecution(body, model);
+    this.renderFlowGraph(body, snapshot);
+    this.renderContract(body, snapshot);
+    this.renderTasksOrEvidence(body, snapshot);
+    this.renderMaterialization(body, snapshot);
+    this.renderNotepad(body, snapshot);
+    if (model.diagnostics.length > 1) {
+      this.renderAllDiagnostics(body, model.diagnostics);
+    }
+    this.renderNextActions(body, snapshot);
+  }
+  renderObservationDetails(container, model) {
+    const section = createSection(container, "Observation\uFF08\u89C2\u6D4B\uFF09");
+    const list = section.createDiv({ cls: "flowdesk-contract-list" });
+    contractRow(list, "Source task", [model.observation.sourceTaskId || "\u672A\u63D0\u4F9B"]);
+    contractRow(list, "Source identity", [String(model.observation.sourceIdentity)]);
+    contractRow(list, "Profile", [model.compatibility.profile]);
+    if (!model.observation.coverage.length) {
+      list.createDiv({ cls: "flowdesk-muted", text: "Coverage\uFF1A\u672A\u63D0\u4F9B" });
+      return;
+    }
+    for (const item of model.observation.coverage) {
+      contractRow(list, item.key, [item.value]);
+    }
+  }
+  renderInlineExecution(container, model) {
+    var _a;
+    const inline = model.inlineProgress;
+    if (!inline) {
+      return;
+    }
+    const section = createSection(container, "Inline Execution");
+    section.createDiv({
+      cls: "flowdesk-main-text",
+      text: `${(_a = inline.completed) != null ? _a : "?"}/${inline.total} TASK \xB7 ${inline.status} \xB7 ${inline.explicit ? "\u663E\u5F0F\u8BB0\u5F55" : "\u63A8\u65AD\u72B6\u6001"}`
+    });
+    const list = section.createDiv({ cls: "flowdesk-inline-task-list" });
+    for (const task of inline.tasks) {
+      const row = list.createDiv({ cls: "flowdesk-inline-task" });
+      row.createSpan({
+        cls: `flowdesk-status-dot flowdesk-status-${normalizeStatus(task.status)}`,
+        text: statusSymbol(normalizeStatus(task.status))
+      });
+      row.createSpan({ text: `${task.id} \xB7 ${task.status}` });
+      if (task.inferred) {
+        row.createSpan({ cls: "flowdesk-inferred-label", text: "\u63A8\u65AD" });
+      }
+    }
+  }
+  renderMaterialization(container, snapshot) {
+    var _a, _b, _c, _d;
+    const materialization = (_b = snapshot.task_materialization) != null ? _b : (_a = snapshot.task_graph) == null ? void 0 : _a.task_materialization;
+    if (!materialization) {
+      return;
+    }
+    const section = createSection(container, "Materialization\uFF08\u7269\u5316\uFF09");
+    const list = section.createDiv({ cls: "flowdesk-contract-list" });
+    contractRow(list, "Mode", [(_c = materialization.mode) != null ? _c : "\u672A\u63D0\u4F9B"]);
+    contractRow(list, "Status", [(_d = materialization.status) != null ? _d : "\u672A\u63D0\u4F9B"]);
+    contractRow(list, "Declared", materialization.declared);
+    contractRow(list, "Materialized", materialization.materialized);
+    contractRow(list, "Missing", materialization.missing);
+    contractRow(list, "Conflicts", materialization.conflicts);
+  }
+  renderAllDiagnostics(container, diagnostics) {
+    const section = createSection(container, `\u5168\u90E8\u8BCA\u65AD\uFF08${diagnostics.length}\uFF09`);
+    const list = section.createDiv({ cls: "flowdesk-diagnostic-list" });
+    for (const diagnostic of diagnostics) {
+      const item = list.createDiv({ cls: "flowdesk-diagnostic-item" });
+      item.createDiv({ cls: "flowdesk-main-text", text: diagnostic.code });
+      this.renderDiagnosticBody(item, diagnostic);
     }
   }
   renderFlowGraph(container, snapshot) {
@@ -613,12 +1122,15 @@ function createSection(container, title) {
   section.createDiv({ cls: "flowdesk-dashboard-rule" });
   return section;
 }
-function summaryRow(container, status, label, value) {
-  const row = container.createDiv({ cls: "flowdesk-summary-row" });
-  const normalized = normalizeStatus(status);
-  row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${normalized}`, text: "\u25CF" });
-  row.createSpan({ cls: "flowdesk-summary-label", text: `${label}:` });
-  row.createSpan({ cls: "flowdesk-summary-value", text: value });
+function metricCard(container, label, value) {
+  const card = container.createDiv({ cls: "flowdesk-metric" });
+  card.createDiv({ cls: "flowdesk-metric-label", text: label });
+  card.createDiv({ cls: "flowdesk-metric-value", text: value });
+}
+function diagnosticRow(container, label, value) {
+  const row = container.createDiv({ cls: "flowdesk-diagnostic-row" });
+  row.createSpan({ cls: "flowdesk-diagnostic-label", text: `${label}\uFF1A` });
+  row.createSpan({ text: value });
 }
 function contractRow(container, label, ids) {
   const row = container.createDiv();
@@ -648,31 +1160,18 @@ function evidenceRow(container, label, item) {
     }
   }
 }
-function computeProgress(snapshot) {
-  var _a, _b, _c, _d;
-  const counts = (_b = (_a = snapshot.task_graph) == null ? void 0 : _a.counts) != null ? _b : {};
-  const nodes = (_d = (_c = snapshot.flow_graph) == null ? void 0 : _c.nodes) != null ? _d : [];
-  const total = numberValue(counts.total);
-  const done = numberValue(counts.done);
-  const stageTotal = nodes.length;
-  const stageDone = nodes.filter((node) => node.status === "done").length;
-  const progressTotal = total || stageTotal;
-  const progressDone = total ? done : stageDone;
-  const percent = progressTotal ? Math.round(progressDone / progressTotal * 100) : 0;
-  return {
-    done: progressDone,
-    total: progressTotal,
-    unit: total ? "tasks" : "stages",
-    percent,
-    status: percent >= 100 ? "done" : percent > 0 ? "running" : "blocked"
-  };
-}
 function normalizeStatus(status) {
   const value = String(status || "unknown").toLowerCase().replace(/_/g, "-");
-  if (["done", "running", "ready", "blocked"].includes(value)) {
+  if (["done", "running", "ready", "blocked", "error", "unknown"].includes(value)) {
     return value;
   }
-  return "blocked";
+  if (value === "complete" || value === "completed") {
+    return "done";
+  }
+  if (value === "in-progress") {
+    return "running";
+  }
+  return "unknown";
 }
 function statusSymbol(status) {
   if (status === "done") return "\u2713";
@@ -741,6 +1240,7 @@ function formatFlowNodeId(id) {
   const labels = {
     spec_contract: "\u89C4\u683C\u5951\u7EA6",
     task_breakdown: "\u4EFB\u52A1\u62C6\u5206",
+    task_materialization: "\u4EFB\u52A1\u7269\u5316",
     implementation: "\u5B9E\u73B0",
     verification: "\u9A8C\u8BC1",
     delivery: "\u4EA4\u4ED8"
