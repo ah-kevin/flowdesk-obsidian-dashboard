@@ -16,7 +16,9 @@ import * as path from "path";
 import { promisify } from "util";
 import {
   createDashboardViewModel,
+  isSnapshotRequestCurrent,
   resolveDiagnosticTarget,
+  shouldResetDisplayState,
   validateSnapshotSource,
 } from "./snapshot-model";
 import type {
@@ -287,6 +289,13 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   async loadTask(taskPath: string) {
+    if (shouldResetDisplayState(this.taskPath, taskPath)) {
+      this.taskPath = taskPath;
+      this.displayState = null;
+      this.error = "";
+      this.loading = true;
+      this.render();
+    }
     this.queuedTaskPath = taskPath;
     if (this.refreshPromise) {
       return this.refreshPromise;
@@ -315,17 +324,15 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   private async loadTaskNow(taskPath: string) {
-    const previousTaskPath = this.taskPath;
-    this.taskPath = taskPath;
-    if (previousTaskPath !== taskPath) {
-      this.displayState = null;
-    }
     this.loading = true;
     this.error = "";
     this.render();
 
     try {
       const snapshot = await this.plugin.loadSnapshot(taskPath);
+      if (!isSnapshotRequestCurrent(taskPath, this.taskPath)) {
+        return;
+      }
       const sourceIdentity = validateSnapshotSource(snapshot, taskPath);
       if (sourceIdentity === false) {
         throw new Error(
@@ -341,6 +348,9 @@ class FlowDeskDashboardView extends ItemView {
         staleReason: "",
       };
     } catch (error) {
+      if (!isSnapshotRequestCurrent(taskPath, this.taskPath)) {
+        return;
+      }
       this.error = error instanceof Error ? error.message : String(error);
       if (this.displayState?.taskPath === taskPath) {
         this.displayState = {
@@ -351,8 +361,10 @@ class FlowDeskDashboardView extends ItemView {
         this.displayState = null;
       }
     } finally {
-      this.loading = false;
-      this.render();
+      if (isSnapshotRequestCurrent(taskPath, this.taskPath)) {
+        this.loading = false;
+        this.render();
+      }
     }
   }
 

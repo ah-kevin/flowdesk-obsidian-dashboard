@@ -107,6 +107,12 @@ function validateSnapshotSource(snapshot, expectedTaskPath) {
   }
   return actual === expected;
 }
+function shouldResetDisplayState(currentTaskPath, nextTaskPath) {
+  return currentTaskPath !== nextTaskPath;
+}
+function isSnapshotRequestCurrent(requestedTaskPath, currentTaskPath) {
+  return requestedTaskPath === currentTaskPath;
+}
 function createHero(snapshot, inlineProgress) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o;
   const nodes = (_b = (_a = snapshot.flow_graph) == null ? void 0 : _a.nodes) != null ? _b : [];
@@ -483,6 +489,13 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     this.render();
   }
   async loadTask(taskPath) {
+    if (shouldResetDisplayState(this.taskPath, taskPath)) {
+      this.taskPath = taskPath;
+      this.displayState = null;
+      this.error = "";
+      this.loading = true;
+      this.render();
+    }
     this.queuedTaskPath = taskPath;
     if (this.refreshPromise) {
       return this.refreshPromise;
@@ -508,16 +521,14 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   }
   async loadTaskNow(taskPath) {
     var _a, _b, _c;
-    const previousTaskPath = this.taskPath;
-    this.taskPath = taskPath;
-    if (previousTaskPath !== taskPath) {
-      this.displayState = null;
-    }
     this.loading = true;
     this.error = "";
     this.render();
     try {
       const snapshot = await this.plugin.loadSnapshot(taskPath);
+      if (!isSnapshotRequestCurrent(taskPath, this.taskPath)) {
+        return;
+      }
       const sourceIdentity = validateSnapshotSource(snapshot, taskPath);
       if (sourceIdentity === false) {
         throw new Error(
@@ -531,6 +542,9 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         staleReason: ""
       };
     } catch (error) {
+      if (!isSnapshotRequestCurrent(taskPath, this.taskPath)) {
+        return;
+      }
       this.error = error instanceof Error ? error.message : String(error);
       if (((_c = this.displayState) == null ? void 0 : _c.taskPath) === taskPath) {
         this.displayState = {
@@ -541,8 +555,10 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         this.displayState = null;
       }
     } finally {
-      this.loading = false;
-      this.render();
+      if (isSnapshotRequestCurrent(taskPath, this.taskPath)) {
+        this.loading = false;
+        this.render();
+      }
     }
   }
   render() {
