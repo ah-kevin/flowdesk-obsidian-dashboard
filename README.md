@@ -57,15 +57,15 @@ Release 必需文件：
 `release/flowdesk-dashboard-<version>.zip`。GitHub Release 由 CI 上传上面的四个必需文件，
 并同时上传 zip 方便手动安装。
 
-发布一个版本：
+发布一个版本（版本号以 `manifest.json` 为准）：
 
 ```bash
-git tag "v0.1.0"
-git push origin "v0.1.0"
+git tag "v0.1.2"
+git push origin "v0.1.2"
 ```
 
-CI 会校验 tag 必须等于 `v<manifest.version>`。例如 `manifest.json` 版本为 `0.1.0`
-时，release tag 必须是 `v0.1.0`。
+CI 会校验 tag 必须等于 `v<manifest.version>`。例如 `manifest.json` 版本为 `0.1.2`
+时，release tag 必须是 `v0.1.2`。
 
 版本要求：
 
@@ -138,8 +138,15 @@ ln -s "$(pwd)" \
 2. 当前任务、执行阶段、阶段进度与 inline/children 进度；
 3. 首要诊断与 producer 给出的下一动作；
 4. 阶段轨道；
-5. 折叠的 Contract、Inline Execution、Flow Graph、Evidence、Materialization、
-   Child Tasks、Notepad 和完整动作详情。
+5. 折叠的规格契约、行内执行、执行流程、执行证据、任务物化、子任务和工作区记事板。
+
+## 任务上下文与刷新
+
+- 面板首次打开或 Obsidian 恢复布局时，会主动同步当前活动文件，不依赖再次切换文件来触发加载。
+- 当前文件不是 `Tasks/*.md` 或 `TaskNotes/*.md` 时，面板进入醒目的暂停状态，不再保留上一任务的 dashboard；如果存在上一任务，可点击“回到上一次任务”。
+- 当前父任务或 snapshot 中的子任务文件发生变化时，面板会在 500ms 内合并连续保存并自动刷新。
+- 自动刷新期间保留上一次成功结果和“查看执行详情”的展开选择；手动刷新会立即执行。
+- “复制 CLI”会复制带绝对可执行文件路径的完整 `--format dashboard` 命令，可在任意终端目录直接运行。
 
 对 snapshot schema v2：
 

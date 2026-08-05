@@ -58,6 +58,7 @@
   justify-content: flex-end;
 }
 
+.flowdesk-copy-button,
 .flowdesk-refresh-button {
   min-width: 58px;
   white-space: nowrap;
@@ -550,22 +551,25 @@
   margin-top: 6px;
 }
 
-.flowdesk-refreshing {
-  background: var(--flowdesk-warning-bg);
-  border: 1px solid var(--flowdesk-panel-border);
-  border-radius: 6px;
+.flowdesk-context-pause {
+  background: var(--background-secondary);
+  border: 1px solid var(--flowdesk-running);
+  border-left: 3px solid var(--flowdesk-running);
+  border-radius: 8px;
   color: var(--text-muted);
   margin-bottom: 12px;
-  padding: 8px;
+  padding: 12px;
 }
 
-.flowdesk-pinned-note {
-  background: var(--background-secondary);
-  border: 1px solid var(--flowdesk-panel-border);
-  border-radius: 6px;
-  color: var(--text-muted);
-  margin-bottom: 12px;
-  padding: 8px;
+.flowdesk-context-path {
+  font-size: 11px;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-context-back {
+  margin-top: 10px;
+  user-select: none;
 }
 
 .flowdesk-evidence-details {

@@ -299,20 +299,6 @@ export function validateSnapshotSource(
   return actual === expected;
 }
 
-export function shouldResetDisplayState(
-  currentTaskPath: string,
-  nextTaskPath: string
-): boolean {
-  return currentTaskPath !== nextTaskPath;
-}
-
-export function isSnapshotRequestCurrent(
-  requestedTaskPath: string,
-  currentTaskPath: string
-): boolean {
-  return requestedTaskPath === currentTaskPath;
-}
-
 function createHero(
   snapshot: ExecutionSnapshot,
   inlineProgress: DashboardViewModel["inlineProgress"]
@@ -368,7 +354,9 @@ function createHero(
   };
 }
 
-function formatNextAction(action?: Record<string, unknown>): string | null {
+export function formatNextAction(
+  action?: Record<string, unknown>
+): string | null {
   if (!action) {
     return null;
   }
@@ -388,6 +376,7 @@ function formatNextAction(action?: Record<string, unknown>): string | null {
     resolve_inline_execution_conflict: "处理 inline 执行冲突",
     resolve_materialization_conflict: "处理任务物化冲突",
     start_implementation: "开始实施",
+    start_inline_implementation: "开始 inline 实施",
     verify_scenarios: "验证验收场景",
     wait_for_running_task: "等待运行中的任务",
   };
