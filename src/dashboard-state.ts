@@ -9,8 +9,9 @@ export interface SnapshotRequestIdentity {
 }
 
 interface ObservedTaskSnapshot {
-  task_graph?: {
-    tasks?: Array<{ id?: string }>;
+  task_tree?: {
+    root?: { id?: string };
+    children?: Array<{ id?: string }>;
   };
 }
 
@@ -57,8 +58,12 @@ export function collectObservedTaskPaths(
   if (isTaskPath(parentTaskPath)) {
     paths.add(parentTaskPath);
   }
-  for (const task of snapshot?.task_graph?.tasks ?? []) {
-    if (task.id && isTaskPath(task.id)) {
+  const observed = [
+    snapshot?.task_tree?.root,
+    ...(snapshot?.task_tree?.children ?? []),
+  ];
+  for (const task of observed) {
+    if (task?.id && isTaskPath(task.id)) {
       paths.add(task.id);
     }
   }
