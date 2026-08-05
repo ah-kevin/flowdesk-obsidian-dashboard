@@ -1,6 +1,7 @@
 import {
   App,
   ItemView,
+  MarkdownView,
   Notice,
   Plugin,
   PluginSettingTab,
@@ -355,7 +356,7 @@ class FlowDeskDashboardView extends ItemView {
         throw new Error("unsupported_snapshot_schema：Dashboard 只支持 snapshot schema 3。");
       }
       const sourceIdentity = validateSnapshotSource(snapshot, request.taskPath);
-      if (sourceIdentity === false) {
+      if (sourceIdentity !== true) {
         throw new Error(
           `Snapshot source identity 不匹配：请求 ${request.taskPath}，返回 ${snapshot.source_task_id ?? "未提供"}。`
         );
@@ -525,13 +526,42 @@ class FlowDeskDashboardView extends ItemView {
     const target = resolveDiagnosticTarget(diagnostic.taskId, diagnostic.source);
     diagnosticRow(container, "任务", diagnostic.taskId);
     diagnosticRow(container, "位置", target.line ? `${target.linkText} · 第 ${target.line} 行` : target.linkText);
+    diagnosticRow(container, "字段路径", diagnostic.path);
     diagnosticRow(container, "原因", diagnostic.reason);
     diagnosticRow(container, "预期", diagnostic.expected);
     diagnosticRow(container, "建议修法", diagnostic.remediation);
     const open = container.createEl("button", { text: "打开诊断位置" });
     open.addEventListener("click", () => {
-      void this.app.workspace.openLinkText(target.linkText, "", false);
+      void this.openDiagnosticLocation(diagnostic);
     });
+  }
+
+  private async openDiagnosticLocation(diagnostic: SnapshotDiagnostic) {
+    const target = resolveDiagnosticTarget(diagnostic.taskId, diagnostic.source);
+    if (!diagnostic.taskId || (target.linkText === diagnostic.taskId && target.line === null)) {
+      new Notice("producer 未提供可定位的 task、section 或行号。");
+      return;
+    }
+    try {
+      await this.app.workspace.openLinkText(target.linkText, diagnostic.taskId, false);
+      if (target.editorLine === null) return;
+      const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+      if (!view || view.file?.path !== diagnostic.taskId) {
+        new Notice("任务已打开，但当前视图无法定位到具体行。");
+        return;
+      }
+      if (target.editorLine >= view.editor.lineCount()) {
+        new Notice(`诊断行号已超出当前文件范围：${target.line}`);
+        return;
+      }
+      const position = { line: target.editorLine, ch: 0 };
+      view.editor.setCursor(position);
+      view.editor.scrollIntoView({ from: position, to: position }, true);
+      view.editor.focus();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(`无法定位诊断位置：${message}`);
+    }
   }
 
   private renderNextAction(container: HTMLElement, model: DashboardViewModel) {

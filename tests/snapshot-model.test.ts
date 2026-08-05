@@ -182,6 +182,7 @@ test("诊断定位使用 producer task_id 和 source", () => {
   assert.deepEqual(resolveDiagnosticTarget(diagnostic.taskId, diagnostic.source), {
     linkText: "Tasks/Child B.md#Verification Result",
     line: 41,
+    editorLine: 40,
   });
 });
 
@@ -215,8 +216,20 @@ test("真实 producer fixture 字段级映射保持一致", () => {
     process.env.FLOWDESK_PLUGIN_ROOT ?? "/Users/bjke/workspaces/flowdesk-plugin",
     "tests/fixtures/execution_snapshot/sdd_v3_real_root_snapshot.json"
   );
-  assert.equal(existsSync(producerPath), true, `缺少 producer fixture: ${producerPath}`);
-  const snapshot = JSON.parse(readFileSync(producerPath, "utf8"));
+  const bundledPath = path.join(
+    process.cwd(),
+    "tests/fixtures/sdd_v3_real_root_snapshot.json"
+  );
+  assert.equal(existsSync(bundledPath), true, `缺少 Dashboard fixture: ${bundledPath}`);
+  const fixturePath = existsSync(producerPath) ? producerPath : bundledPath;
+  const snapshot = JSON.parse(readFileSync(fixturePath, "utf8"));
+  if (existsSync(producerPath)) {
+    assert.deepEqual(
+      JSON.parse(readFileSync(bundledPath, "utf8")),
+      snapshot,
+      "Dashboard 内置 fixture 必须与真实 producer fixture 完全一致"
+    );
+  }
   const model = createDashboardViewModel(snapshot, {
     expectedTaskPath: snapshot.source_task_id,
   });
@@ -247,4 +260,12 @@ test("source identity 只接受 v3 顶层 source_task_id", () => {
   assert.equal(validateSnapshotSource(snapshot, rootId), true);
   assert.equal(validateSnapshotSource(snapshot, "Tasks/Other.md"), false);
   assert.equal(validateSnapshotSource({}, rootId), "unknown");
+
+  const missingSource = createV3Snapshot();
+  delete (missingSource as { source_task_id?: string }).source_task_id;
+  const missingSourceModel = createDashboardViewModel(missingSource, {
+    expectedTaskPath: rootId,
+  });
+  assert.equal(missingSourceModel.observation.sourceIdentity, "unknown");
+  assert.equal(missingSourceModel.observation.isTrustworthy, false);
 });

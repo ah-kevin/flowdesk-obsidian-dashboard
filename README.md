@@ -14,11 +14,11 @@ Directory 作为发布路径。
 - 需要本机已存在 FlowDesk-Plugin 仓库，并包含
   `bin/flowdesk-execution-snapshot`。
 - 需要 TaskNotes HTTP API 可用；插件不会直接读写 TaskNotes markdown 文件作为降级。
-- 当前 dashboard 是只读视图，只执行 snapshot 命令，不修改 TaskNotes、Work Case 或
+- Dashboard 只接受 FlowDesk snapshot schema 3，是只读视图；只执行 snapshot 命令，不修改 TaskNotes、Work Case 或
   FlowDesk runtime 状态。
 - 首次使用时，在插件设置里配置 FlowDesk repo path，例如
   `/Users/bjke/workspaces/flowdesk-plugin`。如果 `workingDirectory` 留空，插件默认使用
-  FlowDesk repo path 读取 `.flowdesk/notepad.md`。
+  FlowDesk repo path 作为 snapshot 命令工作目录。
 
 ## GitHub Actions 发布
 
@@ -130,15 +130,18 @@ ln -s "$(pwd)" \
 当前入口仍以正在打开的 TaskNotes task 文件为准；插件不会从 Work Case 猜测任务，也不会
 自行解析 TaskNotes Markdown。
 
-## Snapshot v2 展示语义
+## Snapshot v3 展示语义
 
 侧栏默认按高频决策顺序显示：
 
-1. observation 可信度、snapshot schema 与 SDD profile；
-2. 当前任务、执行阶段、阶段进度与 inline/children 进度；
+1. observation 可信度与 snapshot schema；
+2. root 状态、priority、rollup 与 `trusted_done/total` 可信完成数；
 3. 首要诊断与 producer 给出的下一动作；
-4. 阶段轨道；
-5. 折叠的规格契约、行内执行、执行流程、执行证据、任务物化、子任务和工作区记事板。
+4. TaskNotes 原生 child review 卡，包括 status、priority、blockedBy、Covers、Acceptance 与三类证据健康；
+5. 折叠的 observation、contract、root evidence 与全部结构化诊断。
+
+Dashboard 不自行推断 task 状态、证据有效性或完成顺序。`rollup`、children counts、
+`trusted_done`、diagnostics 和 next actions 都直接来自同一份 producer JSON。
 
 ## 任务上下文与刷新
 
@@ -148,18 +151,25 @@ ln -s "$(pwd)" \
 - 自动刷新期间保留上一次成功结果和“查看执行详情”的展开选择；手动刷新会立即执行。
 - “复制 CLI”会复制带绝对可执行文件路径的完整 `--format dashboard` 命令，可在任意终端目录直接运行。
 
-对 snapshot schema v2：
+对 snapshot schema 3：
 
-- `observation.health=healthy` 只有在 schema 为 v2、`source_task_id` 存在且数据不是 stale
-  时，才会被侧栏视为可信健康。
-- inline 模式显示 producer 的显式 TASK 状态和完成数，不用 materialization binding
-  百分比冒充实施进度。
-- semantic 与 inline diagnostic 会显示 code、section/line、excerpt、实际原因和建议修法。
-  “定位”按钮只打开对应 task heading/line，不会改写文件。
-- 同一任务刷新失败时可继续查看上次成功 snapshot，但顶部会标记“旧数据”并显示失败原因；
-  切换任务会立即清空旧 snapshot。
-- 如果返回的 `observation.source_task_id` 与请求任务不一致，该结果会被拒绝展示。
+- 只有 schema 为 3，且 `observation.health=healthy`、parent/children 均为 `observed`、
+  TaskNotes API 为 `ok`、source identity 匹配且数据不是 stale 时，才显示为可信观测。
+- observation 非 healthy 时明确显示“观测不可信，无法判断任务是否正常”，不会把不完整数据
+  渲染为健康成功。
+- diagnostic 显示 `task_id`、section/line、path、实际原因、预期形态与建议修法；定位按钮打开
+  root 或具体 child 的对应 heading，不会改写文件。
+- 同一任务刷新失败时可继续查看上次成功 snapshot，但顶部标记“旧数据”并显示失败原因；
+  切换任务或切到非 TaskNotes 文件会立即清空旧 snapshot。
+- 如果顶层 `source_task_id` 与请求任务不一致，该结果会被拒绝展示，并同时显示请求路径与
+  返回路径。
+- schema 缺失或不为 3 时返回 `unsupported_snapshot_schema`，不提供旧版降级展示。
 
-对旧 snapshot：缺少 schema、observation、capabilities 或 source identity 时仍尽量展示已有
-字段，但可信度显示为“观测未知/能力未知”，不会默认显示成绿色 healthy。旧 producer 若只
-提供诊断 code/message，位置和修法会明确标注为“producer 未提供”。
+复制入口等价于：
+
+```bash
+/path/to/flowdesk-plugin/bin/flowdesk-execution-snapshot \
+  "Tasks/Root.md" \
+  --working-directory "/path/to/flowdesk-plugin" \
+  --format dashboard
+```

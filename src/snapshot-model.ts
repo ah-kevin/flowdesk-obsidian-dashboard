@@ -231,7 +231,7 @@ export function createDashboardViewModel(
     snapshot.observation?.children === "observed" &&
     snapshot.observation?.tasknotes_api === "ok" &&
     sourceIdentityMatch === true &&
-    sourceIdentity !== false &&
+    sourceIdentity === true &&
     !staleReason;
   const rootId = normalizeText(root.id, normalizeText(snapshot.source_task_id, ""));
   const children = (snapshot.task_tree?.children ?? []).map((child) =>
@@ -373,7 +373,7 @@ export function formatNextAction(action?: Record<string, unknown>): string | nul
 export function resolveDiagnosticTarget(
   taskPath: string,
   source?: SnapshotSource
-): { linkText: string; line: number | null } {
+): { linkText: string; line: number | null; editorLine: number | null } {
   const line =
     typeof source?.line_start === "number" && source.line_start > 0
       ? source.line_start
@@ -385,6 +385,7 @@ export function resolveDiagnosticTarget(
   return {
     linkText: heading ? `${taskPath}#${heading}` : taskPath,
     line,
+    editorLine: line === null ? null : line - 1,
   };
 }
 
