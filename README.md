@@ -14,7 +14,10 @@ Directory 作为发布路径。
 - 需要本机已存在 FlowDesk-Plugin 仓库，并包含
   `bin/flowdesk-execution-snapshot`。
 - 需要 TaskNotes HTTP API 可用；插件不会直接读写 TaskNotes markdown 文件作为降级。
-- Dashboard 只接受 FlowDesk snapshot schema 3，是只读视图；只执行 snapshot 命令，不修改 TaskNotes、Work Case 或
+- Dashboard 只接受 `snapshot_schema_version=3` 且
+  `snapshot_model=task-centric`；缺少或错配 model marker 时 fail-closed，不兼容旧
+  root-centric schema 3。
+- Dashboard 是只读视图；只执行 snapshot 命令，不修改 TaskNotes、Work Case 或
   FlowDesk runtime 状态。
 - 首次使用时，在插件设置里配置 FlowDesk repo path，例如
   `/Users/bjke/workspaces/flowdesk-plugin`。如果 `workingDirectory` 留空，插件默认使用
@@ -130,15 +133,20 @@ ln -s "$(pwd)" \
 当前入口仍以正在打开的 TaskNotes task 文件为准；插件不会从 Work Case 猜测任务，也不会
 自行解析 TaskNotes Markdown。
 
-## Snapshot v3 展示语义
+## Task-centric snapshot v3 展示语义
 
 侧栏默认按高频决策顺序显示：
 
-1. observation 可信度与 snapshot schema；
-2. root 状态、priority、rollup 与 `trusted_done/total` 可信完成数；
-3. 首要诊断与 producer 给出的下一动作；
-4. TaskNotes 原生 child review 卡，包括 status、priority、blockedBy、Covers、Acceptance 与三类证据健康；
-5. 折叠的 observation、contract、root evidence 与全部结构化诊断。
+1. 可选 parent breadcrumb、observation 可信度与 snapshot 模型；
+2. 当前 task 的状态、priority、可信 gate 与 producer rollup；
+3. 首要诊断、producer 给出的下一动作与当前 task CLI 复制；
+4. 当前 task 有 children 时，显示 direct child rollup 与 child cards；卡片包含 Goal、status、
+   priority、blockedBy、是否还有下一层、rollup、三类证据健康和首要诊断；
+5. 当前 task 的 Goal、Scope、Requirements、Scenarios、Acceptance 与三类证据。
+
+打开任一 TaskNotes task 都只解释该 task。parent 仅作为 breadcrumb，children 只展示
+direct summaries，不从 parent 拼接当前 task 合同。有 children 的 task 默认先看 rollup 与
+child cards，合同/证据折叠；leaf 不显示空 children section，并默认展开自身合同与证据。
 
 Dashboard 不自行推断 task 状态、证据有效性或完成顺序。`rollup`、children counts、
 `trusted_done`、diagnostics 和 next actions 都直接来自同一份 producer JSON。
@@ -147,14 +155,19 @@ Dashboard 不自行推断 task 状态、证据有效性或完成顺序。`rollup
 
 - 面板首次打开或 Obsidian 恢复布局时，会主动同步当前活动文件，不依赖再次切换文件来触发加载。
 - 当前文件不是 `Tasks/*.md` 或 `TaskNotes/*.md` 时，面板进入醒目的暂停状态，不再保留上一任务的 dashboard；如果存在上一任务，可点击“回到上一次任务”。
-- 当前父任务或 snapshot 中的子任务文件发生变化时，面板会在 500ms 内合并连续保存并自动刷新。
+- 当前 task、可选 parent 或 snapshot 中的 direct child 文件发生变化时，面板会在 500ms 内
+  合并连续保存并自动刷新。
 - 自动刷新期间保留上一次成功结果和“查看执行详情”的展开选择；手动刷新会立即执行。
-- “复制 CLI”会复制带绝对可执行文件路径的完整 `--format dashboard` 命令，可在任意终端目录直接运行。
+- “复制 CLI”与“复制当前任务 CLI”都会复制以当前 task path 为首个 positional 参数、带绝对
+  可执行文件路径的完整 `--format dashboard` 命令；不使用 `--parent` 或 root 假设。
 
 对 snapshot schema 3：
 
-- 只有 schema 为 3，且 `observation.health=healthy`、parent/children 均为 `observed`、
-  TaskNotes API 为 `ok`、source identity 匹配且数据不是 stale 时，才显示为可信观测。
+- 必须同时存在 `snapshot_model=task-centric`；model marker 缺失或不匹配时显示明确错误，
+  不把缺失字段渲染成健康零值。
+- 只有 schema/model 握手通过，且 `observation.health=healthy`、current task 与 children 为
+  `observed`、parent 为 `observed` 或 `not_applicable`、TaskNotes API 为 `ok`、source identity
+  匹配且数据不是 stale 时，才显示为可信观测。
 - observation 非 healthy 时明确显示“观测不可信，无法判断任务是否正常”，不会把不完整数据
   渲染为健康成功。
 - diagnostic 显示 `task_id`、section/line、path、实际原因、预期形态与建议修法；定位按钮打开
@@ -163,13 +176,14 @@ Dashboard 不自行推断 task 状态、证据有效性或完成顺序。`rollup
   切换任务或切到非 TaskNotes 文件会立即清空旧 snapshot。
 - 如果顶层 `source_task_id` 与请求任务不一致，该结果会被拒绝展示，并同时显示请求路径与
   返回路径。
-- schema 缺失或不为 3 时返回 `unsupported_snapshot_schema`，不提供旧版降级展示。
+- schema 缺失或不为 3 时返回 `unsupported_snapshot_schema`；model marker 缺失或不匹配时
+  返回 `unsupported_snapshot_model`。两者都不提供旧版降级展示。
 
 复制入口等价于：
 
 ```bash
 /path/to/flowdesk-plugin/bin/flowdesk-execution-snapshot \
-  "Tasks/Root.md" \
+  "Tasks/Current Task.md" \
   --working-directory "/path/to/flowdesk-plugin" \
   --format dashboard
 ```

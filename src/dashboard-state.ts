@@ -8,11 +8,23 @@ export interface SnapshotRequestIdentity {
   selectionRevision: number;
 }
 
+export interface RefreshDisplayState<TSnapshot> {
+  taskPath: string;
+  snapshot: TSnapshot;
+  loadedAt: string;
+  staleReason: string;
+}
+
+interface SnapshotEnvelope {
+  snapshot_schema_version?: unknown;
+  snapshot_model?: unknown;
+  source_task_id?: unknown;
+}
+
 interface ObservedTaskSnapshot {
-  task_tree?: {
-    root?: { id?: string };
-    children?: Array<{ id?: string }>;
-  };
+  current_task?: { id?: string };
+  parent?: { id?: string } | null;
+  children?: Array<{ id?: string }>;
 }
 
 type ScheduleTimer = (callback: () => void, delayMs: number) => unknown;
@@ -51,16 +63,17 @@ export function isCurrentSnapshotRequest(
 }
 
 export function collectObservedTaskPaths(
-  parentTaskPath: string,
+  currentTaskPath: string,
   snapshot?: ObservedTaskSnapshot | null
 ): Set<string> {
   const paths = new Set<string>();
-  if (isTaskPath(parentTaskPath)) {
-    paths.add(parentTaskPath);
+  if (isTaskPath(currentTaskPath)) {
+    paths.add(currentTaskPath);
   }
   const observed = [
-    snapshot?.task_tree?.root,
-    ...(snapshot?.task_tree?.children ?? []),
+    snapshot?.current_task,
+    snapshot?.parent,
+    ...(snapshot?.children ?? []),
   ];
   for (const task of observed) {
     if (task?.id && isTaskPath(task.id)) {
@@ -73,9 +86,49 @@ export function collectObservedTaskPaths(
 export function resolveDetailsOpen(
   previousOpen: boolean,
   taskChanged: boolean,
-  diagnosticCount: number
+  diagnosticCount: number,
+  hasChildren: boolean
 ): boolean {
-  return taskChanged ? diagnosticCount > 0 : previousOpen;
+  if (!taskChanged) {
+    return previousOpen;
+  }
+  return diagnosticCount > 0 || !hasChildren;
+}
+
+export function validateSnapshotEnvelope(
+  value: unknown,
+  requestedTaskPath: string
+): string | null {
+  const snapshot =
+    typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as SnapshotEnvelope)
+      : {};
+  if (snapshot.snapshot_schema_version !== 3) {
+    return `Snapshot schema 不受支持：需要 3；请求 ${requestedTaskPath}，实际 schema ${formatEnvelopeValue(snapshot.snapshot_schema_version)}。`;
+  }
+  if (snapshot.snapshot_model !== "task-centric") {
+    return `Snapshot model 不受支持：需要 task-centric；请求 ${requestedTaskPath}，实际 model ${formatEnvelopeValue(snapshot.snapshot_model)}。`;
+  }
+  if (snapshot.source_task_id !== requestedTaskPath) {
+    return `Snapshot source identity 不匹配：请求 ${requestedTaskPath}，返回 ${formatEnvelopeValue(snapshot.source_task_id)}。`;
+  }
+  return null;
+}
+
+export function resolveRefreshFailureDisplay<TSnapshot>(
+  displayState: RefreshDisplayState<TSnapshot> | null,
+  requestedTaskPath: string,
+  staleReason: string
+): RefreshDisplayState<TSnapshot> | null {
+  return displayState?.taskPath === requestedTaskPath
+    ? { ...displayState, staleReason }
+    : null;
+}
+
+function formatEnvelopeValue(value: unknown): string {
+  return typeof value === "string" || typeof value === "number"
+    ? String(value)
+    : "未提供";
 }
 
 export class TrailingRefreshScheduler {
