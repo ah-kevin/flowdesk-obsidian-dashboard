@@ -31,6 +31,11 @@ import {
   type SnapshotInvocation,
 } from "./snapshot-invocation";
 import {
+  formatEvidenceSummary,
+  getEvidenceDisplayItems,
+  getEvidenceDisplayState,
+} from "./evidence-presentation";
+import {
   createDashboardViewModel,
   formatNextAction,
   resolveDiagnosticTarget,
@@ -1243,15 +1248,14 @@ function contractRow(container: HTMLElement, label: string, ids?: string[]) {
 }
 
 function evidenceRow(container: HTMLElement, label: string, item?: EvidenceItem) {
-  const exists = Boolean(item?.exists);
-  const status = exists ? "done" : "blocked";
+  const status = getEvidenceDisplayState(item);
   const row = container.createDiv({ cls: "flowdesk-evidence-row" });
   row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${status}`, text: statusSymbol(status) });
   const body = row.createDiv({ cls: "flowdesk-row-body" });
-  const items = item?.items ?? [];
+  const items = getEvidenceDisplayItems(item);
   body.createDiv({
     cls: "flowdesk-main-text",
-    text: `${label}：${exists ? `已提供（${items.length} 项）` : "缺失"}`,
+    text: formatEvidenceSummary(label, item),
   });
   for (const detail of items.slice(0, 2)) {
     body.createDiv({ cls: "flowdesk-subline", text: `- ${detail}` });
