@@ -39,6 +39,7 @@ npm run release:prepare
 
 `release:prepare` 会依次执行：
 
+- `npm test`
 - `npm run build`
 - `npm run typecheck`
 - `npm run check:syntax`
@@ -125,3 +126,33 @@ ln -s "$(pwd)" \
 打开一个 `Tasks/*.md` 或 `TaskNotes/*.md` 任务文件后，执行命令面板里的
 **FlowDesk Dashboard: Show dashboard for current TaskNotes task**，或点击左侧 ribbon
 里的 dashboard 图标。插件会打开右侧面板并显示只读 dashboard。
+
+当前入口仍以正在打开的 TaskNotes task 文件为准；插件不会从 Work Case 猜测任务，也不会
+自行解析 TaskNotes Markdown。
+
+## Snapshot v2 展示语义
+
+侧栏默认按高频决策顺序显示：
+
+1. observation 可信度、snapshot schema 与 SDD profile；
+2. 当前任务、执行阶段、阶段进度与 inline/children 进度；
+3. 首要诊断与 producer 给出的下一动作；
+4. 阶段轨道；
+5. 折叠的 Contract、Inline Execution、Flow Graph、Evidence、Materialization、
+   Child Tasks、Notepad 和完整动作详情。
+
+对 snapshot schema v2：
+
+- `observation.health=healthy` 只有在 schema 为 v2、`source_task_id` 存在且数据不是 stale
+  时，才会被侧栏视为可信健康。
+- inline 模式显示 producer 的显式 TASK 状态和完成数，不用 materialization binding
+  百分比冒充实施进度。
+- semantic 与 inline diagnostic 会显示 code、section/line、excerpt、实际原因和建议修法。
+  “定位”按钮只打开对应 task heading/line，不会改写文件。
+- 同一任务刷新失败时可继续查看上次成功 snapshot，但顶部会标记“旧数据”并显示失败原因；
+  切换任务会立即清空旧 snapshot。
+- 如果返回的 `observation.source_task_id` 与请求任务不一致，该结果会被拒绝展示。
+
+对旧 snapshot：缺少 schema、observation、capabilities 或 source identity 时仍尽量展示已有
+字段，但可信度显示为“观测未知/能力未知”，不会默认显示成绿色 healthy。旧 producer 若只
+提供诊断 code/message，位置和修法会明确标注为“producer 未提供”。
