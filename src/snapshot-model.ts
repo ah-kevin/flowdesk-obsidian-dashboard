@@ -60,6 +60,8 @@ export interface EvidenceItem {
   valid?: boolean;
   items?: string[];
   valid_items?: string[];
+  display_items?: string[];
+  display_order?: string;
 }
 
 interface InlineTaskStatus {

@@ -138,6 +138,38 @@ function shellQuote(value) {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
+// src/evidence-presentation.ts
+function getEvidenceDisplayItems(item) {
+  var _a;
+  if (Array.isArray(item == null ? void 0 : item.display_items)) {
+    return item.display_items;
+  }
+  return (_a = item == null ? void 0 : item.items) != null ? _a : [];
+}
+function getEvidenceDisplayState(item) {
+  if (!(item == null ? void 0 : item.exists)) {
+    return "blocked";
+  }
+  if (item.valid === false) {
+    return "error";
+  }
+  return "done";
+}
+function formatEvidenceSummary(label, item) {
+  var _a, _b;
+  if (!(item == null ? void 0 : item.exists)) {
+    return `${label}\uFF1A\u7F3A\u5931`;
+  }
+  const itemCount = (_b = (_a = item.items) == null ? void 0 : _a.length) != null ? _b : getEvidenceDisplayItems(item).length;
+  if (item.valid === false) {
+    return `${label}\uFF1A\u5B58\u5728\u4F46\u65E0\u6548\uFF08${itemCount} \u9879\uFF09`;
+  }
+  if (item.valid === true) {
+    return `${label}\uFF1A\u6709\u6548\uFF08${itemCount} \u9879\uFF09`;
+  }
+  return `${label}\uFF1A\u5DF2\u63D0\u4F9B\uFF08${itemCount} \u9879\uFF09`;
+}
+
 // src/snapshot-model.ts
 function createDashboardViewModel(snapshot, options = {}) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s;
@@ -1369,16 +1401,14 @@ function contractRow(container, label, ids) {
   row.createSpan({ text: formatIds(ids) });
 }
 function evidenceRow(container, label, item) {
-  var _a;
-  const exists = Boolean(item == null ? void 0 : item.exists);
-  const status = exists ? "done" : "blocked";
+  const status = getEvidenceDisplayState(item);
   const row = container.createDiv({ cls: "flowdesk-evidence-row" });
   row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${status}`, text: statusSymbol(status) });
   const body = row.createDiv({ cls: "flowdesk-row-body" });
-  const items = (_a = item == null ? void 0 : item.items) != null ? _a : [];
+  const items = getEvidenceDisplayItems(item);
   body.createDiv({
     cls: "flowdesk-main-text",
-    text: `${label}\uFF1A${exists ? `\u5DF2\u63D0\u4F9B\uFF08${items.length} \u9879\uFF09` : "\u7F3A\u5931"}`
+    text: formatEvidenceSummary(label, item)
   });
   for (const detail of items.slice(0, 2)) {
     body.createDiv({ cls: "flowdesk-subline", text: `- ${detail}` });
