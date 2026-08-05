@@ -13,10 +13,13 @@ import { existsSync } from "fs";
 import { homedir } from "os";
 import * as path from "path";
 import { promisify } from "util";
+import { createDashboardViewModel } from "./snapshot-model";
 import type {
   ChildTask,
+  DashboardViewModel,
   EvidenceItem,
   ExecutionSnapshot,
+  SnapshotDiagnostic,
 } from "./snapshot-model";
 
 export const FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
@@ -365,12 +368,13 @@ class FlowDeskDashboardView extends ItemView {
       container.createDiv({ cls: "flowdesk-refreshing", text: "正在刷新 snapshot..." });
     }
 
-    this.renderSummary(container, this.snapshot);
-    this.renderFlowGraph(container, this.snapshot);
-    this.renderContract(container, this.snapshot);
-    this.renderTasksOrEvidence(container, this.snapshot);
-    this.renderNotepad(container, this.snapshot);
-    this.renderNextActions(container, this.snapshot);
+    const model = createDashboardViewModel(this.snapshot);
+    this.renderTrustStrip(container, model);
+    this.renderTaskHero(container, model, this.snapshot);
+    this.renderPrimaryDiagnostic(container, model);
+    this.renderPrimaryNextAction(container, model);
+    this.renderStageRail(container, this.snapshot);
+    this.renderDetails(container, this.snapshot, model);
   }
 
   private renderHeader(container: HTMLElement) {
@@ -401,55 +405,260 @@ class FlowDeskDashboardView extends ItemView {
     });
   }
 
-  private renderSummary(container: HTMLElement, snapshot: ExecutionSnapshot) {
-    const section = createSection(container, "Summary（概览）");
-    const grid = section.createDiv({ cls: "flowdesk-summary-grid" });
-    const state = snapshot.state ?? {};
-    const flow = snapshot.flow_graph ?? {};
-    const parent = snapshot.task_graph?.parent ?? {};
-    const counts = snapshot.task_graph?.counts ?? {};
-    const contract = snapshot.spec_contract ?? {};
-    const requirements = contract.requirements ?? {};
-    const scenarios = contract.scenarios ?? {};
-    const contractTasks = contract.tasks ?? {};
-    const progress = computeProgress(snapshot);
+  private renderTrustStrip(container: HTMLElement, model: DashboardViewModel) {
+    const strip = container.createDiv({
+      cls: `flowdesk-trust-strip flowdesk-trust-${model.observation.health}`,
+    });
+    const labels: Record<string, string> = {
+      healthy: "观测健康",
+      degraded: "观测降级",
+      error: "观测异常",
+      unknown: "观测未知",
+    };
+    strip.createSpan({
+      cls: "flowdesk-trust-badge",
+      text: labels[model.observation.health] ?? "观测未知",
+    });
+    strip.createSpan({
+      cls: "flowdesk-trust-contract",
+      text: `${model.schemaLabel} · ${model.compatibility.label}`,
+    });
+    strip.createSpan({
+      cls: "flowdesk-trust-generated",
+      text: `生成于 ${model.observation.generatedAt}`,
+    });
+  }
 
-    summaryRow(grid, "ready", "State", `${state.value ?? "unknown"}${state.read_only ? " (read-only)" : ""}`);
-    summaryRow(grid, "ready", "Task", `${parent.title ?? ""} [${parent.status ?? ""}]`);
-    summaryRow(grid, "ready", "Flow", `${flow.mode ?? ""} / ${flow.current || "none"}`);
-    summaryRow(
-      grid,
-      "running",
-      "Tasks",
-      `${numberValue(counts.total)} total, ${numberValue(counts.ready)} ready, ${numberValue(counts.running)} running, ${numberValue(counts.blocked)} blocked, ${numberValue(counts.done)} done`
+  private renderTaskHero(
+    container: HTMLElement,
+    model: DashboardViewModel,
+    snapshot: ExecutionSnapshot
+  ) {
+    const hero = container.createDiv({ cls: "flowdesk-hero" });
+    const titleRow = hero.createDiv({ cls: "flowdesk-hero-title-row" });
+    titleRow.createDiv({ cls: "flowdesk-hero-title", text: model.hero.title });
+    titleRow.createSpan({
+      cls: `flowdesk-state-pill flowdesk-state-${normalizeStatus(model.hero.status)}`,
+      text: model.hero.status,
+    });
+
+    const metrics = hero.createDiv({ cls: "flowdesk-hero-metrics" });
+    metricCard(metrics, "当前阶段", formatFlowNodeId(model.hero.currentStage));
+    metricCard(metrics, "流程进度", model.hero.progressLabel);
+    metricCard(
+      metrics,
+      model.hero.workProgressKind === "inline" ? "Inline 进度" : "任务进度",
+      model.hero.workProgressLabel
     );
 
-    const progressRow = grid.createDiv({ cls: "flowdesk-summary-row" });
-    progressRow.createSpan({
-      cls: `flowdesk-status-dot flowdesk-status-${progress.status}`,
-      text: "●",
-    });
-    progressRow.createSpan({ cls: "flowdesk-summary-label", text: "Progress:" });
-    const progressWrap = progressRow.createSpan({ cls: "flowdesk-progress-wrap" });
-    if (progress.total) {
-      const bar = progressWrap.createSpan({ cls: "flowdesk-progress-bar" });
-      bar.createSpan({ cls: "flowdesk-progress-fill" }).style.width = `${progress.percent}%`;
+    if (snapshot.state?.blocked_reason) {
+      hero.createDiv({
+        cls: "flowdesk-hero-blocked",
+        text: `阻塞原因：${snapshot.state.blocked_reason}`,
+      });
     }
-    progressWrap.createSpan({
-      text: progress.total
-        ? `${progress.done}/${progress.total} ${progress.unit} (${progress.percent}% complete)`
-        : "No progress data",
+  }
+
+  private renderPrimaryDiagnostic(
+    container: HTMLElement,
+    model: DashboardViewModel
+  ) {
+    const diagnostic = model.primaryDiagnostic;
+    if (!diagnostic) {
+      const empty = container.createDiv({
+        cls: `flowdesk-primary-status ${
+          model.observation.isTrustworthy ? "is-clear" : "is-unknown"
+        }`,
+      });
+      empty.createDiv({ cls: "flowdesk-card-kicker", text: "首要问题" });
+      empty.createDiv({
+        cls: "flowdesk-primary-title",
+        text: model.observation.isTrustworthy
+          ? "未发现合同或执行诊断"
+          : "当前没有可验证的诊断结论",
+      });
+      if (!model.observation.isTrustworthy) {
+        empty.createDiv({
+          cls: "flowdesk-card-copy",
+          text: "观测并非 healthy v2，不能据此判断任务没有问题。",
+        });
+      }
+      return;
+    }
+
+    const card = container.createDiv({ cls: "flowdesk-primary-issue" });
+    card.createDiv({ cls: "flowdesk-card-kicker", text: "首要问题" });
+    card.createDiv({
+      cls: "flowdesk-primary-title",
+      text: diagnostic.message || diagnostic.code,
     });
+    card.createDiv({ cls: "flowdesk-diagnostic-code", text: diagnostic.code });
+    this.renderDiagnosticBody(card, diagnostic);
+  }
 
-    summaryRow(
-      grid,
-      "done",
-      "Spec Contract",
-      `${numberValue(requirements.count)} requirements, ${numberValue(scenarios.count)} scenarios, ${numberValue(contractTasks.count)} tasks`
-    );
+  private renderDiagnosticBody(
+    container: HTMLElement,
+    diagnostic: SnapshotDiagnostic
+  ) {
+    const source = diagnostic.source;
+    if (source) {
+      const location = [
+        source.section ? `§ ${source.section}` : "",
+        source.field ? `字段 ${source.field}` : "",
+        source.line_start ? `第 ${source.line_start} 行` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      if (location) {
+        container.createDiv({ cls: "flowdesk-diagnostic-location", text: location });
+      }
+      if (source.excerpt) {
+        container.createEl("code", {
+          cls: "flowdesk-diagnostic-excerpt",
+          text: source.excerpt,
+        });
+      }
+    }
+    diagnosticRow(container, "原因", diagnostic.reason);
+    diagnosticRow(container, "建议修法", diagnostic.remediation);
+  }
 
-    if (state.blocked_reason) {
-      summaryRow(grid, "blocked", "Blocked", state.blocked_reason);
+  private renderPrimaryNextAction(
+    container: HTMLElement,
+    model: DashboardViewModel
+  ) {
+    const card = container.createDiv({ cls: "flowdesk-primary-action" });
+    card.createDiv({ cls: "flowdesk-card-kicker", text: "下一动作" });
+    const noAction =
+      model.state === "done" && model.observation.isTrustworthy
+        ? "无后续动作"
+        : "snapshot 未提供下一动作";
+    card.createDiv({
+      cls: "flowdesk-primary-title",
+      text: model.nextAction ?? noAction,
+    });
+  }
+
+  private renderStageRail(container: HTMLElement, snapshot: ExecutionSnapshot) {
+    const section = createSection(container, "执行阶段");
+    const rail = section.createDiv({ cls: "flowdesk-stage-rail" });
+    const nodes = snapshot.flow_graph?.nodes ?? [];
+    if (!nodes.length) {
+      rail.createDiv({ cls: "flowdesk-muted", text: "未提供阶段数据。" });
+      return;
+    }
+
+    for (const node of nodes) {
+      const status = normalizeStatus(node.status);
+      const item = rail.createDiv({
+        cls: `flowdesk-stage-item flowdesk-stage-${status}`,
+      });
+      item.createSpan({ cls: "flowdesk-stage-symbol", text: statusSymbol(status) });
+      item.createSpan({
+        cls: "flowdesk-stage-label",
+        text: formatFlowNodeId(node.id) || node.label || "未命名阶段",
+      });
+    }
+  }
+
+  private renderDetails(
+    container: HTMLElement,
+    snapshot: ExecutionSnapshot,
+    model: DashboardViewModel
+  ) {
+    const details = container.createEl("details", { cls: "flowdesk-detail-group" });
+    details.open = model.diagnostics.length > 0;
+    details.createEl("summary", { text: "查看执行详情" });
+    const body = details.createDiv({ cls: "flowdesk-detail-body" });
+
+    this.renderObservationDetails(body, model);
+    this.renderInlineExecution(body, model);
+    this.renderFlowGraph(body, snapshot);
+    this.renderContract(body, snapshot);
+    this.renderTasksOrEvidence(body, snapshot);
+    this.renderMaterialization(body, snapshot);
+    this.renderNotepad(body, snapshot);
+    if (model.diagnostics.length > 1) {
+      this.renderAllDiagnostics(body, model.diagnostics);
+    }
+    this.renderNextActions(body, snapshot);
+  }
+
+  private renderObservationDetails(
+    container: HTMLElement,
+    model: DashboardViewModel
+  ) {
+    const section = createSection(container, "Observation（观测）");
+    const list = section.createDiv({ cls: "flowdesk-contract-list" });
+    contractRow(list, "Source task", [model.observation.sourceTaskId || "未提供"]);
+    contractRow(list, "Profile", [model.compatibility.profile]);
+    if (!model.observation.coverage.length) {
+      list.createDiv({ cls: "flowdesk-muted", text: "Coverage：未提供" });
+      return;
+    }
+    for (const item of model.observation.coverage) {
+      contractRow(list, item.key, [item.value]);
+    }
+  }
+
+  private renderInlineExecution(
+    container: HTMLElement,
+    model: DashboardViewModel
+  ) {
+    const inline = model.inlineProgress;
+    if (!inline) {
+      return;
+    }
+    const section = createSection(container, "Inline Execution");
+    section.createDiv({
+      cls: "flowdesk-main-text",
+      text: `${inline.completed ?? "?"}/${inline.total} TASK · ${inline.status} · ${
+        inline.explicit ? "显式记录" : "推断状态"
+      }`,
+    });
+    const list = section.createDiv({ cls: "flowdesk-inline-task-list" });
+    for (const task of inline.tasks) {
+      const row = list.createDiv({ cls: "flowdesk-inline-task" });
+      row.createSpan({
+        cls: `flowdesk-status-dot flowdesk-status-${normalizeStatus(task.status)}`,
+        text: statusSymbol(normalizeStatus(task.status)),
+      });
+      row.createSpan({ text: `${task.id} · ${task.status}` });
+      if (task.inferred) {
+        row.createSpan({ cls: "flowdesk-inferred-label", text: "推断" });
+      }
+    }
+  }
+
+  private renderMaterialization(
+    container: HTMLElement,
+    snapshot: ExecutionSnapshot
+  ) {
+    const materialization =
+      snapshot.task_materialization ?? snapshot.task_graph?.task_materialization;
+    if (!materialization) {
+      return;
+    }
+    const section = createSection(container, "Materialization（物化）");
+    const list = section.createDiv({ cls: "flowdesk-contract-list" });
+    contractRow(list, "Mode", [materialization.mode ?? "未提供"]);
+    contractRow(list, "Status", [materialization.status ?? "未提供"]);
+    contractRow(list, "Declared", materialization.declared);
+    contractRow(list, "Materialized", materialization.materialized);
+    contractRow(list, "Missing", materialization.missing);
+    contractRow(list, "Conflicts", materialization.conflicts);
+  }
+
+  private renderAllDiagnostics(
+    container: HTMLElement,
+    diagnostics: SnapshotDiagnostic[]
+  ) {
+    const section = createSection(container, `全部诊断（${diagnostics.length}）`);
+    const list = section.createDiv({ cls: "flowdesk-diagnostic-list" });
+    for (const diagnostic of diagnostics) {
+      const item = list.createDiv({ cls: "flowdesk-diagnostic-item" });
+      item.createDiv({ cls: "flowdesk-main-text", text: diagnostic.code });
+      this.renderDiagnosticBody(item, diagnostic);
     }
   }
 
@@ -709,12 +918,16 @@ function createSection(container: HTMLElement, title: string): HTMLElement {
   return section;
 }
 
-function summaryRow(container: HTMLElement, status: string, label: string, value: string) {
-  const row = container.createDiv({ cls: "flowdesk-summary-row" });
-  const normalized = normalizeStatus(status);
-  row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${normalized}`, text: "●" });
-  row.createSpan({ cls: "flowdesk-summary-label", text: `${label}:` });
-  row.createSpan({ cls: "flowdesk-summary-value", text: value });
+function metricCard(container: HTMLElement, label: string, value: string) {
+  const card = container.createDiv({ cls: "flowdesk-metric" });
+  card.createDiv({ cls: "flowdesk-metric-label", text: label });
+  card.createDiv({ cls: "flowdesk-metric-value", text: value });
+}
+
+function diagnosticRow(container: HTMLElement, label: string, value: string) {
+  const row = container.createDiv({ cls: "flowdesk-diagnostic-row" });
+  row.createSpan({ cls: "flowdesk-diagnostic-label", text: `${label}：` });
+  row.createSpan({ text: value });
 }
 
 function contractRow(container: HTMLElement, label: string, ids?: string[]) {
@@ -746,31 +959,18 @@ function evidenceRow(container: HTMLElement, label: string, item?: EvidenceItem)
   }
 }
 
-function computeProgress(snapshot: ExecutionSnapshot) {
-  const counts = snapshot.task_graph?.counts ?? {};
-  const nodes = snapshot.flow_graph?.nodes ?? [];
-  const total = numberValue(counts.total);
-  const done = numberValue(counts.done);
-  const stageTotal = nodes.length;
-  const stageDone = nodes.filter((node) => node.status === "done").length;
-  const progressTotal = total || stageTotal;
-  const progressDone = total ? done : stageDone;
-  const percent = progressTotal ? Math.round((progressDone / progressTotal) * 100) : 0;
-  return {
-    done: progressDone,
-    total: progressTotal,
-    unit: total ? "tasks" : "stages",
-    percent,
-    status: percent >= 100 ? "done" : percent > 0 ? "running" : "blocked",
-  };
-}
-
 function normalizeStatus(status: unknown): string {
   const value = String(status || "unknown").toLowerCase().replace(/_/g, "-");
-  if (["done", "running", "ready", "blocked"].includes(value)) {
+  if (["done", "running", "ready", "blocked", "error", "unknown"].includes(value)) {
     return value;
   }
-  return "blocked";
+  if (value === "complete" || value === "completed") {
+    return "done";
+  }
+  if (value === "in-progress") {
+    return "running";
+  }
+  return "unknown";
 }
 
 function statusSymbol(status: string): string {
@@ -849,6 +1049,7 @@ function formatFlowNodeId(id: unknown): string {
   const labels: Record<string, string> = {
     spec_contract: "规格契约",
     task_breakdown: "任务拆分",
+    task_materialization: "任务物化",
     implementation: "实现",
     verification: "验证",
     delivery: "交付",

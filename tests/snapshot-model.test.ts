@@ -91,3 +91,48 @@ test("首要诊断按 semantic、inline、observation 顺序选择", () => {
     { linkText: "Tasks/A.md#Why", line: 41 }
   );
 });
+
+test("已完成 inline 卡生成阶段与 TASK 概览", () => {
+  const model = createDashboardViewModel({
+    snapshot_schema_version: 2,
+    observation: { health: "healthy", diagnostics: [] },
+    task_graph: {
+      parent: { title: "Dashboard upgrade", status: "done" },
+      counts: { total: 0, done: 0 },
+      inline_execution: {
+        total: 1,
+        completed: 1,
+        status: "complete",
+        explicit: true,
+        statuses: { "TASK-1.1": { status: "done", inferred: false } },
+      },
+    },
+    flow_graph: {
+      current: "delivery",
+      nodes: Array.from({ length: 6 }, (_, index) => ({
+        id: `stage-${index + 1}`,
+        status: "done",
+      })),
+    },
+    next_actions: [],
+  });
+
+  assert.equal(model.hero.progressLabel, "6/6 阶段");
+  assert.equal(model.hero.inlineLabel, "1/1 TASK");
+  assert.equal(model.hero.workProgressKind, "inline");
+  assert.equal(model.nextAction, null);
+});
+
+test("children 卡优先显示子任务计数，不展示 binding 百分比", () => {
+  const model = createDashboardViewModel({
+    task_graph: {
+      counts: { total: 5, done: 3 },
+      task_materialization: { mode: "children", status: "ready" },
+    },
+  });
+
+  assert.equal(model.hero.workProgressKind, "children");
+  assert.equal(model.hero.workProgressLabel, "3/5 子任务");
+  assert.equal(model.hero.inlineLabel, null);
+  assert.doesNotMatch(model.hero.workProgressLabel, /bound/i);
+});

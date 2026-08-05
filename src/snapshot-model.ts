@@ -174,6 +174,15 @@ export interface ExecutionSnapshot {
 export interface DashboardViewModel {
   schemaLabel: string;
   state: string;
+  hero: {
+    title: string;
+    status: string;
+    currentStage: string;
+    progressLabel: string;
+    workProgressKind: "inline" | "children" | "unknown";
+    workProgressLabel: string;
+    inlineLabel: string | null;
+  };
   compatibility: {
     label: string;
     profile: string;
@@ -194,6 +203,7 @@ export interface DashboardViewModel {
   };
   primaryDiagnostic: SnapshotDiagnostic | null;
   diagnostics: SnapshotDiagnostic[];
+  nextAction: string | null;
 }
 
 export function createDashboardViewModel(
@@ -212,10 +222,28 @@ export function createDashboardViewModel(
     ...inlineDiagnostics,
     ...observationDiagnostics,
   ].map(normalizeDiagnostic);
+  const inlineProgress = inlineExecution
+    ? {
+        completed:
+          typeof inlineExecution.completed === "number"
+            ? inlineExecution.completed
+            : null,
+        total: typeof inlineExecution.total === "number" ? inlineExecution.total : 0,
+        status: normalizeText(inlineExecution.status, "unknown"),
+        explicit: inlineExecution.explicit === true,
+        tasks: Object.entries(inlineExecution.statuses ?? {}).map(([id, item]) => ({
+          id,
+          status: normalizeText(item.status, "unknown"),
+          inferred: item.inferred === true,
+        })),
+      }
+    : null;
+  const hero = createHero(snapshot, inlineProgress);
 
   return {
     schemaLabel: schemaVersion === 2 ? "snapshot v2" : "旧版 snapshot",
     state: normalizeText(snapshot.state?.value, "unknown"),
+    hero,
     compatibility,
     observation: {
       health,
@@ -226,28 +254,96 @@ export function createDashboardViewModel(
       ),
       isTrustworthy: schemaVersion === 2 && health === "healthy",
     },
-    inlineProgress: inlineExecution
-      ? {
-          completed:
-            typeof inlineExecution.completed === "number"
-              ? inlineExecution.completed
-              : null,
-          total:
-            typeof inlineExecution.total === "number" ? inlineExecution.total : 0,
-          status: normalizeText(inlineExecution.status, "unknown"),
-          explicit: inlineExecution.explicit === true,
-          tasks: Object.entries(inlineExecution.statuses ?? {}).map(
-            ([id, item]) => ({
-              id,
-              status: normalizeText(item.status, "unknown"),
-              inferred: item.inferred === true,
-            })
-          ),
-        }
-      : null,
+    inlineProgress,
     primaryDiagnostic: diagnostics[0] ?? null,
     diagnostics,
+    nextAction: formatNextAction(snapshot.next_actions?.[0]),
   };
+}
+
+function createHero(
+  snapshot: ExecutionSnapshot,
+  inlineProgress: DashboardViewModel["inlineProgress"]
+): DashboardViewModel["hero"] {
+  const nodes = snapshot.flow_graph?.nodes ?? [];
+  const completedStages = nodes.filter((node) => node.status === "done").length;
+  const progressLabel = nodes.length
+    ? `${completedStages}/${nodes.length} 阶段`
+    : "阶段未知";
+  const parent = snapshot.task_graph?.parent;
+  const counts = snapshot.task_graph?.counts ?? {};
+  const childTotal = finiteNumber(counts.total);
+  const childDone = finiteNumber(counts.done);
+
+  if (inlineProgress) {
+    const completed = inlineProgress.completed ?? "?";
+    const inlineLabel = `${completed}/${inlineProgress.total} TASK`;
+    return {
+      title: normalizeText(parent?.title, "未提供任务标题"),
+      status: normalizeText(parent?.status, normalizeText(snapshot.state?.value, "unknown")),
+      currentStage: normalizeText(snapshot.flow_graph?.current, "未提供"),
+      progressLabel,
+      workProgressKind: "inline",
+      workProgressLabel: inlineLabel,
+      inlineLabel,
+    };
+  }
+
+  const materializationMode = normalizeText(
+    snapshot.task_materialization?.mode,
+    normalizeText(snapshot.task_graph?.task_materialization?.mode, "")
+  );
+  if (materializationMode === "children" || childTotal > 0) {
+    return {
+      title: normalizeText(parent?.title, "未提供任务标题"),
+      status: normalizeText(parent?.status, normalizeText(snapshot.state?.value, "unknown")),
+      currentStage: normalizeText(snapshot.flow_graph?.current, "未提供"),
+      progressLabel,
+      workProgressKind: "children",
+      workProgressLabel: `${childDone}/${childTotal} 子任务`,
+      inlineLabel: null,
+    };
+  }
+
+  return {
+    title: normalizeText(parent?.title, "未提供任务标题"),
+    status: normalizeText(parent?.status, normalizeText(snapshot.state?.value, "unknown")),
+    currentStage: normalizeText(snapshot.flow_graph?.current, "未提供"),
+    progressLabel,
+    workProgressKind: "unknown",
+    workProgressLabel: "任务进度未知",
+    inlineLabel: null,
+  };
+}
+
+function formatNextAction(action?: Record<string, unknown>): string | null {
+  if (!action) {
+    return null;
+  }
+
+  const kind = normalizeText(action.kind, "unknown");
+  const labels: Record<string, string> = {
+    complete_parent_task: "完成父任务",
+    continue_inline_implementation: "继续 inline 实施",
+    create_task_breakdown: "补充任务拆分",
+    dispatch_ready_task: "派发就绪任务",
+    materialize_missing_tasks: "物化缺失任务",
+    reconcile_plan_revision: "对齐计划版本",
+    record_delivery: "记录交付结果",
+    refine_spec_contract: "完善 Spec Contract",
+    refine_task_granularity: "调整任务粒度",
+    resolve_blockers: "处理阻塞项",
+    resolve_inline_execution_conflict: "处理 inline 执行冲突",
+    resolve_materialization_conflict: "处理任务物化冲突",
+    start_implementation: "开始实施",
+    verify_scenarios: "验证验收场景",
+    wait_for_running_task: "等待运行中的任务",
+  };
+  const ids = Array.isArray(action.task_ids)
+    ? action.task_ids.map(String).filter(Boolean)
+    : [];
+  const label = labels[kind] ?? kind;
+  return ids.length ? `${label}：${ids.join("、")}` : label;
 }
 
 export function resolveDiagnosticTarget(
@@ -370,6 +466,10 @@ function normalizeText(value: unknown, fallback: string): string {
 function normalizeOptionalText(value: unknown): string | undefined {
   const normalized = normalizeText(value, "");
   return normalized || undefined;
+}
+
+function finiteNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
