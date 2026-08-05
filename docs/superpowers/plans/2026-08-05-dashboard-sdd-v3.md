@@ -197,4 +197,3 @@ Expected: exit 0。
 - [ ] **Step 5: 创建 feature branch、最终提交、push 与 PR**
 
 分支名使用 `codex/dashboard-sdd-v3`。PR 描述关联 Plugin PR、列出 snapshot contract、刷新/非 task 行为和全部验证；不合并、不发布。
-
