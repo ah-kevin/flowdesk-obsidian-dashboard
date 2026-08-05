@@ -15,6 +15,11 @@ import { homedir } from "os";
 import * as path from "path";
 import { promisify } from "util";
 import {
+  buildSnapshotInvocation,
+  type SnapshotFormat,
+  type SnapshotInvocation,
+} from "./snapshot-invocation";
+import {
   createDashboardViewModel,
   isSnapshotRequestCurrent,
   resolveDiagnosticTarget,
@@ -166,28 +171,12 @@ export default class FlowDeskDashboardPlugin extends Plugin {
   }
 
   async loadSnapshot(taskPath: string): Promise<ExecutionSnapshot> {
-    const flowdeskRoot = this.resolveFlowDeskRoot();
-    const cli = path.join(flowdeskRoot, "bin", "flowdesk-execution-snapshot");
-    const workingDirectory =
-      expandHomePath(this.settings.workingDirectory.trim()) || flowdeskRoot;
-
-    const args = [
-      taskPath,
-      "--working-directory",
-      workingDirectory,
-      "--schema",
-      this.settings.schema.trim() || DEFAULT_SETTINGS.schema,
-    ];
-    args.push("--format", "json");
-    const apiUrl = this.settings.apiUrl.trim();
-    if (apiUrl) {
-      args.splice(1, 0, "--api-url", apiUrl);
-    }
+    const invocation = this.createSnapshotInvocation(taskPath, "json");
 
     let stdout: string;
     try {
-      const result = await execFileAsync(cli, args, {
-        cwd: flowdeskRoot,
+      const result = await execFileAsync(invocation.executable, invocation.args, {
+        cwd: invocation.cwd,
         maxBuffer: MAX_SNAPSHOT_BUFFER,
       });
       stdout = result.stdout;
@@ -201,6 +190,26 @@ export default class FlowDeskDashboardPlugin extends Plugin {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(`Snapshot JSON 解析失败：${message}`);
     }
+  }
+
+  createSnapshotInvocation(
+    taskPath: string,
+    format: SnapshotFormat
+  ): SnapshotInvocation {
+    const flowdeskRoot = this.resolveFlowDeskRoot();
+    const workingDirectory =
+      expandHomePath(this.settings.workingDirectory.trim()) || flowdeskRoot;
+    const apiUrl = this.settings.apiUrl.trim();
+    return buildSnapshotInvocation(
+      {
+        flowdeskRoot,
+        taskPath,
+        workingDirectory,
+        schema: this.settings.schema.trim() || DEFAULT_SETTINGS.schema,
+        apiUrl,
+      },
+      format
+    );
   }
 
   async loadSettings() {

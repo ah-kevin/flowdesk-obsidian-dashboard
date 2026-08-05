@@ -38,8 +38,34 @@ var import_obsidian = require("obsidian");
 var import_child_process = require("child_process");
 var import_fs = require("fs");
 var import_os = require("os");
-var path = __toESM(require("path"));
+var path2 = __toESM(require("path"));
 var import_util = require("util");
+
+// src/snapshot-invocation.ts
+var path = __toESM(require("path"));
+function buildSnapshotInvocation(input, format) {
+  const args = [input.taskPath];
+  if (input.apiUrl) {
+    args.push("--api-url", input.apiUrl);
+  }
+  args.push(
+    "--working-directory",
+    input.workingDirectory,
+    "--schema",
+    input.schema,
+    "--format",
+    format
+  );
+  return {
+    executable: path.join(
+      input.flowdeskRoot,
+      "bin",
+      "flowdesk-execution-snapshot"
+    ),
+    args,
+    cwd: input.flowdeskRoot
+  };
+}
 
 // src/snapshot-model.ts
 function createDashboardViewModel(snapshot, options = {}) {
@@ -388,25 +414,11 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     return (leaf == null ? void 0 : leaf.view) instanceof FlowDeskDashboardView ? leaf.view : null;
   }
   async loadSnapshot(taskPath) {
-    const flowdeskRoot = this.resolveFlowDeskRoot();
-    const cli = path.join(flowdeskRoot, "bin", "flowdesk-execution-snapshot");
-    const workingDirectory = expandHomePath(this.settings.workingDirectory.trim()) || flowdeskRoot;
-    const args = [
-      taskPath,
-      "--working-directory",
-      workingDirectory,
-      "--schema",
-      this.settings.schema.trim() || DEFAULT_SETTINGS.schema
-    ];
-    args.push("--format", "json");
-    const apiUrl = this.settings.apiUrl.trim();
-    if (apiUrl) {
-      args.splice(1, 0, "--api-url", apiUrl);
-    }
+    const invocation = this.createSnapshotInvocation(taskPath, "json");
     let stdout;
     try {
-      const result = await execFileAsync(cli, args, {
-        cwd: flowdeskRoot,
+      const result = await execFileAsync(invocation.executable, invocation.args, {
+        cwd: invocation.cwd,
         maxBuffer: MAX_SNAPSHOT_BUFFER
       });
       stdout = result.stdout;
@@ -419,6 +431,21 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(`Snapshot JSON \u89E3\u6790\u5931\u8D25\uFF1A${message}`);
     }
+  }
+  createSnapshotInvocation(taskPath, format) {
+    const flowdeskRoot = this.resolveFlowDeskRoot();
+    const workingDirectory = expandHomePath(this.settings.workingDirectory.trim()) || flowdeskRoot;
+    const apiUrl = this.settings.apiUrl.trim();
+    return buildSnapshotInvocation(
+      {
+        flowdeskRoot,
+        taskPath,
+        workingDirectory,
+        schema: this.settings.schema.trim() || DEFAULT_SETTINGS.schema,
+        apiUrl
+      },
+      format
+    );
   }
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -439,10 +466,10 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     const candidates = [
       expandHomePath(this.settings.flowdeskRoot.trim()),
       expandHomePath(process.env.FLOWDESK_PLUGIN_ROOT || ""),
-      path.resolve(__dirname, "..", "..")
+      path2.resolve(__dirname, "..", "..")
     ].filter(Boolean);
     for (const candidate of candidates) {
-      const cli = path.join(candidate, "bin", "flowdesk-execution-snapshot");
+      const cli = path2.join(candidate, "bin", "flowdesk-execution-snapshot");
       if ((0, import_fs.existsSync)(cli)) {
         return candidate;
       }
@@ -455,7 +482,7 @@ function expandHomePath(value) {
     return (0, import_os.homedir)();
   }
   if (value.startsWith("~/")) {
-    return path.join((0, import_os.homedir)(), value.slice(2));
+    return path2.join((0, import_os.homedir)(), value.slice(2));
   }
   return value;
 }

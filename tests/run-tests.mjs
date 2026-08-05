@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,21 +13,31 @@ const repositoryRoot = path.resolve(
 const temporaryDirectory = await mkdtemp(
   path.join(tmpdir(), "flowdesk-dashboard-tests-")
 );
-const testBundle = path.join(temporaryDirectory, "snapshot-model.test.mjs");
-
 try {
-  await build({
-    absWorkingDir: repositoryRoot,
-    bundle: true,
-    entryPoints: ["tests/snapshot-model.test.ts"],
-    format: "esm",
-    outfile: testBundle,
-    platform: "node",
-    sourcemap: "inline",
-    target: "node20",
-  });
+  const testFiles = (await readdir(path.join(repositoryRoot, "tests")))
+    .filter((file) => file.endsWith(".test.ts"))
+    .sort();
+  const testBundles = [];
 
-  const result = spawnSync(process.execPath, ["--test", testBundle], {
+  for (const testFile of testFiles) {
+    const testBundle = path.join(
+      temporaryDirectory,
+      testFile.replace(/\.ts$/, ".mjs")
+    );
+    await build({
+      absWorkingDir: repositoryRoot,
+      bundle: true,
+      entryPoints: [path.join("tests", testFile)],
+      format: "esm",
+      outfile: testBundle,
+      platform: "node",
+      sourcemap: "inline",
+      target: "node20",
+    });
+    testBundles.push(testBundle);
+  }
+
+  const result = spawnSync(process.execPath, ["--test", ...testBundles], {
     cwd: repositoryRoot,
     stdio: "inherit",
   });
