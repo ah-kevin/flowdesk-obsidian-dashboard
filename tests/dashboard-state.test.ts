@@ -27,27 +27,35 @@ test("活动文件解析为任务、非任务或空上下文", () => {
   });
 });
 
-test("刷新只观察 v3 root 和当前 snapshot 中的有效 child 路径", () => {
+test("观察当前 task、可选 parent 与 direct children", () => {
   assert.deepEqual(
-    [...collectObservedTaskPaths("Tasks/Parent.md", {
-      task_tree: {
-        root: { id: "Tasks/Parent.md" },
+    [
+      ...collectObservedTaskPaths("Tasks/Child.md", {
+        current_task: { id: "Tasks/Child.md" },
+        parent: { id: "Tasks/Root.md" },
         children: [
-          { id: "Tasks/Child A.md" },
-          { id: "TaskNotes/Child B.md" },
+          { id: "Tasks/Grandchild.md" },
+          { id: "TaskNotes/Grandchild B.md" },
           { id: "Notes/Not a task.md" },
-          { id: "Tasks/Child A.md" },
+          { id: "Tasks/Grandchild.md" },
         ],
-      },
-    })],
-    ["Tasks/Parent.md", "Tasks/Child A.md", "TaskNotes/Child B.md"]
+      }),
+    ],
+    [
+      "Tasks/Child.md",
+      "Tasks/Root.md",
+      "Tasks/Grandchild.md",
+      "TaskNotes/Grandchild B.md",
+    ]
   );
 });
 
-test("v3 snapshot 缺少 root 对象时仍安全观察 children", () => {
+test("task-centric snapshot 缺少 parent 时仍安全观察当前 task 和 children", () => {
   assert.deepEqual(
     [...collectObservedTaskPaths("Tasks/Parent.md", {
-      task_tree: { children: [{ id: "Tasks/Child.md" }] },
+      current_task: { id: "Tasks/Parent.md" },
+      parent: null,
+      children: [{ id: "Tasks/Child.md" }],
     })],
     ["Tasks/Parent.md", "Tasks/Child.md"]
   );
@@ -84,11 +92,12 @@ test("连续调度只执行最后一次刷新，手动 flush 立即执行", () =
   assert.equal(pending, null);
 });
 
-test("同任务刷新保持详情展开选择，切换任务恢复诊断默认值", () => {
-  assert.equal(resolveDetailsOpen(true, false, 0), true);
-  assert.equal(resolveDetailsOpen(false, false, 3), false);
-  assert.equal(resolveDetailsOpen(false, true, 2), true);
-  assert.equal(resolveDetailsOpen(true, true, 0), false);
+test("同任务刷新保持详情选择，切换 task 时按 leaf 与诊断默认展开", () => {
+  assert.equal(resolveDetailsOpen(true, false, 0, true), true);
+  assert.equal(resolveDetailsOpen(false, false, 3, false), false);
+  assert.equal(resolveDetailsOpen(false, true, 0, true), false);
+  assert.equal(resolveDetailsOpen(false, true, 0, false), true);
+  assert.equal(resolveDetailsOpen(false, true, 1, true), true);
 });
 
 test("请求必须同时匹配任务路径与 selection revision", () => {

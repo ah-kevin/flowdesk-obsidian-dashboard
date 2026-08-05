@@ -602,7 +602,12 @@ class FlowDeskDashboardView extends ItemView {
   private renderDetails(container: HTMLElement, model: DashboardViewModel) {
     const details = container.createEl("details", { cls: "flowdesk-detail-group" });
     if (!this.detailsOpenInitialized) {
-      this.detailsOpen = resolveDetailsOpen(this.detailsOpen, true, model.diagnostics.length);
+      this.detailsOpen = resolveDetailsOpen(
+        this.detailsOpen,
+        true,
+        model.diagnostics.length,
+        model.currentTask.hasChildren
+      );
       this.detailsOpenInitialized = true;
     }
     details.open = this.detailsOpen;

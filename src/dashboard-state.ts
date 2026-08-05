@@ -9,10 +9,9 @@ export interface SnapshotRequestIdentity {
 }
 
 interface ObservedTaskSnapshot {
-  task_tree?: {
-    root?: { id?: string };
-    children?: Array<{ id?: string }>;
-  };
+  current_task?: { id?: string };
+  parent?: { id?: string } | null;
+  children?: Array<{ id?: string }>;
 }
 
 type ScheduleTimer = (callback: () => void, delayMs: number) => unknown;
@@ -51,16 +50,17 @@ export function isCurrentSnapshotRequest(
 }
 
 export function collectObservedTaskPaths(
-  parentTaskPath: string,
+  currentTaskPath: string,
   snapshot?: ObservedTaskSnapshot | null
 ): Set<string> {
   const paths = new Set<string>();
-  if (isTaskPath(parentTaskPath)) {
-    paths.add(parentTaskPath);
+  if (isTaskPath(currentTaskPath)) {
+    paths.add(currentTaskPath);
   }
   const observed = [
-    snapshot?.task_tree?.root,
-    ...(snapshot?.task_tree?.children ?? []),
+    snapshot?.current_task,
+    snapshot?.parent,
+    ...(snapshot?.children ?? []),
   ];
   for (const task of observed) {
     if (task?.id && isTaskPath(task.id)) {
@@ -73,9 +73,13 @@ export function collectObservedTaskPaths(
 export function resolveDetailsOpen(
   previousOpen: boolean,
   taskChanged: boolean,
-  diagnosticCount: number
+  diagnosticCount: number,
+  hasChildren: boolean
 ): boolean {
-  return taskChanged ? diagnosticCount > 0 : previousOpen;
+  if (!taskChanged) {
+    return previousOpen;
+  }
+  return diagnosticCount > 0 || !hasChildren;
 }
 
 export class TrailingRefreshScheduler {
