@@ -57,15 +57,16 @@ function resolveDashboardContext(activePath, previousTaskPath) {
 function isCurrentSnapshotRequest(request, context, selectionRevision) {
   return context.kind === "task" && request.taskPath === context.taskPath && request.selectionRevision === selectionRevision;
 }
-function collectObservedTaskPaths(parentTaskPath, snapshot) {
-  var _a, _b, _c;
+function collectObservedTaskPaths(currentTaskPath, snapshot) {
+  var _a;
   const paths = /* @__PURE__ */ new Set();
-  if (isTaskPath(parentTaskPath)) {
-    paths.add(parentTaskPath);
+  if (isTaskPath(currentTaskPath)) {
+    paths.add(currentTaskPath);
   }
   const observed = [
-    (_a = snapshot == null ? void 0 : snapshot.task_tree) == null ? void 0 : _a.root,
-    ...(_c = (_b = snapshot == null ? void 0 : snapshot.task_tree) == null ? void 0 : _b.children) != null ? _c : []
+    snapshot == null ? void 0 : snapshot.current_task,
+    snapshot == null ? void 0 : snapshot.parent,
+    ...(_a = snapshot == null ? void 0 : snapshot.children) != null ? _a : []
   ];
   for (const task of observed) {
     if ((task == null ? void 0 : task.id) && isTaskPath(task.id)) {
@@ -74,8 +75,11 @@ function collectObservedTaskPaths(parentTaskPath, snapshot) {
   }
   return paths;
 }
-function resolveDetailsOpen(previousOpen, taskChanged, diagnosticCount) {
-  return taskChanged ? diagnosticCount > 0 : previousOpen;
+function resolveDetailsOpen(previousOpen, taskChanged, diagnosticCount, hasChildren) {
+  if (!taskChanged) {
+    return previousOpen;
+  }
+  return diagnosticCount > 0 || !hasChildren;
 }
 var TrailingRefreshScheduler = class {
   constructor(callback, delayMs = 500, scheduleTimer = (callback2, delayMs2) => globalThis.setTimeout(callback2, delayMs2), cancelTimer = (handle) => globalThis.clearTimeout(handle)) {
@@ -158,90 +162,100 @@ function formatEvidenceSummary(label, health) {
 
 // src/snapshot-model.ts
 function createDashboardViewModel(value, options = {}) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L;
   const snapshot = isRecord(value) ? value : {};
-  const supported = snapshot.snapshot_schema_version === 3;
-  const root = (_b = (_a = snapshot.task_tree) == null ? void 0 : _a.root) != null ? _b : {};
-  const counts = (_d = (_c = snapshot.task_tree) == null ? void 0 : _c.counts) != null ? _d : {};
-  const rollup = (_e = snapshot.rollup) != null ? _e : {};
+  const schemaSupported = snapshot.snapshot_schema_version === 3;
+  const modelSupported = snapshot.snapshot_model === "task-centric";
+  const currentTask = (_a = snapshot.current_task) != null ? _a : {};
+  const currentTaskId = normalizeText(
+    currentTask.id,
+    normalizeText(snapshot.source_task_id, "")
+  );
+  const rollup = (_b = snapshot.rollup) != null ? _b : {};
   const staleReason = normalizeText(options.staleReason, "");
   const sourceIdentity = validateSnapshotSource(
     snapshot,
     normalizeText(options.expectedTaskPath, "")
   );
   const observationHealth = normalizeObservationHealth(
-    (_f = snapshot.observation) == null ? void 0 : _f.health
+    (_c = snapshot.observation) == null ? void 0 : _c.health
   );
-  const sourceIdentityMatch = typeof ((_g = snapshot.observation) == null ? void 0 : _g.source_identity_match) === "boolean" ? snapshot.observation.source_identity_match : "unknown";
-  const isTrustworthy = supported && observationHealth === "healthy" && ((_h = snapshot.observation) == null ? void 0 : _h.parent) === "observed" && ((_i = snapshot.observation) == null ? void 0 : _i.children) === "observed" && ((_j = snapshot.observation) == null ? void 0 : _j.tasknotes_api) === "ok" && sourceIdentityMatch === true && sourceIdentity === true && !staleReason;
-  const rootId = normalizeText(root.id, normalizeText(snapshot.source_task_id, ""));
-  const children = ((_l = (_k = snapshot.task_tree) == null ? void 0 : _k.children) != null ? _l : []).map(
-    (child) => {
-      var _a2;
-      return createChildViewModel(child, (_a2 = snapshot.evidence) == null ? void 0 : _a2.children);
-    }
+  const sourceIdentityMatch = typeof ((_d = snapshot.observation) == null ? void 0 : _d.source_identity_match) === "boolean" ? snapshot.observation.source_identity_match : "unknown";
+  const parentObserved = ((_e = snapshot.observation) == null ? void 0 : _e.parent) === "observed" || ((_f = snapshot.observation) == null ? void 0 : _f.parent) === "not_applicable";
+  const isTrustworthy = schemaSupported && modelSupported && observationHealth === "healthy" && ((_g = snapshot.observation) == null ? void 0 : _g.current_task) === "observed" && parentObserved && ((_h = snapshot.observation) == null ? void 0 : _h.children) === "observed" && ((_i = snapshot.observation) == null ? void 0 : _i.tasknotes_api) === "ok" && sourceIdentityMatch === true && ((_j = snapshot.observation) == null ? void 0 : _j.stale) === false && sourceIdentity === true && !staleReason;
+  const evidence = normalizeEvidenceHealth(snapshot.evidence);
+  const diagnostics = ((_k = snapshot.diagnostics) != null ? _k : []).map(
+    (diagnostic) => normalizeDiagnostic(diagnostic, currentTaskId)
   );
-  const diagnostics = ((_m = snapshot.diagnostics) != null ? _m : []).map(
-    (diagnostic) => normalizeDiagnostic(diagnostic, rootId)
+  const children = ((_l = snapshot.children) != null ? _l : []).map(
+    (child) => createChildViewModel(child)
   );
-  const total = finiteNumber(counts.total);
-  const trustedDone = finiteNumber(counts.trusted_done);
-  const blockedCount = finiteNumber(counts.blocked);
   return {
-    errorCode: supported ? null : "unsupported_snapshot_schema",
-    schemaLabel: supported ? "snapshot v3" : "\u4E0D\u652F\u6301\u7684 snapshot schema",
-    hero: {
-      title: normalizeText(root.title, "\u672A\u63D0\u4F9B\u4EFB\u52A1\u6807\u9898"),
-      status: normalizeText(root.status, "unknown"),
-      priority: normalizeText(root.priority, "\u672A\u63D0\u4F9B"),
-      rollupLabel: formatRollupState(rollup.state),
-      workProgressLabel: `${trustedDone}/${total} \u5B50\u4EFB\u52A1\u53EF\u4FE1\u5B8C\u6210`,
-      trustedDone,
-      total,
-      blockedCount
+    errorCode: !schemaSupported ? "unsupported_snapshot_schema" : !modelSupported ? "unsupported_snapshot_model" : null,
+    schemaSupported,
+    modelSupported,
+    schemaLabel: schemaSupported && modelSupported ? "snapshot v3 \xB7 task-centric" : "\u4E0D\u652F\u6301\u7684 snapshot \u6A21\u578B",
+    currentTask: {
+      id: currentTaskId,
+      title: normalizeText(currentTask.title, "\u672A\u63D0\u4F9B\u4EFB\u52A1\u6807\u9898"),
+      status: normalizeText(currentTask.status, "unknown"),
+      priority: normalizeText(currentTask.priority, "\u672A\u63D0\u4F9B"),
+      isBlocked: currentTask.is_blocked === true,
+      blockedBy: ((_m = currentTask.blocked_by) != null ? _m : []).map(normalizeBlockedBy).filter(Boolean),
+      parentId: typeof currentTask.parent_id === "string" ? currentTask.parent_id : null,
+      hasChildren: currentTask.has_children === true,
+      rollupState: normalizeText(currentTask.rollup_state, "unknown"),
+      trustedDone: currentTask.trusted_done === true,
+      evidenceHealth: evidence
     },
-    root: {
-      id: rootId,
-      title: normalizeText(root.title, "\u672A\u63D0\u4F9B\u4EFB\u52A1\u6807\u9898"),
-      status: normalizeText(root.status, "unknown"),
-      priority: normalizeText(root.priority, "\u672A\u63D0\u4F9B"),
-      evidenceHealth: normalizeEvidenceHealth((_n = snapshot.evidence) == null ? void 0 : _n.root)
-    },
+    parent: normalizeParent(snapshot.parent),
     children,
     rollup: {
       state: normalizeText(rollup.state, "unknown"),
+      trustedDone: rollup.trusted_done === true,
+      hasChildren: rollup.has_children === true,
+      childrenTotal: finiteNumber(rollup.children_total),
+      childrenTrustedDone: finiteNumber(rollup.children_trusted_done),
       childrenComplete: rollup.children_complete === true,
-      trustedChildrenComplete: rollup.trusted_children_complete === true,
-      blockedChildren: (_o = rollup.blocked_children) != null ? _o : [],
-      incompleteChildren: (_p = rollup.incomplete_children) != null ? _p : [],
-      contradictions: (_q = rollup.contradictions) != null ? _q : []
+      blockedChildren: (_n = rollup.blocked_children) != null ? _n : [],
+      incompleteChildren: (_o = rollup.incomplete_children) != null ? _o : [],
+      contradictions: (_p = rollup.contradictions) != null ? _p : []
     },
     contract: {
-      version: normalizeText((_r = snapshot.contract) == null ? void 0 : _r.version, "\u672A\u63D0\u4F9B"),
-      role: normalizeText((_s = snapshot.contract) == null ? void 0 : _s.role, "\u672A\u63D0\u4F9B"),
-      semanticStatus: normalizeText((_t = snapshot.contract) == null ? void 0 : _t.semantic_status, "unknown"),
-      requirements: (_v = (_u = snapshot.contract) == null ? void 0 : _u.requirements) != null ? _v : [],
-      scenarios: (_x = (_w = snapshot.contract) == null ? void 0 : _w.scenarios) != null ? _x : [],
-      overallAcceptance: (_z = (_y = snapshot.contract) == null ? void 0 : _y.overall_acceptance) != null ? _z : []
+      version: normalizeText((_q = snapshot.contract) == null ? void 0 : _q.version, "\u672A\u63D0\u4F9B"),
+      goal: normalizeText((_r = snapshot.contract) == null ? void 0 : _r.goal, "\u672A\u63D0\u4F9B"),
+      scope: {
+        included: ((_u = (_t = (_s = snapshot.contract) == null ? void 0 : _s.scope) == null ? void 0 : _t.included) != null ? _u : []).map(String),
+        excluded: ((_x = (_w = (_v = snapshot.contract) == null ? void 0 : _v.scope) == null ? void 0 : _w.excluded) != null ? _x : []).map(String)
+      },
+      semanticStatus: normalizeText(
+        (_y = snapshot.contract) == null ? void 0 : _y.semantic_status,
+        "unknown"
+      ),
+      requirements: (_A = (_z = snapshot.contract) == null ? void 0 : _z.requirements) != null ? _A : [],
+      scenarios: (_C = (_B = snapshot.contract) == null ? void 0 : _B.scenarios) != null ? _C : [],
+      acceptance: (_E = (_D = snapshot.contract) == null ? void 0 : _D.acceptance) != null ? _E : []
     },
+    evidence,
     observation: {
       health: observationHealth,
-      parent: normalizeText((_A = snapshot.observation) == null ? void 0 : _A.parent, "unknown"),
-      children: normalizeText((_B = snapshot.observation) == null ? void 0 : _B.children, "unknown"),
-      tasknotesApi: normalizeText((_C = snapshot.observation) == null ? void 0 : _C.tasknotes_api, "unknown"),
+      currentTask: normalizeText((_F = snapshot.observation) == null ? void 0 : _F.current_task, "unknown"),
+      parent: normalizeText((_G = snapshot.observation) == null ? void 0 : _G.parent, "unknown"),
+      children: normalizeText((_H = snapshot.observation) == null ? void 0 : _H.children, "unknown"),
+      tasknotesApi: normalizeText((_I = snapshot.observation) == null ? void 0 : _I.tasknotes_api, "unknown"),
       sourceIdentityMatch,
       sourceTaskId: normalizeText(snapshot.source_task_id, ""),
       generatedAt: normalizeText(snapshot.generated_at, "\u672A\u63D0\u4F9B"),
       isTrustworthy,
       trustMessage: isTrustworthy ? "\u89C2\u6D4B\u53EF\u4FE1" : "\u89C2\u6D4B\u4E0D\u53EF\u4FE1\uFF0C\u65E0\u6CD5\u5224\u65AD\u4EFB\u52A1\u662F\u5426\u6B63\u5E38",
-      isStale: Boolean(staleReason),
+      isStale: Boolean(staleReason) || ((_J = snapshot.observation) == null ? void 0 : _J.stale) === true,
       staleReason,
       loadedAt: normalizeText(options.loadedAt, "\u672A\u63D0\u4F9B"),
       sourceIdentity
     },
-    primaryDiagnostic: (_D = diagnostics[0]) != null ? _D : null,
+    primaryDiagnostic: (_K = diagnostics[0]) != null ? _K : null,
     diagnostics,
-    nextAction: formatNextAction((_E = snapshot.next_actions) == null ? void 0 : _E[0])
+    nextAction: formatNextAction((_L = snapshot.next_actions) == null ? void 0 : _L[0])
   };
 }
 function validateSnapshotSource(value, expectedTaskPath) {
@@ -257,12 +271,12 @@ function formatRollupState(value) {
   var _a;
   const state = normalizeText(value, "unknown");
   const labels = {
-    running: "\u5B50\u4EFB\u52A1\u8FDB\u884C\u4E2D",
+    running: "\u4EFB\u52A1\u8FDB\u884C\u4E2D",
     blocked: "\u5B58\u5728\u963B\u585E\u5B50\u4EFB\u52A1",
-    awaiting_parent_verification: "\u7B49\u5F85\u7236\u4EFB\u52A1\u6574\u4F53\u9A8C\u8BC1",
+    awaiting_current_verification: "\u7B49\u5F85\u5F53\u524D\u4EFB\u52A1\u9A8C\u8BC1",
     inconsistent: "\u7236\u5B50\u72B6\u6001\u77DB\u76FE",
     contract_invalid: "\u4EFB\u52A1\u5408\u540C\u65E0\u6548",
-    done: "\u6574\u4F53\u5B8C\u6210",
+    done: "\u4EFB\u52A1\u53EF\u4FE1\u5B8C\u6210",
     unknown: "\u6C47\u603B\u72B6\u6001\u672A\u77E5"
   };
   return (_a = labels[state]) != null ? _a : state;
@@ -282,6 +296,20 @@ function formatChildEvidenceHealth(value) {
   }
   return labels[normalizeEvidenceValue(value)];
 }
+function formatCurrentTaskProgress(input) {
+  if (input.hasChildren) {
+    return `${input.childrenTrustedDone}/${input.childrenTotal} \u4E2A\u76F4\u63A5\u5B50\u4EFB\u52A1\u53EF\u4FE1\u5B8C\u6210`;
+  }
+  const acceptanceChecked = input.acceptance.filter(
+    (item) => item.checked === true
+  ).length;
+  const evidenceValid = [
+    input.evidence.execution,
+    input.evidence.verification,
+    input.evidence.delivery
+  ].filter((health) => health === "valid").length;
+  return `\u81EA\u8EAB\u9A8C\u6536 ${acceptanceChecked}/${input.acceptance.length} \xB7 \u8BC1\u636E ${evidenceValid}/3`;
+}
 function formatNextAction(action) {
   var _a;
   if (!action) {
@@ -293,11 +321,11 @@ function formatNextAction(action) {
   }
   const kind = normalizeText(action.kind, "unknown");
   const labels = {
-    continue_child_work: "\u7EE7\u7EED\u5F53\u524D\u5B50\u4EFB\u52A1",
-    resolve_child_blockers: "\u5904\u7406\u5B50\u4EFB\u52A1\u963B\u585E",
-    complete_parent_verification: "\u5B8C\u6210\u7236\u4EFB\u52A1\u6574\u4F53\u9A8C\u8BC1",
+    continue_current_task: "\u7EE7\u7EED\u5F53\u524D\u4EFB\u52A1",
+    resolve_child_blockers: "\u5904\u7406\u76F4\u63A5\u5B50\u4EFB\u52A1\u963B\u585E",
+    complete_current_verification: "\u5B8C\u6210\u5F53\u524D\u4EFB\u52A1\u9A8C\u8BC1",
     resolve_contradictions: "\u5904\u7406\u7236\u5B50\u72B6\u6001\u77DB\u76FE",
-    repair_contract: "\u4FEE\u590D\u4EFB\u52A1\u5408\u540C"
+    repair_contract: "\u4FEE\u590D\u5F53\u524D\u4EFB\u52A1\u5408\u540C"
   };
   const taskIds = Array.isArray(action.task_ids) ? action.task_ids.map(String).filter(Boolean) : [];
   const label = (_a = labels[kind]) != null ? _a : kind;
@@ -312,27 +340,33 @@ function resolveDiagnosticTarget(taskPath, source) {
     editorLine: line === null ? null : line - 1
   };
 }
-function createChildViewModel(child, evidenceByChild) {
-  var _a, _b, _c, _d;
+function createChildViewModel(child) {
+  var _a;
   const id = normalizeText(child.id, "");
-  const childEvidence = (_a = child.evidence_health) != null ? _a : evidenceByChild == null ? void 0 : evidenceByChild[id];
   return {
     id,
     title: normalizeText(child.title, id || "\u672A\u547D\u540D\u5B50\u4EFB\u52A1"),
     status: normalizeText(child.status, "unknown"),
     priority: normalizeText(child.priority, "\u672A\u63D0\u4F9B"),
     isBlocked: child.is_blocked === true,
-    blockedBy: ((_b = child.blocked_by) != null ? _b : []).map(normalizeBlockedBy).filter(Boolean),
+    blockedBy: ((_a = child.blocked_by) != null ? _a : []).map(normalizeBlockedBy).filter(Boolean),
     goal: normalizeText(child.goal, "\u672A\u63D0\u4F9B"),
-    covers: ((_c = child.covers) != null ? _c : []).map(String),
-    acceptance: ((_d = child.acceptance) != null ? _d : []).map((item) => ({
-      text: normalizeText(item.text, "\u672A\u63D0\u4F9B"),
-      checked: item.checked === true,
-      source: item.source
-    })),
+    hasChildren: child.has_children === true,
+    rollupState: normalizeText(child.rollup_state, "unknown"),
     semanticStatus: normalizeText(child.semantic_status, "unknown"),
-    evidenceHealth: normalizeEvidenceHealth(childEvidence),
-    trustedDone: child.trusted_done === true
+    evidenceHealth: normalizeEvidenceHealth(child.evidence_health),
+    trustedDone: child.trusted_done === true,
+    primaryDiagnostic: child.primary_diagnostic ? normalizeDiagnostic(child.primary_diagnostic, id) : null
+  };
+}
+function normalizeParent(parent) {
+  if (!parent) {
+    return null;
+  }
+  return {
+    id: normalizeText(parent.id, ""),
+    title: normalizeText(parent.title, "\u672A\u547D\u540D\u7236\u4EFB\u52A1"),
+    status: normalizeText(parent.status, "unknown")
   };
 }
 function normalizeDiagnostic(value, fallbackTaskId) {
@@ -714,17 +748,20 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       container.createDiv({ cls: "flowdesk-error", text: "Dashboard \u53EA\u652F\u6301 snapshot schema 3\u3002" });
       return;
     }
+    this.renderBreadcrumb(container, model);
     this.renderTrustStrip(container, model);
-    this.renderRootHero(container, model);
+    this.renderCurrentTaskHero(container, model);
     this.renderPrimaryDiagnostic(container, model);
     this.renderNextAction(container, model);
-    this.renderChildren(container, model.children);
+    if (model.currentTask.hasChildren) {
+      this.renderChildren(container, model);
+    }
     this.renderDetails(container, model);
   }
   renderHeader(container) {
     const header = container.createDiv({ cls: "flowdesk-dashboard-header" });
     const title = header.createDiv();
-    title.createDiv({ cls: "flowdesk-dashboard-title", text: "FlowDesk SDD v3 Dashboard" });
+    title.createDiv({ cls: "flowdesk-dashboard-title", text: "FlowDesk \u5F53\u524D\u4EFB\u52A1 Dashboard" });
     title.createDiv({
       cls: "flowdesk-dashboard-path",
       text: this.context.kind === "task" ? this.context.taskPath : this.context.kind === "non-task" ? this.context.activePath : "\u672A\u9009\u62E9\u4EFB\u52A1"
@@ -744,6 +781,23 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     const refresh = toolbar.createEl("button", { text: this.loading ? "\u5237\u65B0\u4E2D" : "\u5237\u65B0" });
     refresh.disabled = this.loading;
     refresh.addEventListener("click", () => void this.refreshCurrentTask());
+  }
+  renderBreadcrumb(container, model) {
+    if (!model.parent) {
+      return;
+    }
+    const breadcrumb = container.createDiv({ cls: "flowdesk-breadcrumb" });
+    const parent = breadcrumb.createEl("button", { text: model.parent.title });
+    parent.addEventListener("click", () => {
+      var _a, _b;
+      void this.app.workspace.openLinkText(
+        (_b = (_a = model.parent) == null ? void 0 : _a.id) != null ? _b : "",
+        model.currentTask.id,
+        false
+      );
+    });
+    breadcrumb.createSpan({ text: "/" });
+    breadcrumb.createSpan({ cls: "flowdesk-breadcrumb-current", text: model.currentTask.title });
   }
   renderNonTaskState(container, context) {
     const card = container.createDiv({ cls: "flowdesk-context-pause" });
@@ -773,21 +827,34 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       strip.createDiv({ cls: "flowdesk-stale-reason", text: `\u5237\u65B0\u5931\u8D25\uFF1A${model.observation.staleReason}` });
     }
   }
-  renderRootHero(container, model) {
-    const hero = container.createDiv({ cls: "flowdesk-hero" });
-    hero.createDiv({ cls: "flowdesk-card-kicker", text: "Root task" });
+  renderCurrentTaskHero(container, model) {
+    const hero = container.createDiv({ cls: "flowdesk-current-task-hero" });
+    hero.createDiv({ cls: "flowdesk-card-kicker", text: "\u5F53\u524D\u4EFB\u52A1" });
     const title = hero.createDiv({ cls: "flowdesk-hero-title-row" });
-    title.createDiv({ cls: "flowdesk-hero-title", text: model.hero.title });
+    title.createDiv({ cls: "flowdesk-hero-title", text: model.currentTask.title });
     title.createSpan({
-      cls: `flowdesk-state-pill is-${normalizeStatus(model.hero.status)}`,
-      text: formatStatusLabel(model.hero.status)
+      cls: `flowdesk-state-pill is-${normalizeStatus(model.currentTask.status)}`,
+      text: formatStatusLabel(model.currentTask.status)
     });
     const metrics = hero.createDiv({ cls: "flowdesk-hero-metrics" });
-    metricCard(metrics, "\u6574\u4F53\u6C47\u603B", model.hero.rollupLabel);
-    metricCard(metrics, "\u53EF\u4FE1\u8FDB\u5EA6", model.hero.workProgressLabel);
-    metricCard(metrics, "Priority", formatPriority(model.hero.priority));
-    if (model.hero.blockedCount > 0) {
-      hero.createDiv({ cls: "flowdesk-warning", text: `${model.hero.blockedCount} \u4E2A child \u5904\u4E8E\u963B\u585E\u72B6\u6001` });
+    metricCard(metrics, "\u5F53\u524D gate", formatRollupState(model.currentTask.rollupState));
+    metricCard(
+      metrics,
+      "\u53EF\u4FE1\u8FDB\u5EA6",
+      formatCurrentTaskProgress({
+        hasChildren: model.currentTask.hasChildren,
+        childrenTrustedDone: model.rollup.childrenTrustedDone,
+        childrenTotal: model.rollup.childrenTotal,
+        acceptance: model.contract.acceptance,
+        evidence: model.evidence
+      })
+    );
+    metricCard(metrics, "Priority", formatPriority(model.currentTask.priority));
+    if (model.currentTask.isBlocked) {
+      hero.createDiv({
+        cls: "flowdesk-warning",
+        text: model.currentTask.blockedBy.length ? `\u5F53\u524D\u4EFB\u52A1\u88AB\u963B\u585E\uFF1A${model.currentTask.blockedBy.join("\u3001")}` : "\u5F53\u524D\u4EFB\u52A1\u5904\u4E8E\u963B\u585E\u72B6\u6001"
+      });
     }
   }
   renderPrimaryDiagnostic(container, model) {
@@ -849,13 +916,26 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     const card = container.createDiv({ cls: "flowdesk-primary-action" });
     card.createDiv({ cls: "flowdesk-card-kicker", text: "\u4E0B\u4E00\u52A8\u4F5C" });
     card.createDiv({ cls: "flowdesk-primary-title", text: (_a = model.nextAction) != null ? _a : "snapshot \u672A\u63D0\u4F9B\u4E0B\u4E00\u52A8\u4F5C" });
+    const copy = card.createEl("button", { text: "\u590D\u5236\u5F53\u524D\u4EFB\u52A1 CLI" });
+    copy.addEventListener("click", async () => {
+      try {
+        await this.plugin.copyDashboardCommand(model.currentTask.id);
+        new import_obsidian.Notice("\u5F53\u524D\u4EFB\u52A1 CLI \u547D\u4EE4\u5DF2\u590D\u5236");
+      } catch (error) {
+        new import_obsidian.Notice(`\u65E0\u6CD5\u590D\u5236 CLI \u547D\u4EE4\uFF1A${String(error)}`);
+      }
+    });
   }
-  renderChildren(container, children) {
-    const section = createSection(container, `Children review\uFF08${children.length}\uFF09`);
-    if (!children.length) {
-      section.createDiv({ cls: "flowdesk-muted", text: "\u5F53\u524D root \u6CA1\u6709 child\u3002" });
-      return;
-    }
+  renderChildren(container, model) {
+    const children = model.children;
+    const section = createSection(container, `\u76F4\u63A5\u5B50\u4EFB\u52A1\uFF08${children.length}\uFF09`);
+    section.addClass("flowdesk-child-rollup");
+    childMeta(
+      section,
+      "\u53EF\u4FE1\u8FDB\u5EA6",
+      `${model.rollup.childrenTrustedDone}/${model.rollup.childrenTotal}`
+    );
+    childMeta(section, "\u6C47\u603B\u72B6\u6001", formatRollupState(model.rollup.state));
     const list = section.createDiv({ cls: "flowdesk-child-list" });
     for (const child of children) {
       const card = list.createDiv({ cls: `flowdesk-child-card${child.isBlocked ? " is-blocked" : ""}` });
@@ -867,26 +947,33 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       card.createDiv({ cls: "flowdesk-child-goal", text: child.goal });
       childMeta(card, "\u72B6\u6001", `${formatStatusLabel(child.status)}${child.trustedDone ? " \xB7 \u53EF\u4FE1\u5B8C\u6210" : ""}`);
       childMeta(card, "Blocked by", child.blockedBy.length ? child.blockedBy.join("\u3001") : "\u65E0");
-      childMeta(card, "Covers", child.covers.length ? child.covers.join("\u3001") : "\u65E0");
+      childMeta(card, "\u4E0B\u4E00\u5C42", child.hasChildren ? "\u6709 direct children" : "leaf task");
+      childMeta(card, "\u6C47\u603B", formatRollupState(child.rollupState));
       childMeta(card, "\u8BC1\u636E", formatChildEvidenceHealth(child.evidenceHealth));
-      const acceptance = card.createDiv({ cls: "flowdesk-acceptance-list" });
-      acceptance.createDiv({ cls: "flowdesk-summary-label", text: "Acceptance" });
-      for (const item of child.acceptance) {
-        acceptance.createDiv({ text: `${item.checked ? "\u2611" : "\u2610"} ${item.text}` });
+      if (child.primaryDiagnostic) {
+        childMeta(card, "\u9996\u8981\u8BCA\u65AD", child.primaryDiagnostic.reason);
       }
-      const open = card.createEl("button", { text: "\u6253\u5F00 child" });
+      const open = card.createEl("button", { text: "\u6253\u5F00\u4EFB\u52A1" });
       open.addEventListener("click", () => void this.openTask(child.id));
     }
   }
   renderDetails(container, model) {
-    const details = container.createEl("details", { cls: "flowdesk-detail-group" });
+    var _a;
+    const details = container.createEl("details", {
+      cls: `flowdesk-detail-group${model.currentTask.hasChildren ? "" : " flowdesk-leaf-contract"}`
+    });
     if (!this.detailsOpenInitialized) {
-      this.detailsOpen = resolveDetailsOpen(this.detailsOpen, true, model.diagnostics.length);
+      this.detailsOpen = resolveDetailsOpen(
+        this.detailsOpen,
+        true,
+        model.diagnostics.length,
+        model.currentTask.hasChildren
+      );
       this.detailsOpenInitialized = true;
     }
     details.open = this.detailsOpen;
     details.addEventListener("toggle", () => this.detailsOpen = details.open);
-    details.createEl("summary", { text: "\u67E5\u770B\u5408\u540C\u4E0E\u8BC1\u636E\u8BE6\u60C5" });
+    details.createEl("summary", { text: "\u5F53\u524D\u4EFB\u52A1\u5408\u540C\u4E0E\u8BC1\u636E" });
     const body = details.createDiv({ cls: "flowdesk-detail-body" });
     const observation = createSection(body, "Observation");
     childMeta(observation, "health", model.observation.health);
@@ -894,16 +981,25 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     childMeta(observation, "children", model.observation.children);
     childMeta(observation, "TaskNotes API", model.observation.tasknotesApi);
     childMeta(observation, "source", model.observation.sourceTaskId || "\u672A\u63D0\u4F9B");
-    const contract = createSection(body, "Contract");
+    const contract = createSection(body, "Task Contract v3");
     childMeta(contract, "\u7248\u672C", model.contract.version);
-    childMeta(contract, "\u89D2\u8272", model.contract.role);
     childMeta(contract, "\u8BED\u4E49\u72B6\u6001", model.contract.semanticStatus);
-    childMeta(contract, "Requirements", model.contract.requirements.map((item) => item.id).filter(Boolean).join("\u3001") || "\u65E0");
-    childMeta(contract, "Scenarios", model.contract.scenarios.map((item) => item.id).filter(Boolean).join("\u3001") || "\u65E0");
-    const evidence = createSection(body, "Root evidence");
-    evidenceRow(evidence, "\u6267\u884C\u7ED3\u679C", model.root.evidenceHealth.execution);
-    evidenceRow(evidence, "\u9A8C\u8BC1\u7ED3\u679C", model.root.evidenceHealth.verification);
-    evidenceRow(evidence, "\u4EA4\u4ED8\u8BB0\u5F55", model.root.evidenceHealth.delivery);
+    childMeta(contract, "Goal", model.contract.goal);
+    renderTextList(contract, "Scope \xB7 \u5305\u542B", model.contract.scope.included);
+    renderTextList(contract, "Scope \xB7 \u4E0D\u5305\u542B", model.contract.scope.excluded);
+    renderContractItems(contract, "Requirements", model.contract.requirements);
+    renderContractItems(contract, "Scenarios", model.contract.scenarios);
+    const acceptance = createSection(body, "Acceptance Criteria");
+    if (!model.contract.acceptance.length) {
+      acceptance.createDiv({ cls: "flowdesk-muted", text: "producer \u672A\u63D0\u4F9B\u9A8C\u6536\u9879\u3002" });
+    }
+    for (const item of model.contract.acceptance) {
+      acceptance.createDiv({ text: `${item.checked ? "\u2611" : "\u2610"} ${(_a = item.text) != null ? _a : "\u672A\u63D0\u4F9B"}` });
+    }
+    const evidence = createSection(body, "Current task evidence");
+    evidenceRow(evidence, "\u6267\u884C\u7ED3\u679C", model.evidence.execution);
+    evidenceRow(evidence, "\u9A8C\u8BC1\u7ED3\u679C", model.evidence.verification);
+    evidenceRow(evidence, "\u4EA4\u4ED8\u8BB0\u5F55", model.evidence.delivery);
     if (model.diagnostics.length > 1) {
       const diagnostics = createSection(body, `\u5168\u90E8\u8BCA\u65AD\uFF08${model.diagnostics.length}\uFF09`);
       for (const diagnostic of model.diagnostics) {
@@ -966,6 +1062,32 @@ function childMeta(container, label, value) {
   const row = container.createDiv({ cls: "flowdesk-meta-row" });
   row.createSpan({ cls: "flowdesk-summary-label", text: `${label}\uFF1A` });
   row.createSpan({ text: value });
+}
+function renderTextList(container, label, values) {
+  const section = container.createDiv({ cls: "flowdesk-contract-list" });
+  section.createDiv({ cls: "flowdesk-summary-label", text: label });
+  if (!values.length) {
+    section.createDiv({ cls: "flowdesk-muted", text: "\u65E0" });
+    return;
+  }
+  for (const value of values) {
+    section.createDiv({ text: `\u2022 ${value}` });
+  }
+}
+function renderContractItems(container, label, items) {
+  var _a, _b, _c;
+  const section = container.createDiv({ cls: "flowdesk-contract-list" });
+  section.createDiv({ cls: "flowdesk-summary-label", text: label });
+  if (!items.length) {
+    section.createDiv({ cls: "flowdesk-muted", text: "\u65E0" });
+    return;
+  }
+  for (const item of items) {
+    const coverage = ((_a = item.requirement_ids) == null ? void 0 : _a.length) ? ` (${item.requirement_ids.join("\u3001")})` : "";
+    section.createDiv({
+      text: `${(_b = item.id) != null ? _b : "\u672A\u7F16\u53F7"}${coverage}\uFF1A${(_c = item.text) != null ? _c : "\u672A\u63D0\u4F9B"}`
+    });
+  }
 }
 function diagnosticRow(container, label, value) {
   const row = container.createDiv({ cls: "flowdesk-diagnostic-row" });

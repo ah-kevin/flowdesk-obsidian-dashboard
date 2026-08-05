@@ -387,6 +387,27 @@ export function formatChildEvidenceHealth(value: unknown): string {
   return labels[normalizeEvidenceValue(value)];
 }
 
+export function formatCurrentTaskProgress(input: {
+  hasChildren: boolean;
+  childrenTrustedDone: number;
+  childrenTotal: number;
+  acceptance: SnapshotAcceptanceItem[];
+  evidence: SnapshotEvidenceHealth;
+}): string {
+  if (input.hasChildren) {
+    return `${input.childrenTrustedDone}/${input.childrenTotal} 个直接子任务可信完成`;
+  }
+  const acceptanceChecked = input.acceptance.filter(
+    (item) => item.checked === true
+  ).length;
+  const evidenceValid = [
+    input.evidence.execution,
+    input.evidence.verification,
+    input.evidence.delivery,
+  ].filter((health) => health === "valid").length;
+  return `自身验收 ${acceptanceChecked}/${input.acceptance.length} · 证据 ${evidenceValid}/3`;
+}
+
 export function formatNextAction(action?: Record<string, unknown>): string | null {
   if (!action) {
     return null;

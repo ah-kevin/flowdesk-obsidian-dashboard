@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   createDashboardViewModel,
   formatChildEvidenceHealth,
+  formatCurrentTaskProgress,
   formatNextAction,
   formatRollupState,
   resolveDiagnosticTarget,
@@ -288,6 +289,32 @@ test("task-centric UI helper 格式化 rollup、child evidence 与下一动作",
       task_ids: ["Tasks/Child B.md"],
     }),
     "继续当前任务：Tasks/Child B.md"
+  );
+});
+
+test("当前任务进度文案区分 direct children 与 leaf 自身 gate", () => {
+  assert.equal(
+    formatCurrentTaskProgress({
+      hasChildren: true,
+      childrenTrustedDone: 1,
+      childrenTotal: 2,
+      acceptance: [],
+      evidence: { execution: "missing", verification: "missing", delivery: "missing" },
+    }),
+    "1/2 个直接子任务可信完成"
+  );
+  assert.equal(
+    formatCurrentTaskProgress({
+      hasChildren: false,
+      childrenTrustedDone: 0,
+      childrenTotal: 0,
+      acceptance: [
+        { text: "A", checked: true },
+        { text: "B", checked: false },
+      ],
+      evidence: { execution: "valid", verification: "missing", delivery: "valid" },
+    }),
+    "自身验收 1/2 · 证据 2/3"
   );
 });
 
