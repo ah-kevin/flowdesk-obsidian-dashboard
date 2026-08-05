@@ -14,84 +14,103 @@ import {
 
 const rootId = "Tasks/Root.md";
 
-function createV3Snapshot() {
+function createTaskCentricSnapshot() {
   return {
     snapshot_schema_version: 3,
+    snapshot_model: "task-centric",
     generated_at: "2026-08-05T12:00:00Z",
     source_task_id: rootId,
     observation: {
       health: "healthy",
-      parent: "observed",
+      current_task: "observed",
+      parent: "not_applicable",
       children: "observed",
       tasknotes_api: "ok",
       source_identity_match: true,
+      stale: false,
     },
+    current_task: {
+      id: rootId,
+      title: "SDD v3 root",
+      status: "in-progress",
+      priority: "high",
+      is_blocked: false,
+      blocked_by: [],
+      parent_id: null,
+      has_children: true,
+      rollup_state: "blocked",
+      trusted_done: false,
+    },
+    parent: null,
     contract: {
       version: "v3",
-      role: "root",
+      goal: "完成跨仓库交付",
+      scope: { included: ["Plugin 与 Dashboard"], excluded: ["自动发布"] },
+      requirements: [
+        { id: "REQ-001", text: "双端同源" },
+        { id: "REQ-002", text: "当前任务聚焦" },
+      ],
+      scenarios: [
+        { id: "SCN-001", requirement_ids: ["REQ-001"], text: "两端状态一致" },
+      ],
+      acceptance: [{ text: "跨仓库 smoke 通过", checked: false }],
       semantic_status: "valid",
-      requirements: [],
-      scenarios: [],
-      overall_acceptance: [],
     },
-    task_tree: {
-      root: {
-        id: rootId,
-        title: "SDD v3 root",
+    children: [
+      {
+        id: "Tasks/Child A.md",
+        title: "Child A",
+        status: "done",
+        priority: "normal",
+        is_blocked: false,
+        blocked_by: [],
+        goal: "完成 producer",
+        has_children: false,
+        rollup_state: "done",
+        semantic_status: "valid",
+        evidence_health: {
+          execution: "valid",
+          verification: "valid",
+          delivery: "valid",
+        },
+        trusted_done: true,
+        primary_diagnostic: null,
+      },
+      {
+        id: "Tasks/Child B.md",
+        title: "Child B",
         status: "in-progress",
         priority: "high",
-      },
-      children: [
-        {
-          id: "Tasks/Child A.md",
-          title: "Child A",
-          status: "done",
-          priority: "normal",
-          is_blocked: false,
-          blocked_by: [],
-          goal: "完成 producer",
-          covers: ["REQ-001"],
-          acceptance: [{ text: "producer 通过", checked: true }],
-          semantic_status: "valid",
-          evidence_health: {
-            execution: "valid",
-            verification: "valid",
-            delivery: "valid",
-          },
-          trusted_done: true,
+        is_blocked: true,
+        blocked_by: [{ uid: "Tasks/Child A.md", reltype: "blocks" }],
+        goal: "完成 Dashboard",
+        has_children: true,
+        rollup_state: "blocked",
+        semantic_status: "valid",
+        evidence_health: {
+          execution: "missing",
+          verification: "invalid",
+          delivery: "missing",
         },
-        {
-          id: "Tasks/Child B.md",
-          title: "Child B",
-          status: "in-progress",
-          priority: "high",
-          is_blocked: true,
-          blocked_by: [{ uid: "Tasks/Child A.md", reltype: "blocks" }],
-          goal: "完成 Dashboard",
-          covers: ["REQ-002", "SCN-002"],
-          acceptance: [{ text: "Dashboard 通过", checked: false }],
-          semantic_status: "valid",
-          evidence_health: {
-            execution: "missing",
-            verification: "invalid",
-            delivery: "missing",
-          },
-          trusted_done: false,
+        trusted_done: false,
+        primary_diagnostic: {
+          code: "child_verification_invalid",
+          severity: "error",
+          task_id: "Tasks/Child B.md",
+          path: "evidence.verification",
+          source: { section: "Verification Result", line_start: 41 },
+          reason: { actual: "缺少成功验证命令", expected: "至少一条通过的验证" },
+          remediation: { summary: "运行验证并写回结果" },
         },
-      ],
-      counts: {
-        total: 2,
-        open: 0,
-        in_progress: 1,
-        blocked: 1,
-        done: 1,
-        trusted_done: 1,
       },
-    },
+    ],
     rollup: {
       state: "blocked",
+      trusted_done: false,
+      has_children: true,
+      children_total: 2,
+      children_trusted_done: 1,
       children_complete: false,
-      trusted_children_complete: false,
       blocked_children: [
         { id: "Tasks/Child B.md", title: "Child B", status: "in-progress" },
       ],
@@ -100,21 +119,7 @@ function createV3Snapshot() {
       ],
       contradictions: [],
     },
-    evidence: {
-      root: { execution: "missing", verification: "missing", delivery: "missing" },
-      children: {
-        "Tasks/Child A.md": {
-          execution: "valid",
-          verification: "valid",
-          delivery: "valid",
-        },
-        "Tasks/Child B.md": {
-          execution: "missing",
-          verification: "invalid",
-          delivery: "missing",
-        },
-      },
-    },
+    evidence: { execution: "missing", verification: "missing", delivery: "missing" },
     diagnostics: [
       {
         code: "child_verification_invalid",
@@ -128,46 +133,121 @@ function createV3Snapshot() {
     ],
     next_actions: [
       {
-        kind: "resolve_child_blockers",
-        summary: "处理阻塞 child",
+        kind: "continue_current_task",
         task_ids: ["Tasks/Child B.md"],
       },
     ],
   };
 }
 
-test("v3 模型呈现可信完成数、阻塞 child 与结构化诊断", () => {
-  const model = createDashboardViewModel(createV3Snapshot());
+test("schema 3 缺少 task-centric marker 时 fail-closed", () => {
+  const snapshot = createTaskCentricSnapshot();
+  delete (snapshot as { snapshot_model?: string }).snapshot_model;
 
-  assert.equal(model.errorCode, null);
-  assert.equal(model.schemaLabel, "snapshot v3");
-  assert.equal(model.hero.workProgressLabel, "1/2 子任务可信完成");
-  assert.equal(model.rollup.state, "blocked");
-  assert.equal(model.children[1].isBlocked, true);
-  assert.deepEqual(model.children[1].blockedBy, ["Tasks/Child A.md"]);
-  assert.deepEqual(model.children[1].covers, ["REQ-002", "SCN-002"]);
-  assert.equal(model.children[1].evidenceHealth.verification, "invalid");
-  assert.equal(model.primaryDiagnostic?.taskId, "Tasks/Child B.md");
-  assert.equal(model.primaryDiagnostic?.reason, "缺少成功验证命令");
-  assert.equal(model.primaryDiagnostic?.remediation, "运行验证并写回结果");
+  const model = createDashboardViewModel(snapshot);
+
+  assert.equal(model.errorCode, "unsupported_snapshot_model");
+  assert.equal(model.observation.isTrustworthy, false);
 });
 
-test("缺失或非 3 schema 明确返回 unsupported_snapshot_schema", () => {
-  for (const snapshot of [{}, { snapshot_schema_version: 2 }]) {
+test("非 schema 3 优先返回 unsupported_snapshot_schema", () => {
+  for (const snapshot of [{}, { snapshot_schema_version: 2, snapshot_model: "task-centric" }]) {
     const model = createDashboardViewModel(snapshot);
     assert.equal(model.errorCode, "unsupported_snapshot_schema");
     assert.equal(model.observation.isTrustworthy, false);
   }
 });
 
-test("observation 非 healthy 或 stale 时无法可信判断", () => {
-  const degraded = createV3Snapshot();
-  degraded.observation.health = "degraded";
-  const degradedModel = createDashboardViewModel(degraded);
-  assert.equal(degradedModel.observation.isTrustworthy, false);
-  assert.equal(degradedModel.observation.trustMessage, "观测不可信，无法判断任务是否正常");
+test("task-centric 模型映射当前 task、parent、direct children 与 rollup", () => {
+  const snapshot = createTaskCentricSnapshot();
+  const model = createDashboardViewModel(snapshot, { expectedTaskPath: rootId });
 
-  const staleModel = createDashboardViewModel(createV3Snapshot(), {
+  assert.equal(model.errorCode, null);
+  assert.equal(model.schemaSupported, true);
+  assert.equal(model.modelSupported, true);
+  assert.equal(model.schemaLabel, "snapshot v3 · task-centric");
+  assert.equal(model.currentTask.id, rootId);
+  assert.equal(model.currentTask.title, "SDD v3 root");
+  assert.equal(model.currentTask.hasChildren, true);
+  assert.equal(model.parent, null);
+  assert.equal(model.rollup.childrenTotal, 2);
+  assert.equal(model.rollup.childrenTrustedDone, 1);
+  assert.equal(model.children[1].isBlocked, true);
+  assert.deepEqual(model.children[1].blockedBy, ["Tasks/Child A.md"]);
+  assert.equal(model.children[1].hasChildren, true);
+  assert.equal(model.children[1].rollupState, "blocked");
+  assert.equal(model.children[1].evidenceHealth.verification, "invalid");
+  assert.equal(model.children[1].primaryDiagnostic?.taskId, "Tasks/Child B.md");
+  assert.equal(model.primaryDiagnostic?.reason, "缺少成功验证命令");
+  assert.equal(model.observation.isTrustworthy, true);
+});
+
+test("parent breadcrumb 可选且 leaf 合同默认数据完整保序", () => {
+  const snapshot = createTaskCentricSnapshot();
+  snapshot.current_task.has_children = false;
+  snapshot.children = [];
+  snapshot.parent = {
+    id: "Tasks/Parent.md",
+    title: "Parent",
+    status: "in-progress",
+  };
+  snapshot.observation.parent = "observed";
+  snapshot.rollup = {
+    state: "running",
+    trusted_done: false,
+    has_children: false,
+    children_total: 0,
+    children_trusted_done: 0,
+    children_complete: true,
+    blocked_children: [],
+    incomplete_children: [],
+    contradictions: [],
+  };
+
+  const model = createDashboardViewModel(snapshot, { expectedTaskPath: rootId });
+
+  assert.equal(model.currentTask.hasChildren, false);
+  assert.deepEqual(model.parent, {
+    id: "Tasks/Parent.md",
+    title: "Parent",
+    status: "in-progress",
+  });
+  assert.deepEqual(model.contract.scope.included, ["Plugin 与 Dashboard"]);
+  assert.deepEqual(
+    model.contract.requirements.map((item) => item.id),
+    ["REQ-001", "REQ-002"]
+  );
+  assert.deepEqual(model.contract.scenarios[0].requirement_ids, ["REQ-001"]);
+  assert.deepEqual(model.contract.acceptance, [
+    { text: "跨仓库 smoke 通过", checked: false },
+  ]);
+  assert.equal(
+    model.contract.requirements.some((item) => "covers" in item),
+    false
+  );
+});
+
+test("observation 任一必需字段不可信或 stale 时 fail-closed", () => {
+  const cases = [
+    ["health", "degraded"],
+    ["current_task", "failed"],
+    ["children", "failed"],
+    ["tasknotes_api", "error"],
+    ["source_identity_match", false],
+    ["stale", true],
+  ] as const;
+  for (const [key, value] of cases) {
+    const snapshot = createTaskCentricSnapshot();
+    Object.assign(snapshot.observation, { [key]: value });
+    assert.equal(
+      createDashboardViewModel(snapshot, { expectedTaskPath: rootId }).observation
+        .isTrustworthy,
+      false,
+      `${key}=${String(value)} 必须 fail-closed`
+    );
+  }
+
+  const staleModel = createDashboardViewModel(createTaskCentricSnapshot(), {
     expectedTaskPath: rootId,
     staleReason: "刷新失败",
     loadedAt: "12:30:00",
@@ -177,7 +257,9 @@ test("observation 非 healthy 或 stale 时无法可信判断", () => {
 });
 
 test("诊断定位使用 producer task_id 和 source", () => {
-  const diagnostic = createDashboardViewModel(createV3Snapshot()).primaryDiagnostic;
+  const diagnostic = createDashboardViewModel(
+    createTaskCentricSnapshot()
+  ).primaryDiagnostic;
   assert.ok(diagnostic);
   assert.deepEqual(resolveDiagnosticTarget(diagnostic.taskId, diagnostic.source), {
     linkText: "Tasks/Child B.md#Verification Result",
@@ -186,17 +268,12 @@ test("诊断定位使用 producer task_id 和 source", () => {
   });
 });
 
-test("next action 使用 producer v3 summary", () => {
-  assert.equal(
-    formatNextAction({ kind: "continue_child_work", summary: "继续当前 child" }),
-    "继续当前 child"
-  );
-});
-
-test("UI helper 清晰格式化 rollup、child evidence 与无 summary 的下一动作", () => {
+test("task-centric UI helper 格式化 rollup、child evidence 与下一动作", () => {
   assert.equal(formatRollupState("blocked"), "存在阻塞子任务");
-  assert.equal(formatRollupState("awaiting_parent_verification"), "等待父任务整体验证");
-  assert.equal(formatRollupState("inconsistent"), "父子状态矛盾");
+  assert.equal(
+    formatRollupState("awaiting_current_verification"),
+    "等待当前任务验证"
+  );
   assert.equal(
     formatChildEvidenceHealth({
       execution: "missing",
@@ -206,12 +283,15 @@ test("UI helper 清晰格式化 rollup、child evidence 与无 summary 的下一
     "执行缺失 · 验证无效 · 交付有效"
   );
   assert.equal(
-    formatNextAction({ kind: "resolve_child_blockers", task_ids: ["Tasks/Child B.md"] }),
-    "处理子任务阻塞：Tasks/Child B.md"
+    formatNextAction({
+      kind: "continue_current_task",
+      task_ids: ["Tasks/Child B.md"],
+    }),
+    "继续当前任务：Tasks/Child B.md"
   );
 });
 
-test("真实 producer fixture 字段级映射保持一致", () => {
+test("真实 producer fixture 完整等值并映射 task-centric 字段", () => {
   const producerPath = path.join(
     process.env.FLOWDESK_PLUGIN_ROOT ?? "/Users/bjke/workspaces/flowdesk-plugin",
     "tests/fixtures/execution_snapshot/sdd_v3_real_root_snapshot.json"
@@ -235,37 +315,35 @@ test("真实 producer fixture 字段级映射保持一致", () => {
   });
 
   assert.equal(model.errorCode, null);
-  assert.equal(model.hero.title, snapshot.task_tree.root.title);
-  assert.equal(
-    model.hero.workProgressLabel,
-    `${snapshot.task_tree.counts.trusted_done}/${snapshot.task_tree.counts.total} 子任务可信完成`
-  );
-  assert.equal(model.rollup.state, snapshot.rollup.state);
+  assert.equal(snapshot.snapshot_model, "task-centric");
+  assert.equal(model.currentTask.id, snapshot.current_task.id);
+  assert.equal(model.currentTask.title, snapshot.current_task.title);
+  assert.equal(model.parent, snapshot.parent);
   assert.deepEqual(
     model.children.map((child) => child.id),
-    snapshot.task_tree.children.map((child: { id: string }) => child.id)
+    snapshot.children.map((child: { id: string }) => child.id)
   );
-  assert.equal(model.children[0].priority, snapshot.task_tree.children[0].priority);
-  assert.deepEqual(model.children[0].covers, snapshot.task_tree.children[0].covers);
-  assert.deepEqual(
-    model.children[0].evidenceHealth,
-    snapshot.task_tree.children[0].evidence_health
+  assert.equal(model.rollup.childrenTotal, snapshot.rollup.children_total);
+  assert.equal(
+    model.rollup.childrenTrustedDone,
+    snapshot.rollup.children_trusted_done
   );
+  assert.deepEqual(model.contract.requirements, snapshot.contract.requirements);
+  assert.deepEqual(model.contract.scenarios, snapshot.contract.scenarios);
+  assert.deepEqual(model.evidence, snapshot.evidence);
   assert.equal(model.observation.isTrustworthy, true);
+  assert.equal(model.primaryDiagnostic, null);
   assert.equal(model.nextAction, snapshot.next_actions[0].summary);
 });
 
-test("source identity 只接受 v3 顶层 source_task_id", () => {
-  const snapshot = createV3Snapshot();
+test("source identity 只接受 task-centric 顶层 source_task_id", () => {
+  const snapshot = createTaskCentricSnapshot();
   assert.equal(validateSnapshotSource(snapshot, rootId), true);
   assert.equal(validateSnapshotSource(snapshot, "Tasks/Other.md"), false);
   assert.equal(validateSnapshotSource({}, rootId), "unknown");
 
-  const missingSource = createV3Snapshot();
-  delete (missingSource as { source_task_id?: string }).source_task_id;
-  const missingSourceModel = createDashboardViewModel(missingSource, {
-    expectedTaskPath: rootId,
-  });
-  assert.equal(missingSourceModel.observation.sourceIdentity, "unknown");
-  assert.equal(missingSourceModel.observation.isTrustworthy, false);
+  delete (snapshot as { source_task_id?: string }).source_task_id;
+  const model = createDashboardViewModel(snapshot, { expectedTaskPath: rootId });
+  assert.equal(model.observation.sourceIdentity, "unknown");
+  assert.equal(model.observation.isTrustworthy, false);
 });
