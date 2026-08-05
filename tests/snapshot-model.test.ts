@@ -1,215 +1,230 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
 
 import {
   createDashboardViewModel,
   formatNextAction,
-  formatDiagnosticReason,
-  formatDiagnosticRemediation,
   resolveDiagnosticTarget,
   validateSnapshotSource,
 } from "../src/snapshot-model.ts";
 
-test("下一动作在主卡和详情中共享可读文案", () => {
-  assert.equal(
-    formatNextAction({
-      kind: "continue_inline_implementation",
-      task_ids: ["TASK-4.1"],
-    }),
-    "继续 inline 实施：TASK-4.1"
-  );
-  assert.equal(
-    formatNextAction({
-      kind: "start_inline_implementation",
-      task_ids: ["TASK-1.1"],
-    }),
-    "开始 inline 实施：TASK-1.1"
-  );
-  assert.equal(formatNextAction({ kind: "unknown_action" }), "unknown_action");
-});
+const rootId = "Tasks/Root.md";
 
-test("缺少 schema 与 observation 的旧 snapshot 显示未知观测", () => {
-  const model = createDashboardViewModel({ state: { value: "running" } });
-
-  assert.equal(model.observation.health, "unknown");
-  assert.equal(model.compatibility.label, "旧版 snapshot · 能力未知");
-  assert.equal(model.observation.isTrustworthy, false);
-});
-
-test("读取 v2 inline 进度与兼容信息", () => {
-  const model = createDashboardViewModel({
-    snapshot_schema_version: 2,
+function createV3Snapshot() {
+  return {
+    snapshot_schema_version: 3,
+    generated_at: "2026-08-05T12:00:00Z",
+    source_task_id: rootId,
     observation: {
-      generated_at: "2026-08-05T04:14:58Z",
-      source_task_id: "Tasks/A.md",
       health: "healthy",
-      coverage: { parent: "ok", children_canonical: "ok" },
-      diagnostics: [],
+      parent: "observed",
+      children: "observed",
+      tasknotes_api: "ok",
+      source_identity_match: true,
     },
-    compatibility: {
-      contract_version: "v2",
-      semantic_mode: "strict-v2",
-      profile: "inline",
-      label: "SDD v2 · inline",
+    contract: {
+      version: "v3",
+      role: "root",
+      semantic_status: "valid",
+      requirements: [],
+      scenarios: [],
+      overall_acceptance: [],
     },
-    task_graph: {
-      inline_execution: {
-        total: 2,
-        completed: 1,
+    task_tree: {
+      root: {
+        id: rootId,
+        title: "SDD v3 root",
         status: "in-progress",
-        explicit: true,
-        statuses: {
-          "TASK-1.1": { status: "done", inferred: false },
-          "TASK-2.1": { status: "in-progress", inferred: false },
+        priority: "high",
+      },
+      children: [
+        {
+          id: "Tasks/Child A.md",
+          title: "Child A",
+          status: "done",
+          priority: "normal",
+          is_blocked: false,
+          blocked_by: [],
+          goal: "完成 producer",
+          covers: ["REQ-001"],
+          acceptance: [{ text: "producer 通过", checked: true }],
+          semantic_status: "valid",
+          evidence_health: {
+            execution: "valid",
+            verification: "valid",
+            delivery: "valid",
+          },
+          trusted_done: true,
+        },
+        {
+          id: "Tasks/Child B.md",
+          title: "Child B",
+          status: "in-progress",
+          priority: "high",
+          is_blocked: true,
+          blocked_by: [{ uid: "Tasks/Child A.md", reltype: "blocks" }],
+          goal: "完成 Dashboard",
+          covers: ["REQ-002", "SCN-002"],
+          acceptance: [{ text: "Dashboard 通过", checked: false }],
+          semantic_status: "valid",
+          evidence_health: {
+            execution: "missing",
+            verification: "invalid",
+            delivery: "missing",
+          },
+          trusted_done: false,
+        },
+      ],
+      counts: {
+        total: 2,
+        open: 0,
+        in_progress: 1,
+        blocked: 1,
+        done: 1,
+        trusted_done: 1,
+      },
+    },
+    rollup: {
+      state: "blocked",
+      children_complete: false,
+      trusted_children_complete: false,
+      blocked_children: [
+        { id: "Tasks/Child B.md", title: "Child B", status: "in-progress" },
+      ],
+      incomplete_children: [
+        { id: "Tasks/Child B.md", title: "Child B", status: "in-progress" },
+      ],
+      contradictions: [],
+    },
+    evidence: {
+      root: { execution: "missing", verification: "missing", delivery: "missing" },
+      children: {
+        "Tasks/Child A.md": {
+          execution: "valid",
+          verification: "valid",
+          delivery: "valid",
+        },
+        "Tasks/Child B.md": {
+          execution: "missing",
+          verification: "invalid",
+          delivery: "missing",
         },
       },
     },
-  });
-
-  assert.equal(model.schemaLabel, "snapshot v2");
-  assert.equal(model.compatibility.label, "SDD v2 · inline");
-  assert.equal(model.observation.isTrustworthy, true);
-  assert.equal(model.inlineProgress?.completed, 1);
-  assert.equal(model.inlineProgress?.total, 2);
-  assert.deepEqual(model.inlineProgress?.tasks, [
-    { id: "TASK-1.1", status: "done", inferred: false },
-    { id: "TASK-2.1", status: "in-progress", inferred: false },
-  ]);
-});
-
-test("首要诊断按 semantic、inline、observation 顺序选择", () => {
-  const model = createDashboardViewModel({
-    observation: {
-      diagnostics: [{ code: "observation_incomplete", reason: "观测不完整" }],
-    },
-    task_graph: {
-      inline_execution: {
-        diagnostics: [{ code: "inline_status_missing", reason: "缺少 inline 状态" }],
+    diagnostics: [
+      {
+        code: "child_verification_invalid",
+        severity: "error",
+        task_id: "Tasks/Child B.md",
+        path: "evidence.verification",
+        source: { section: "Verification Result", line_start: 41 },
+        reason: { actual: "缺少成功验证命令", expected: "至少一条通过的验证" },
+        remediation: { summary: "运行验证并写回结果" },
       },
-    },
-    spec_contract: {
-      semantic_validation: {
-        errors: [
-          {
-            code: "why_placeholder_detected",
-            source: { section: "Why", line_start: 41 },
-            reason: { actual: "检测到占位词", expected: "真实动机" },
-            remediation: { summary: "改写 Why" },
-          },
-        ],
+    ],
+    next_actions: [
+      {
+        kind: "resolve_child_blockers",
+        summary: "处理阻塞 child",
+        task_ids: ["Tasks/Child B.md"],
       },
-    },
-  });
-
-  assert.equal(model.primaryDiagnostic?.code, "why_placeholder_detected");
-  assert.deepEqual(
-    model.diagnostics.map((diagnostic) => diagnostic.code),
-    ["why_placeholder_detected", "inline_status_missing", "observation_incomplete"]
-  );
-  assert.equal(model.primaryDiagnostic?.reason, "检测到占位词");
-  assert.equal(model.primaryDiagnostic?.remediation, "改写 Why");
-  assert.deepEqual(
-    resolveDiagnosticTarget("Tasks/A.md", model.primaryDiagnostic?.source),
-    { linkText: "Tasks/A.md#Why", line: 41 }
-  );
-});
-
-test("已完成 inline 卡生成阶段与 TASK 概览", () => {
-  const model = createDashboardViewModel({
-    snapshot_schema_version: 2,
-    observation: { health: "healthy", diagnostics: [] },
-    task_graph: {
-      parent: { title: "Dashboard upgrade", status: "done" },
-      counts: { total: 0, done: 0 },
-      inline_execution: {
-        total: 1,
-        completed: 1,
-        status: "complete",
-        explicit: true,
-        statuses: { "TASK-1.1": { status: "done", inferred: false } },
-      },
-    },
-    flow_graph: {
-      current: "delivery",
-      nodes: Array.from({ length: 6 }, (_, index) => ({
-        id: `stage-${index + 1}`,
-        status: "done",
-      })),
-    },
-    next_actions: [],
-  });
-
-  assert.equal(model.hero.progressLabel, "6/6 阶段");
-  assert.equal(model.hero.inlineLabel, "1/1 TASK");
-  assert.equal(model.hero.workProgressKind, "inline");
-  assert.equal(model.nextAction, null);
-});
-
-test("children 卡优先显示子任务计数，不展示 binding 百分比", () => {
-  const model = createDashboardViewModel({
-    task_graph: {
-      counts: { total: 5, done: 3 },
-      task_materialization: { mode: "children", status: "ready" },
-    },
-  });
-
-  assert.equal(model.hero.workProgressKind, "children");
-  assert.equal(model.hero.workProgressLabel, "3/5 子任务");
-  assert.equal(model.hero.inlineLabel, null);
-  assert.doesNotMatch(model.hero.workProgressLabel, /bound/i);
-});
-
-test("无行号诊断定位到 after_section，并格式化结构化修复信息", () => {
-  assert.deepEqual(
-    resolveDiagnosticTarget("Tasks/A.md", {
-      section: "Why",
-      line_start: null,
-      after_section: "Contract Phase",
-    }),
-    { linkText: "Tasks/A.md#Contract Phase", line: null }
-  );
-  assert.equal(
-    formatDiagnosticReason({ actual: "检测到占位词", expected: "真实动机" }),
-    "检测到占位词"
-  );
-  assert.equal(formatDiagnosticRemediation({ summary: "改写 Why" }), "改写 Why");
-});
-
-test("旧 producer 只有 code/message 时保留消息并明确缺少修法", () => {
-  const model = createDashboardViewModel({
-    spec_contract: {
-      semantic_validation: {
-        errors: [{ code: "why_missing", message: "缺少有效 Why" }],
-      },
-    },
-  });
-
-  assert.equal(model.primaryDiagnostic?.message, "缺少有效 Why");
-  assert.equal(model.primaryDiagnostic?.reason, "缺少有效 Why");
-  assert.equal(model.primaryDiagnostic?.remediation, "producer 未提供");
-  assert.equal(model.primaryDiagnostic?.source, undefined);
-});
-
-test("校验 snapshot source identity，并将同任务刷新失败标为旧数据", () => {
-  const snapshot = {
-    snapshot_schema_version: 2,
-    observation: {
-      source_task_id: "Tasks/A.md",
-      health: "healthy",
-      diagnostics: [],
-    },
+    ],
   };
+}
 
-  assert.equal(validateSnapshotSource(snapshot, "Tasks/A.md"), true);
-  assert.equal(validateSnapshotSource(snapshot, "Tasks/B.md"), false);
-  assert.equal(validateSnapshotSource({ state: { value: "running" } }, "Tasks/A.md"), "unknown");
+test("v3 模型呈现可信完成数、阻塞 child 与结构化诊断", () => {
+  const model = createDashboardViewModel(createV3Snapshot());
 
-  const model = createDashboardViewModel(snapshot, {
+  assert.equal(model.errorCode, null);
+  assert.equal(model.schemaLabel, "snapshot v3");
+  assert.equal(model.hero.workProgressLabel, "1/2 子任务可信完成");
+  assert.equal(model.rollup.state, "blocked");
+  assert.equal(model.children[1].isBlocked, true);
+  assert.deepEqual(model.children[1].blockedBy, ["Tasks/Child A.md"]);
+  assert.deepEqual(model.children[1].covers, ["REQ-002", "SCN-002"]);
+  assert.equal(model.children[1].evidenceHealth.verification, "invalid");
+  assert.equal(model.primaryDiagnostic?.taskId, "Tasks/Child B.md");
+  assert.equal(model.primaryDiagnostic?.reason, "缺少成功验证命令");
+  assert.equal(model.primaryDiagnostic?.remediation, "运行验证并写回结果");
+});
+
+test("缺失或非 3 schema 明确返回 unsupported_snapshot_schema", () => {
+  for (const snapshot of [{}, { snapshot_schema_version: 2 }]) {
+    const model = createDashboardViewModel(snapshot);
+    assert.equal(model.errorCode, "unsupported_snapshot_schema");
+    assert.equal(model.observation.isTrustworthy, false);
+  }
+});
+
+test("observation 非 healthy 或 stale 时无法可信判断", () => {
+  const degraded = createV3Snapshot();
+  degraded.observation.health = "degraded";
+  const degradedModel = createDashboardViewModel(degraded);
+  assert.equal(degradedModel.observation.isTrustworthy, false);
+  assert.equal(degradedModel.observation.trustMessage, "观测不可信，无法判断任务是否正常");
+
+  const staleModel = createDashboardViewModel(createV3Snapshot(), {
+    expectedTaskPath: rootId,
     staleReason: "刷新失败",
     loadedAt: "12:30:00",
   });
-  assert.equal(model.observation.isStale, true);
-  assert.equal(model.observation.staleReason, "刷新失败");
-  assert.equal(model.observation.loadedAt, "12:30:00");
-  assert.equal(model.observation.isTrustworthy, false);
+  assert.equal(staleModel.observation.isStale, true);
+  assert.equal(staleModel.observation.isTrustworthy, false);
+});
+
+test("诊断定位使用 producer task_id 和 source", () => {
+  const diagnostic = createDashboardViewModel(createV3Snapshot()).primaryDiagnostic;
+  assert.ok(diagnostic);
+  assert.deepEqual(resolveDiagnosticTarget(diagnostic.taskId, diagnostic.source), {
+    linkText: "Tasks/Child B.md#Verification Result",
+    line: 41,
+  });
+});
+
+test("next action 使用 producer v3 summary", () => {
+  assert.equal(
+    formatNextAction({ kind: "continue_child_work", summary: "继续当前 child" }),
+    "继续当前 child"
+  );
+});
+
+test("真实 producer fixture 字段级映射保持一致", () => {
+  const producerPath = path.join(
+    process.env.FLOWDESK_PLUGIN_ROOT ?? "/Users/bjke/workspaces/flowdesk-plugin",
+    "tests/fixtures/execution_snapshot/sdd_v3_real_root_snapshot.json"
+  );
+  assert.equal(existsSync(producerPath), true, `缺少 producer fixture: ${producerPath}`);
+  const snapshot = JSON.parse(readFileSync(producerPath, "utf8"));
+  const model = createDashboardViewModel(snapshot, {
+    expectedTaskPath: snapshot.source_task_id,
+  });
+
+  assert.equal(model.errorCode, null);
+  assert.equal(model.hero.title, snapshot.task_tree.root.title);
+  assert.equal(
+    model.hero.workProgressLabel,
+    `${snapshot.task_tree.counts.trusted_done}/${snapshot.task_tree.counts.total} 子任务可信完成`
+  );
+  assert.equal(model.rollup.state, snapshot.rollup.state);
+  assert.deepEqual(
+    model.children.map((child) => child.id),
+    snapshot.task_tree.children.map((child: { id: string }) => child.id)
+  );
+  assert.equal(model.children[0].priority, snapshot.task_tree.children[0].priority);
+  assert.deepEqual(model.children[0].covers, snapshot.task_tree.children[0].covers);
+  assert.deepEqual(
+    model.children[0].evidenceHealth,
+    snapshot.task_tree.children[0].evidence_health
+  );
+  assert.equal(model.observation.isTrustworthy, true);
+  assert.equal(model.nextAction, snapshot.next_actions[0].summary);
+});
+
+test("source identity 只接受 v3 顶层 source_task_id", () => {
+  const snapshot = createV3Snapshot();
+  assert.equal(validateSnapshotSource(snapshot, rootId), true);
+  assert.equal(validateSnapshotSource(snapshot, "Tasks/Other.md"), false);
+  assert.equal(validateSnapshotSource({}, rootId), "unknown");
 });
