@@ -15,9 +15,12 @@ import { homedir } from "os";
 import * as path from "path";
 import { promisify } from "util";
 import {
+  collectObservedTaskPaths,
   isCurrentSnapshotRequest,
   isTaskPath,
+  resolveDetailsOpen,
   resolveDashboardContext,
+  TrailingRefreshScheduler,
   type DashboardContext,
   type SnapshotRequestIdentity,
 } from "./dashboard-state";
@@ -119,8 +122,8 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     this.registerEvent(
       this.app.vault.on("modify", (file) => {
         const view = this.getDashboardView();
-        if (view && file instanceof TFile && file.path === view.currentTaskPath) {
-          void view.refreshCurrentTask();
+        if (view && file instanceof TFile && view.observesTaskFile(file.path)) {
+          view.scheduleRefresh();
         }
       })
     );
@@ -266,9 +269,15 @@ class FlowDeskDashboardView extends ItemView {
   private loading = false;
   private queuedRequest: SnapshotRequestIdentity | null = null;
   private refreshPromise: Promise<void> | null = null;
+  private refreshScheduler: TrailingRefreshScheduler;
+  private detailsOpen = false;
+  private detailsOpenInitialized = false;
 
   constructor(leaf: WorkspaceLeaf, private plugin: FlowDeskDashboardPlugin) {
     super(leaf);
+    this.refreshScheduler = new TrailingRefreshScheduler(() => {
+      void this.loadCurrentTask();
+    });
   }
 
   getViewType(): string {
@@ -285,6 +294,10 @@ class FlowDeskDashboardView extends ItemView {
 
   async onOpen() {
     await this.syncToActiveFile();
+  }
+
+  async onClose() {
+    this.refreshScheduler.cancel();
   }
 
   get currentTaskPath(): string {
@@ -314,6 +327,7 @@ class FlowDeskDashboardView extends ItemView {
     this.selectionRevision += 1;
     this.context = nextContext;
     this.queuedRequest = null;
+    this.refreshScheduler.cancel();
     this.loading = false;
     this.error = "";
     this.render();
@@ -323,9 +337,17 @@ class FlowDeskDashboardView extends ItemView {
     const isSameSelection =
       this.context.kind === "task" && this.context.taskPath === taskPath;
     if (!isSameSelection) {
+      const taskChanged = Boolean(
+        this.previousTaskPath && this.previousTaskPath !== taskPath
+      );
       this.selectionRevision += 1;
       this.context = { kind: "task", taskPath };
       this.previousTaskPath = taskPath;
+      this.refreshScheduler.cancel();
+      if (taskChanged) {
+        this.detailsOpen = false;
+        this.detailsOpenInitialized = false;
+      }
       if (this.displayState?.taskPath !== taskPath) {
         this.displayState = null;
       }
@@ -350,6 +372,25 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   async refreshCurrentTask() {
+    this.refreshScheduler.cancel();
+    await this.loadCurrentTask();
+  }
+
+  scheduleRefresh() {
+    this.refreshScheduler.schedule();
+  }
+
+  observesTaskFile(filePath: string): boolean {
+    if (this.context.kind !== "task") {
+      return false;
+    }
+    return collectObservedTaskPaths(
+      this.context.taskPath,
+      this.displayState?.snapshot
+    ).has(filePath);
+  }
+
+  private async loadCurrentTask() {
     if (this.context.kind === "task") {
       await this.loadTask(this.context.taskPath);
     }
@@ -469,10 +510,6 @@ class FlowDeskDashboardView extends ItemView {
       return;
     }
 
-    if (this.loading) {
-      container.createDiv({ cls: "flowdesk-refreshing", text: "正在刷新 snapshot..." });
-    }
-
     const model = createDashboardViewModel(snapshot, {
       expectedTaskPath: taskPath,
       loadedAt: displayState?.loadedAt,
@@ -538,9 +575,13 @@ class FlowDeskDashboardView extends ItemView {
     });
     titleBlock.createDiv({
       cls: "flowdesk-dashboard-meta",
-      text: this.displayState?.loadedAt
-        ? `本地读取 ${this.displayState.loadedAt}`
-        : "等待刷新",
+      text: this.loading
+        ? this.displayState?.loadedAt
+          ? `正在刷新 · 上次读取 ${this.displayState.loadedAt}`
+          : "正在读取 snapshot"
+        : this.displayState?.loadedAt
+          ? `本地读取 ${this.displayState.loadedAt}`
+          : "等待刷新",
     });
 
     const toolbar = header.createDiv({ cls: "flowdesk-dashboard-toolbar" });
@@ -579,7 +620,7 @@ class FlowDeskDashboardView extends ItemView {
     refresh.disabled = this.loading;
     refresh.title = "重新读取当前 TaskNotes task 的 FlowDesk snapshot";
     refresh.addEventListener("click", () => {
-      void this.plugin.refreshDashboard(taskPath);
+      void this.refreshCurrentTask();
     });
   }
 
@@ -821,7 +862,18 @@ class FlowDeskDashboardView extends ItemView {
     model: DashboardViewModel
   ) {
     const details = container.createEl("details", { cls: "flowdesk-detail-group" });
-    details.open = model.diagnostics.length > 0;
+    if (!this.detailsOpenInitialized) {
+      this.detailsOpen = resolveDetailsOpen(
+        this.detailsOpen,
+        true,
+        model.diagnostics.length
+      );
+      this.detailsOpenInitialized = true;
+    }
+    details.open = this.detailsOpen;
+    details.addEventListener("toggle", () => {
+      this.detailsOpen = details.open;
+    });
     details.createEl("summary", { text: "查看执行详情" });
     const body = details.createDiv({ cls: "flowdesk-detail-body" });
 

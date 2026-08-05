@@ -8,6 +8,15 @@ export interface SnapshotRequestIdentity {
   selectionRevision: number;
 }
 
+interface ObservedTaskSnapshot {
+  task_graph?: {
+    tasks?: Array<{ id?: string }>;
+  };
+}
+
+type ScheduleTimer = (callback: () => void, delayMs: number) => unknown;
+type CancelTimer = (handle: unknown) => void;
+
 export function isTaskPath(filePath: string): boolean {
   return (
     filePath.endsWith(".md") &&
@@ -38,4 +47,62 @@ export function isCurrentSnapshotRequest(
     request.taskPath === context.taskPath &&
     request.selectionRevision === selectionRevision
   );
+}
+
+export function collectObservedTaskPaths(
+  parentTaskPath: string,
+  snapshot?: ObservedTaskSnapshot | null
+): Set<string> {
+  const paths = new Set<string>();
+  if (isTaskPath(parentTaskPath)) {
+    paths.add(parentTaskPath);
+  }
+  for (const task of snapshot?.task_graph?.tasks ?? []) {
+    if (task.id && isTaskPath(task.id)) {
+      paths.add(task.id);
+    }
+  }
+  return paths;
+}
+
+export function resolveDetailsOpen(
+  previousOpen: boolean,
+  taskChanged: boolean,
+  diagnosticCount: number
+): boolean {
+  return taskChanged ? diagnosticCount > 0 : previousOpen;
+}
+
+export class TrailingRefreshScheduler {
+  private timer: unknown | null = null;
+
+  constructor(
+    private callback: () => void,
+    private delayMs = 500,
+    private scheduleTimer: ScheduleTimer = (callback, delayMs) =>
+      globalThis.setTimeout(callback, delayMs),
+    private cancelTimer: CancelTimer = (handle) =>
+      globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>)
+  ) {}
+
+  schedule(): void {
+    this.cancel();
+    this.timer = this.scheduleTimer(() => {
+      this.timer = null;
+      this.callback();
+    }, this.delayMs);
+  }
+
+  flush(): void {
+    this.cancel();
+    this.callback();
+  }
+
+  cancel(): void {
+    if (this.timer === null) {
+      return;
+    }
+    this.cancelTimer(this.timer);
+    this.timer = null;
+  }
 }

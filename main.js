@@ -57,6 +57,49 @@ function resolveDashboardContext(activePath, previousTaskPath) {
 function isCurrentSnapshotRequest(request, context, selectionRevision) {
   return context.kind === "task" && request.taskPath === context.taskPath && request.selectionRevision === selectionRevision;
 }
+function collectObservedTaskPaths(parentTaskPath, snapshot) {
+  var _a, _b;
+  const paths = /* @__PURE__ */ new Set();
+  if (isTaskPath(parentTaskPath)) {
+    paths.add(parentTaskPath);
+  }
+  for (const task of (_b = (_a = snapshot == null ? void 0 : snapshot.task_graph) == null ? void 0 : _a.tasks) != null ? _b : []) {
+    if (task.id && isTaskPath(task.id)) {
+      paths.add(task.id);
+    }
+  }
+  return paths;
+}
+function resolveDetailsOpen(previousOpen, taskChanged, diagnosticCount) {
+  return taskChanged ? diagnosticCount > 0 : previousOpen;
+}
+var TrailingRefreshScheduler = class {
+  constructor(callback, delayMs = 500, scheduleTimer = (callback2, delayMs2) => globalThis.setTimeout(callback2, delayMs2), cancelTimer = (handle) => globalThis.clearTimeout(handle)) {
+    this.callback = callback;
+    this.delayMs = delayMs;
+    this.scheduleTimer = scheduleTimer;
+    this.cancelTimer = cancelTimer;
+    this.timer = null;
+  }
+  schedule() {
+    this.cancel();
+    this.timer = this.scheduleTimer(() => {
+      this.timer = null;
+      this.callback();
+    }, this.delayMs);
+  }
+  flush() {
+    this.cancel();
+    this.callback();
+  }
+  cancel() {
+    if (this.timer === null) {
+      return;
+    }
+    this.cancelTimer(this.timer);
+    this.timer = null;
+  }
+};
 
 // src/snapshot-invocation.ts
 var path = __toESM(require("path"));
@@ -385,8 +428,8 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     this.registerEvent(
       this.app.vault.on("modify", (file) => {
         const view = this.getDashboardView();
-        if (view && file instanceof import_obsidian.TFile && file.path === view.currentTaskPath) {
-          void view.refreshCurrentTask();
+        if (view && file instanceof import_obsidian.TFile && view.observesTaskFile(file.path)) {
+          view.scheduleRefresh();
         }
       })
     );
@@ -511,6 +554,11 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     this.loading = false;
     this.queuedRequest = null;
     this.refreshPromise = null;
+    this.detailsOpen = false;
+    this.detailsOpenInitialized = false;
+    this.refreshScheduler = new TrailingRefreshScheduler(() => {
+      void this.loadCurrentTask();
+    });
   }
   getViewType() {
     return FLOWDESK_DASHBOARD_VIEW_TYPE;
@@ -523,6 +571,9 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   }
   async onOpen() {
     await this.syncToActiveFile();
+  }
+  async onClose() {
+    this.refreshScheduler.cancel();
   }
   get currentTaskPath() {
     return this.context.kind === "task" ? this.context.taskPath : "";
@@ -546,6 +597,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     this.selectionRevision += 1;
     this.context = nextContext;
     this.queuedRequest = null;
+    this.refreshScheduler.cancel();
     this.loading = false;
     this.error = "";
     this.render();
@@ -554,9 +606,17 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     var _a;
     const isSameSelection = this.context.kind === "task" && this.context.taskPath === taskPath;
     if (!isSameSelection) {
+      const taskChanged = Boolean(
+        this.previousTaskPath && this.previousTaskPath !== taskPath
+      );
       this.selectionRevision += 1;
       this.context = { kind: "task", taskPath };
       this.previousTaskPath = taskPath;
+      this.refreshScheduler.cancel();
+      if (taskChanged) {
+        this.detailsOpen = false;
+        this.detailsOpenInitialized = false;
+      }
       if (((_a = this.displayState) == null ? void 0 : _a.taskPath) !== taskPath) {
         this.displayState = null;
       }
@@ -579,6 +639,23 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     }
   }
   async refreshCurrentTask() {
+    this.refreshScheduler.cancel();
+    await this.loadCurrentTask();
+  }
+  scheduleRefresh() {
+    this.refreshScheduler.schedule();
+  }
+  observesTaskFile(filePath) {
+    var _a;
+    if (this.context.kind !== "task") {
+      return false;
+    }
+    return collectObservedTaskPaths(
+      this.context.taskPath,
+      (_a = this.displayState) == null ? void 0 : _a.snapshot
+    ).has(filePath);
+  }
+  async loadCurrentTask() {
     if (this.context.kind === "task") {
       await this.loadTask(this.context.taskPath);
     }
@@ -678,9 +755,6 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       container.createDiv({ cls: "flowdesk-empty", text: "\u5C1A\u672A\u8BFB\u53D6 snapshot\u3002" });
       return;
     }
-    if (this.loading) {
-      container.createDiv({ cls: "flowdesk-refreshing", text: "\u6B63\u5728\u5237\u65B0 snapshot..." });
-    }
     const model = createDashboardViewModel(snapshot, {
       expectedTaskPath: taskPath,
       loadedAt: displayState == null ? void 0 : displayState.loadedAt,
@@ -724,7 +798,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     });
   }
   renderHeader(container) {
-    var _a;
+    var _a, _b;
     const header = container.createDiv({ cls: "flowdesk-dashboard-header" });
     const titleBlock = header.createDiv();
     titleBlock.createDiv({
@@ -737,7 +811,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     });
     titleBlock.createDiv({
       cls: "flowdesk-dashboard-meta",
-      text: ((_a = this.displayState) == null ? void 0 : _a.loadedAt) ? `\u672C\u5730\u8BFB\u53D6 ${this.displayState.loadedAt}` : "\u7B49\u5F85\u5237\u65B0"
+      text: this.loading ? ((_a = this.displayState) == null ? void 0 : _a.loadedAt) ? `\u6B63\u5728\u5237\u65B0 \xB7 \u4E0A\u6B21\u8BFB\u53D6 ${this.displayState.loadedAt}` : "\u6B63\u5728\u8BFB\u53D6 snapshot" : ((_b = this.displayState) == null ? void 0 : _b.loadedAt) ? `\u672C\u5730\u8BFB\u53D6 ${this.displayState.loadedAt}` : "\u7B49\u5F85\u5237\u65B0"
     });
     const toolbar = header.createDiv({ cls: "flowdesk-dashboard-toolbar" });
     if (this.context.kind !== "task") {
@@ -774,7 +848,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     refresh.disabled = this.loading;
     refresh.title = "\u91CD\u65B0\u8BFB\u53D6\u5F53\u524D TaskNotes task \u7684 FlowDesk snapshot";
     refresh.addEventListener("click", () => {
-      void this.plugin.refreshDashboard(taskPath);
+      void this.refreshCurrentTask();
     });
   }
   renderTrustStrip(container, model) {
@@ -974,7 +1048,18 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   }
   renderDetails(container, snapshot, model) {
     const details = container.createEl("details", { cls: "flowdesk-detail-group" });
-    details.open = model.diagnostics.length > 0;
+    if (!this.detailsOpenInitialized) {
+      this.detailsOpen = resolveDetailsOpen(
+        this.detailsOpen,
+        true,
+        model.diagnostics.length
+      );
+      this.detailsOpenInitialized = true;
+    }
+    details.open = this.detailsOpen;
+    details.addEventListener("toggle", () => {
+      this.detailsOpen = details.open;
+    });
     details.createEl("summary", { text: "\u67E5\u770B\u6267\u884C\u8BE6\u60C5" });
     const body = details.createDiv({ cls: "flowdesk-detail-body" });
     this.renderObservationDetails(body, model);
