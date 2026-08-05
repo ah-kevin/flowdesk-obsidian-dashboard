@@ -42,8 +42,8 @@ var path = __toESM(require("path"));
 var import_util = require("util");
 
 // src/snapshot-model.ts
-function createDashboardViewModel(snapshot) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q;
+function createDashboardViewModel(snapshot, options = {}) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s;
   const schemaVersion = Number(snapshot.snapshot_schema_version);
   const health = normalizeObservationHealth((_a = snapshot.observation) == null ? void 0 : _a.health);
   const compatibility = createCompatibility(snapshot);
@@ -68,25 +68,44 @@ function createDashboardViewModel(snapshot) {
     }))
   } : null;
   const hero = createHero(snapshot, inlineProgress);
+  const staleReason = normalizeText(options.staleReason, "");
+  const sourceIdentity = validateSnapshotSource(
+    snapshot,
+    normalizeText(options.expectedTaskPath, "")
+  );
+  const hasObservedSource = Boolean((_l = (_k = snapshot.observation) == null ? void 0 : _k.source_task_id) == null ? void 0 : _l.trim());
   return {
     schemaLabel: schemaVersion === 2 ? "snapshot v2" : "\u65E7\u7248 snapshot",
-    state: normalizeText((_k = snapshot.state) == null ? void 0 : _k.value, "unknown"),
+    state: normalizeText((_m = snapshot.state) == null ? void 0 : _m.value, "unknown"),
     hero,
     compatibility,
     observation: {
       health,
-      generatedAt: normalizeText((_l = snapshot.observation) == null ? void 0 : _l.generated_at, "\u672A\u63D0\u4F9B"),
-      sourceTaskId: normalizeText((_m = snapshot.observation) == null ? void 0 : _m.source_task_id, ""),
-      coverage: Object.entries((_o = (_n = snapshot.observation) == null ? void 0 : _n.coverage) != null ? _o : {}).map(
+      generatedAt: normalizeText((_n = snapshot.observation) == null ? void 0 : _n.generated_at, "\u672A\u63D0\u4F9B"),
+      sourceTaskId: normalizeText((_o = snapshot.observation) == null ? void 0 : _o.source_task_id, ""),
+      coverage: Object.entries((_q = (_p = snapshot.observation) == null ? void 0 : _p.coverage) != null ? _q : {}).map(
         ([key, value]) => ({ key, value: normalizeText(value, "unknown") })
       ),
-      isTrustworthy: schemaVersion === 2 && health === "healthy"
+      isTrustworthy: schemaVersion === 2 && health === "healthy" && hasObservedSource && sourceIdentity !== false && !staleReason,
+      isStale: Boolean(staleReason),
+      staleReason,
+      loadedAt: normalizeText(options.loadedAt, "\u672A\u63D0\u4F9B"),
+      sourceIdentity
     },
     inlineProgress,
-    primaryDiagnostic: (_p = diagnostics[0]) != null ? _p : null,
+    primaryDiagnostic: (_r = diagnostics[0]) != null ? _r : null,
     diagnostics,
-    nextAction: formatNextAction((_q = snapshot.next_actions) == null ? void 0 : _q[0])
+    nextAction: formatNextAction((_s = snapshot.next_actions) == null ? void 0 : _s[0])
   };
+}
+function validateSnapshotSource(snapshot, expectedTaskPath) {
+  var _a;
+  const actual = normalizeText((_a = snapshot.observation) == null ? void 0 : _a.source_task_id, "");
+  const expected = normalizeText(expectedTaskPath, "");
+  if (!actual || !expected) {
+    return "unknown";
+  }
+  return actual === expected;
 }
 function createHero(snapshot, inlineProgress) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o;
@@ -439,10 +458,9 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     super(leaf);
     this.plugin = plugin;
     this.taskPath = "";
-    this.snapshot = null;
+    this.displayState = null;
     this.error = "";
     this.loading = false;
-    this.lastUpdatedAt = "";
     this.queuedTaskPath = null;
     this.refreshPromise = null;
   }
@@ -489,30 +507,52 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     }
   }
   async loadTaskNow(taskPath) {
+    var _a, _b, _c;
     const previousTaskPath = this.taskPath;
     this.taskPath = taskPath;
     if (previousTaskPath !== taskPath) {
-      this.snapshot = null;
-      this.lastUpdatedAt = "";
+      this.displayState = null;
     }
     this.loading = true;
     this.error = "";
     this.render();
     try {
-      this.snapshot = await this.plugin.loadSnapshot(taskPath);
-      this.lastUpdatedAt = formatTime(/* @__PURE__ */ new Date());
+      const snapshot = await this.plugin.loadSnapshot(taskPath);
+      const sourceIdentity = validateSnapshotSource(snapshot, taskPath);
+      if (sourceIdentity === false) {
+        throw new Error(
+          `Snapshot source identity \u4E0D\u5339\u914D\uFF1A\u8BF7\u6C42 ${taskPath}\uFF0C\u8FD4\u56DE ${(_b = (_a = snapshot.observation) == null ? void 0 : _a.source_task_id) != null ? _b : "\u672A\u63D0\u4F9B"}\u3002`
+        );
+      }
+      this.displayState = {
+        taskPath,
+        snapshot,
+        loadedAt: formatTime(/* @__PURE__ */ new Date()),
+        staleReason: ""
+      };
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
+      if (((_c = this.displayState) == null ? void 0 : _c.taskPath) === taskPath) {
+        this.displayState = {
+          ...this.displayState,
+          staleReason: this.error
+        };
+      } else {
+        this.displayState = null;
+      }
     } finally {
       this.loading = false;
       this.render();
     }
   }
   render() {
+    var _a, _b;
     const container = this.contentEl;
     container.empty();
     container.addClass("flowdesk-dashboard");
     this.renderHeader(container);
+    const displayState = ((_a = this.displayState) == null ? void 0 : _a.taskPath) === this.taskPath ? this.displayState : null;
+    const snapshot = (_b = displayState == null ? void 0 : displayState.snapshot) != null ? _b : null;
     if (this.isPinnedToPreviousTask()) {
       container.createDiv({
         cls: "flowdesk-pinned-note",
@@ -526,32 +566,37 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       });
       return;
     }
-    if (this.loading && !this.snapshot) {
+    if (this.loading && !snapshot) {
       container.createDiv({ cls: "flowdesk-empty", text: "\u6B63\u5728\u8BFB\u53D6 snapshot..." });
       return;
     }
     if (this.error) {
-      container.createDiv({ cls: "flowdesk-error", text: this.error });
-      if (!this.snapshot) {
+      if (!snapshot) {
+        container.createDiv({ cls: "flowdesk-error", text: this.error });
         return;
       }
     }
-    if (!this.snapshot) {
+    if (!snapshot) {
       container.createDiv({ cls: "flowdesk-empty", text: "\u5C1A\u672A\u8BFB\u53D6 snapshot\u3002" });
       return;
     }
     if (this.loading) {
       container.createDiv({ cls: "flowdesk-refreshing", text: "\u6B63\u5728\u5237\u65B0 snapshot..." });
     }
-    const model = createDashboardViewModel(this.snapshot);
+    const model = createDashboardViewModel(snapshot, {
+      expectedTaskPath: this.taskPath,
+      loadedAt: displayState == null ? void 0 : displayState.loadedAt,
+      staleReason: displayState == null ? void 0 : displayState.staleReason
+    });
     this.renderTrustStrip(container, model);
-    this.renderTaskHero(container, model, this.snapshot);
+    this.renderTaskHero(container, model, snapshot);
     this.renderPrimaryDiagnostic(container, model);
     this.renderPrimaryNextAction(container, model);
-    this.renderStageRail(container, this.snapshot);
-    this.renderDetails(container, this.snapshot, model);
+    this.renderStageRail(container, snapshot);
+    this.renderDetails(container, snapshot, model);
   }
   renderHeader(container) {
+    var _a;
     const header = container.createDiv({ cls: "flowdesk-dashboard-header" });
     const titleBlock = header.createDiv();
     titleBlock.createDiv({
@@ -564,7 +609,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     });
     titleBlock.createDiv({
       cls: "flowdesk-dashboard-meta",
-      text: this.lastUpdatedAt ? `\u4E0A\u6B21\u5237\u65B0 ${this.lastUpdatedAt}` : "\u7B49\u5F85\u5237\u65B0"
+      text: ((_a = this.displayState) == null ? void 0 : _a.loadedAt) ? `\u672C\u5730\u8BFB\u53D6 ${this.displayState.loadedAt}` : "\u7B49\u5F85\u5237\u65B0"
     });
     const toolbar = header.createDiv({ cls: "flowdesk-dashboard-toolbar" });
     const refresh = toolbar.createEl("button", {
@@ -579,8 +624,9 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   }
   renderTrustStrip(container, model) {
     var _a;
+    const trustState = model.observation.isStale ? "stale" : model.observation.health;
     const strip = container.createDiv({
-      cls: `flowdesk-trust-strip flowdesk-trust-${model.observation.health}`
+      cls: `flowdesk-trust-strip flowdesk-trust-${trustState}`
     });
     const labels = {
       healthy: "\u89C2\u6D4B\u5065\u5EB7",
@@ -590,7 +636,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     };
     strip.createSpan({
       cls: "flowdesk-trust-badge",
-      text: (_a = labels[model.observation.health]) != null ? _a : "\u89C2\u6D4B\u672A\u77E5"
+      text: model.observation.isStale ? "\u65E7\u6570\u636E" : (_a = labels[model.observation.health]) != null ? _a : "\u89C2\u6D4B\u672A\u77E5"
     });
     strip.createSpan({
       cls: "flowdesk-trust-contract",
@@ -598,8 +644,14 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     });
     strip.createSpan({
       cls: "flowdesk-trust-generated",
-      text: `\u751F\u6210\u4E8E ${model.observation.generatedAt}`
+      text: `producer ${model.observation.generatedAt} \xB7 \u672C\u5730 ${model.observation.loadedAt}`
     });
+    if (model.observation.isStale) {
+      strip.createDiv({
+        cls: "flowdesk-stale-reason",
+        text: `\u5237\u65B0\u5931\u8D25\uFF1A${model.observation.staleReason}`
+      });
+    }
   }
   renderTaskHero(container, model, snapshot) {
     var _a;
@@ -781,6 +833,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     const section = createSection(container, "Observation\uFF08\u89C2\u6D4B\uFF09");
     const list = section.createDiv({ cls: "flowdesk-contract-list" });
     contractRow(list, "Source task", [model.observation.sourceTaskId || "\u672A\u63D0\u4F9B"]);
+    contractRow(list, "Source identity", [String(model.observation.sourceIdentity)]);
     contractRow(list, "Profile", [model.compatibility.profile]);
     if (!model.observation.coverage.length) {
       list.createDiv({ cls: "flowdesk-muted", text: "Coverage\uFF1A\u672A\u63D0\u4F9B" });

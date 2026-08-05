@@ -17,6 +17,7 @@ import { promisify } from "util";
 import {
   createDashboardViewModel,
   resolveDiagnosticTarget,
+  validateSnapshotSource,
 } from "./snapshot-model";
 import type {
   ChildTask,
@@ -49,6 +50,13 @@ interface ExecFileFailure extends Error {
   code?: number | string;
   stderr?: string;
   stdout?: string;
+}
+
+interface SnapshotDisplayState {
+  taskPath: string;
+  snapshot: ExecutionSnapshot;
+  loadedAt: string;
+  staleReason: string;
 }
 
 export default class FlowDeskDashboardPlugin extends Plugin {
@@ -244,10 +252,9 @@ function expandHomePath(value: string): string {
 
 class FlowDeskDashboardView extends ItemView {
   private taskPath = "";
-  private snapshot: ExecutionSnapshot | null = null;
+  private displayState: SnapshotDisplayState | null = null;
   private error = "";
   private loading = false;
-  private lastUpdatedAt = "";
   private queuedTaskPath: string | null = null;
   private refreshPromise: Promise<void> | null = null;
 
@@ -311,18 +318,38 @@ class FlowDeskDashboardView extends ItemView {
     const previousTaskPath = this.taskPath;
     this.taskPath = taskPath;
     if (previousTaskPath !== taskPath) {
-      this.snapshot = null;
-      this.lastUpdatedAt = "";
+      this.displayState = null;
     }
     this.loading = true;
     this.error = "";
     this.render();
 
     try {
-      this.snapshot = await this.plugin.loadSnapshot(taskPath);
-      this.lastUpdatedAt = formatTime(new Date());
+      const snapshot = await this.plugin.loadSnapshot(taskPath);
+      const sourceIdentity = validateSnapshotSource(snapshot, taskPath);
+      if (sourceIdentity === false) {
+        throw new Error(
+          `Snapshot source identity 不匹配：请求 ${taskPath}，返回 ${
+            snapshot.observation?.source_task_id ?? "未提供"
+          }。`
+        );
+      }
+      this.displayState = {
+        taskPath,
+        snapshot,
+        loadedAt: formatTime(new Date()),
+        staleReason: "",
+      };
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
+      if (this.displayState?.taskPath === taskPath) {
+        this.displayState = {
+          ...this.displayState,
+          staleReason: this.error,
+        };
+      } else {
+        this.displayState = null;
+      }
     } finally {
       this.loading = false;
       this.render();
@@ -335,6 +362,10 @@ class FlowDeskDashboardView extends ItemView {
     container.addClass("flowdesk-dashboard");
 
     this.renderHeader(container);
+
+    const displayState =
+      this.displayState?.taskPath === this.taskPath ? this.displayState : null;
+    const snapshot = displayState?.snapshot ?? null;
 
     if (this.isPinnedToPreviousTask()) {
       container.createDiv({
@@ -351,19 +382,19 @@ class FlowDeskDashboardView extends ItemView {
       return;
     }
 
-    if (this.loading && !this.snapshot) {
+    if (this.loading && !snapshot) {
       container.createDiv({ cls: "flowdesk-empty", text: "正在读取 snapshot..." });
       return;
     }
 
     if (this.error) {
-      container.createDiv({ cls: "flowdesk-error", text: this.error });
-      if (!this.snapshot) {
+      if (!snapshot) {
+        container.createDiv({ cls: "flowdesk-error", text: this.error });
         return;
       }
     }
 
-    if (!this.snapshot) {
+    if (!snapshot) {
       container.createDiv({ cls: "flowdesk-empty", text: "尚未读取 snapshot。" });
       return;
     }
@@ -372,13 +403,17 @@ class FlowDeskDashboardView extends ItemView {
       container.createDiv({ cls: "flowdesk-refreshing", text: "正在刷新 snapshot..." });
     }
 
-    const model = createDashboardViewModel(this.snapshot);
+    const model = createDashboardViewModel(snapshot, {
+      expectedTaskPath: this.taskPath,
+      loadedAt: displayState?.loadedAt,
+      staleReason: displayState?.staleReason,
+    });
     this.renderTrustStrip(container, model);
-    this.renderTaskHero(container, model, this.snapshot);
+    this.renderTaskHero(container, model, snapshot);
     this.renderPrimaryDiagnostic(container, model);
     this.renderPrimaryNextAction(container, model);
-    this.renderStageRail(container, this.snapshot);
-    this.renderDetails(container, this.snapshot, model);
+    this.renderStageRail(container, snapshot);
+    this.renderDetails(container, snapshot, model);
   }
 
   private renderHeader(container: HTMLElement) {
@@ -394,7 +429,9 @@ class FlowDeskDashboardView extends ItemView {
     });
     titleBlock.createDiv({
       cls: "flowdesk-dashboard-meta",
-      text: this.lastUpdatedAt ? `上次刷新 ${this.lastUpdatedAt}` : "等待刷新",
+      text: this.displayState?.loadedAt
+        ? `本地读取 ${this.displayState.loadedAt}`
+        : "等待刷新",
     });
 
     const toolbar = header.createDiv({ cls: "flowdesk-dashboard-toolbar" });
@@ -410,8 +447,11 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   private renderTrustStrip(container: HTMLElement, model: DashboardViewModel) {
+    const trustState = model.observation.isStale
+      ? "stale"
+      : model.observation.health;
     const strip = container.createDiv({
-      cls: `flowdesk-trust-strip flowdesk-trust-${model.observation.health}`,
+      cls: `flowdesk-trust-strip flowdesk-trust-${trustState}`,
     });
     const labels: Record<string, string> = {
       healthy: "观测健康",
@@ -421,7 +461,9 @@ class FlowDeskDashboardView extends ItemView {
     };
     strip.createSpan({
       cls: "flowdesk-trust-badge",
-      text: labels[model.observation.health] ?? "观测未知",
+      text: model.observation.isStale
+        ? "旧数据"
+        : labels[model.observation.health] ?? "观测未知",
     });
     strip.createSpan({
       cls: "flowdesk-trust-contract",
@@ -429,8 +471,14 @@ class FlowDeskDashboardView extends ItemView {
     });
     strip.createSpan({
       cls: "flowdesk-trust-generated",
-      text: `生成于 ${model.observation.generatedAt}`,
+      text: `producer ${model.observation.generatedAt} · 本地 ${model.observation.loadedAt}`,
     });
+    if (model.observation.isStale) {
+      strip.createDiv({
+        cls: "flowdesk-stale-reason",
+        text: `刷新失败：${model.observation.staleReason}`,
+      });
+    }
   }
 
   private renderTaskHero(
@@ -655,6 +703,7 @@ class FlowDeskDashboardView extends ItemView {
     const section = createSection(container, "Observation（观测）");
     const list = section.createDiv({ cls: "flowdesk-contract-list" });
     contractRow(list, "Source task", [model.observation.sourceTaskId || "未提供"]);
+    contractRow(list, "Source identity", [String(model.observation.sourceIdentity)]);
     contractRow(list, "Profile", [model.compatibility.profile]);
     if (!model.observation.coverage.length) {
       list.createDiv({ cls: "flowdesk-muted", text: "Coverage：未提供" });

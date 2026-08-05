@@ -99,6 +99,14 @@
   color: var(--flowdesk-error);
 }
 
+.flowdesk-trust-stale {
+  border-color: var(--flowdesk-running);
+}
+
+.flowdesk-trust-stale .flowdesk-trust-badge {
+  color: var(--flowdesk-running);
+}
+
 .flowdesk-trust-unknown .flowdesk-trust-badge {
   color: var(--flowdesk-unknown);
 }
@@ -113,6 +121,15 @@
   color: var(--text-faint);
   font-size: 10px;
   margin-left: auto;
+}
+
+.flowdesk-stale-reason {
+  border-top: 1px solid var(--flowdesk-panel-border);
+  color: var(--flowdesk-running);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  padding-top: 6px;
+  width: 100%;
 }
 
 .flowdesk-hero,

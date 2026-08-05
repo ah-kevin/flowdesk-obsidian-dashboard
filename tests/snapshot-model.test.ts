@@ -6,6 +6,7 @@ import {
   formatDiagnosticReason,
   formatDiagnosticRemediation,
   resolveDiagnosticTarget,
+  validateSnapshotSource,
 } from "../src/snapshot-model.ts";
 
 test("缺少 schema 与 observation 的旧 snapshot 显示未知观测", () => {
@@ -168,4 +169,28 @@ test("旧 producer 只有 code/message 时保留消息并明确缺少修法", ()
   assert.equal(model.primaryDiagnostic?.reason, "缺少有效 Why");
   assert.equal(model.primaryDiagnostic?.remediation, "producer 未提供");
   assert.equal(model.primaryDiagnostic?.source, undefined);
+});
+
+test("校验 snapshot source identity，并将同任务刷新失败标为旧数据", () => {
+  const snapshot = {
+    snapshot_schema_version: 2,
+    observation: {
+      source_task_id: "Tasks/A.md",
+      health: "healthy",
+      diagnostics: [],
+    },
+  };
+
+  assert.equal(validateSnapshotSource(snapshot, "Tasks/A.md"), true);
+  assert.equal(validateSnapshotSource(snapshot, "Tasks/B.md"), false);
+  assert.equal(validateSnapshotSource({ state: { value: "running" } }, "Tasks/A.md"), "unknown");
+
+  const model = createDashboardViewModel(snapshot, {
+    staleReason: "刷新失败",
+    loadedAt: "12:30:00",
+  });
+  assert.equal(model.observation.isStale, true);
+  assert.equal(model.observation.staleReason, "刷新失败");
+  assert.equal(model.observation.loadedAt, "12:30:00");
+  assert.equal(model.observation.isTrustworthy, false);
 });

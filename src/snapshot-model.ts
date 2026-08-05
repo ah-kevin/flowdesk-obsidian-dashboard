@@ -193,6 +193,10 @@ export interface DashboardViewModel {
     sourceTaskId: string;
     coverage: Array<{ key: string; value: string }>;
     isTrustworthy: boolean;
+    isStale: boolean;
+    staleReason: string;
+    loadedAt: string;
+    sourceIdentity: true | false | "unknown";
   };
   inlineProgress: null | {
     completed: number | null;
@@ -206,8 +210,15 @@ export interface DashboardViewModel {
   nextAction: string | null;
 }
 
+export interface DashboardModelOptions {
+  expectedTaskPath?: string;
+  loadedAt?: string;
+  staleReason?: string;
+}
+
 export function createDashboardViewModel(
-  snapshot: ExecutionSnapshot
+  snapshot: ExecutionSnapshot,
+  options: DashboardModelOptions = {}
 ): DashboardViewModel {
   const schemaVersion = Number(snapshot.snapshot_schema_version);
   const health = normalizeObservationHealth(snapshot.observation?.health);
@@ -239,6 +250,12 @@ export function createDashboardViewModel(
       }
     : null;
   const hero = createHero(snapshot, inlineProgress);
+  const staleReason = normalizeText(options.staleReason, "");
+  const sourceIdentity = validateSnapshotSource(
+    snapshot,
+    normalizeText(options.expectedTaskPath, "")
+  );
+  const hasObservedSource = Boolean(snapshot.observation?.source_task_id?.trim());
 
   return {
     schemaLabel: schemaVersion === 2 ? "snapshot v2" : "旧版 snapshot",
@@ -252,13 +269,34 @@ export function createDashboardViewModel(
       coverage: Object.entries(snapshot.observation?.coverage ?? {}).map(
         ([key, value]) => ({ key, value: normalizeText(value, "unknown") })
       ),
-      isTrustworthy: schemaVersion === 2 && health === "healthy",
+      isTrustworthy:
+        schemaVersion === 2 &&
+        health === "healthy" &&
+        hasObservedSource &&
+        sourceIdentity !== false &&
+        !staleReason,
+      isStale: Boolean(staleReason),
+      staleReason,
+      loadedAt: normalizeText(options.loadedAt, "未提供"),
+      sourceIdentity,
     },
     inlineProgress,
     primaryDiagnostic: diagnostics[0] ?? null,
     diagnostics,
     nextAction: formatNextAction(snapshot.next_actions?.[0]),
   };
+}
+
+export function validateSnapshotSource(
+  snapshot: ExecutionSnapshot,
+  expectedTaskPath: string
+): true | false | "unknown" {
+  const actual = normalizeText(snapshot.observation?.source_task_id, "");
+  const expected = normalizeText(expectedTaskPath, "");
+  if (!actual || !expected) {
+    return "unknown";
+  }
+  return actual === expected;
 }
 
 function createHero(
