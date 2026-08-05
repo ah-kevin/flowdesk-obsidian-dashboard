@@ -476,6 +476,6 @@ rg -n 'task_tree|TaskTreeRoot|TaskTreeChild|\.covers|overallAcceptance|renderRoo
 
 确认：无 TaskNotes 写操作；无 consumer 侧状态推断；无版本/release 改动；非 task 与跨 task stale 不泄漏；CSS 在窄侧栏无显著溢出；未覆盖用户无关改动。
 
-- [ ] **步骤 7：创建新分支、最终提交、push 与 PR**
+- [x] **步骤 7：创建新分支、最终提交、push 与 PR**
 
 分支：`codex/dashboard-task-centric`。PR 描述关联 Plugin PR，列出 breaking model handshake、parent/leaf UX、刷新边界与全部验证；不合并、不发布。
