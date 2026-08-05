@@ -15,6 +15,13 @@ import { homedir } from "os";
 import * as path from "path";
 import { promisify } from "util";
 import {
+  isCurrentSnapshotRequest,
+  isTaskPath,
+  resolveDashboardContext,
+  type DashboardContext,
+  type SnapshotRequestIdentity,
+} from "./dashboard-state";
+import {
   buildSnapshotInvocation,
   formatShellCommand,
   type SnapshotFormat,
@@ -23,9 +30,7 @@ import {
 import {
   createDashboardViewModel,
   formatNextAction,
-  isSnapshotRequestCurrent,
   resolveDiagnosticTarget,
-  shouldResetDisplayState,
   validateSnapshotSource,
 } from "./snapshot-model";
 import type {
@@ -103,20 +108,13 @@ export default class FlowDeskDashboardPlugin extends Plugin {
 
     this.registerEvent(
       this.app.workspace.on("file-open", (file) => {
-        const view = this.getDashboardView();
-        if (view && this.isTaskFile(file)) {
-          void view.loadTask(file.path);
-          return;
-        }
-        view?.refreshActiveFileState();
+        void this.getDashboardView()?.syncToActiveFile(file);
       })
     );
 
-    this.registerEvent(
-      this.app.workspace.on("active-leaf-change", () => {
-        this.getDashboardView()?.refreshActiveFileState();
-      })
-    );
+    this.app.workspace.onLayoutReady(() => {
+      void this.getDashboardView()?.syncToActiveFile();
+    });
 
     this.registerEvent(
       this.app.vault.on("modify", (file) => {
@@ -228,16 +226,7 @@ export default class FlowDeskDashboardPlugin extends Plugin {
   }
 
   isTaskFile(file: TFile | null): file is TFile {
-    return Boolean(
-      file &&
-        file.extension === "md" &&
-        (file.path.startsWith("Tasks/") || file.path.startsWith("TaskNotes/"))
-    );
-  }
-
-  getActiveTaskPath(): string | null {
-    const file = this.app.workspace.getActiveFile();
-    return this.isTaskFile(file) ? file.path : null;
+    return Boolean(file && file.extension === "md" && isTaskPath(file.path));
   }
 
   private resolveFlowDeskRoot(): string {
@@ -269,11 +258,13 @@ function expandHomePath(value: string): string {
 }
 
 class FlowDeskDashboardView extends ItemView {
-  private taskPath = "";
+  private context: DashboardContext = { kind: "empty" };
+  private previousTaskPath = "";
+  private selectionRevision = 0;
   private displayState: SnapshotDisplayState | null = null;
   private error = "";
   private loading = false;
-  private queuedTaskPath: string | null = null;
+  private queuedRequest: SnapshotRequestIdentity | null = null;
   private refreshPromise: Promise<void> | null = null;
 
   constructor(leaf: WorkspaceLeaf, private plugin: FlowDeskDashboardPlugin) {
@@ -293,26 +284,59 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   async onOpen() {
-    this.render();
+    await this.syncToActiveFile();
   }
 
   get currentTaskPath(): string {
-    return this.taskPath;
+    return this.context.kind === "task" ? this.context.taskPath : "";
   }
 
-  refreshActiveFileState() {
+  async syncToActiveFile(file: TFile | null = this.app.workspace.getActiveFile()) {
+    const nextContext = resolveDashboardContext(
+      file?.path ?? null,
+      this.previousTaskPath
+    );
+
+    if (nextContext.kind === "task") {
+      if (
+        this.context.kind === "task" &&
+        this.context.taskPath === nextContext.taskPath
+      ) {
+        if (!this.displayState && !this.loading) {
+          await this.loadTask(nextContext.taskPath);
+        }
+        return;
+      }
+      await this.loadTask(nextContext.taskPath);
+      return;
+    }
+
+    this.selectionRevision += 1;
+    this.context = nextContext;
+    this.queuedRequest = null;
+    this.loading = false;
+    this.error = "";
     this.render();
   }
 
   async loadTask(taskPath: string) {
-    if (shouldResetDisplayState(this.taskPath, taskPath)) {
-      this.taskPath = taskPath;
-      this.displayState = null;
+    const isSameSelection =
+      this.context.kind === "task" && this.context.taskPath === taskPath;
+    if (!isSameSelection) {
+      this.selectionRevision += 1;
+      this.context = { kind: "task", taskPath };
+      this.previousTaskPath = taskPath;
+      if (this.displayState?.taskPath !== taskPath) {
+        this.displayState = null;
+      }
       this.error = "";
       this.loading = true;
       this.render();
     }
-    this.queuedTaskPath = taskPath;
+    this.queuedRequest = {
+      taskPath,
+      selectionRevision: this.selectionRevision,
+    };
     if (this.refreshPromise) {
       return this.refreshPromise;
     }
@@ -326,49 +350,61 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   async refreshCurrentTask() {
-    if (this.taskPath) {
-      await this.loadTask(this.taskPath);
+    if (this.context.kind === "task") {
+      await this.loadTask(this.context.taskPath);
     }
   }
 
   private async drainRefreshQueue() {
-    while (this.queuedTaskPath) {
-      const taskPath = this.queuedTaskPath;
-      this.queuedTaskPath = null;
-      await this.loadTaskNow(taskPath);
+    while (this.queuedRequest) {
+      const request = this.queuedRequest;
+      this.queuedRequest = null;
+      await this.loadTaskNow(request);
     }
   }
 
-  private async loadTaskNow(taskPath: string) {
+  private async loadTaskNow(request: SnapshotRequestIdentity) {
     this.loading = true;
     this.error = "";
     this.render();
 
     try {
-      const snapshot = await this.plugin.loadSnapshot(taskPath);
-      if (!isSnapshotRequestCurrent(taskPath, this.taskPath)) {
+      const snapshot = await this.plugin.loadSnapshot(request.taskPath);
+      if (
+        !isCurrentSnapshotRequest(
+          request,
+          this.context,
+          this.selectionRevision
+        )
+      ) {
         return;
       }
-      const sourceIdentity = validateSnapshotSource(snapshot, taskPath);
+      const sourceIdentity = validateSnapshotSource(snapshot, request.taskPath);
       if (sourceIdentity === false) {
         throw new Error(
-          `Snapshot source identity 不匹配：请求 ${taskPath}，返回 ${
+          `Snapshot source identity 不匹配：请求 ${request.taskPath}，返回 ${
             snapshot.observation?.source_task_id ?? "未提供"
           }。`
         );
       }
       this.displayState = {
-        taskPath,
+        taskPath: request.taskPath,
         snapshot,
         loadedAt: formatTime(new Date()),
         staleReason: "",
       };
     } catch (error) {
-      if (!isSnapshotRequestCurrent(taskPath, this.taskPath)) {
+      if (
+        !isCurrentSnapshotRequest(
+          request,
+          this.context,
+          this.selectionRevision
+        )
+      ) {
         return;
       }
       this.error = error instanceof Error ? error.message : String(error);
-      if (this.displayState?.taskPath === taskPath) {
+      if (this.displayState?.taskPath === request.taskPath) {
         this.displayState = {
           ...this.displayState,
           staleReason: this.error,
@@ -377,7 +413,13 @@ class FlowDeskDashboardView extends ItemView {
         this.displayState = null;
       }
     } finally {
-      if (isSnapshotRequestCurrent(taskPath, this.taskPath)) {
+      if (
+        isCurrentSnapshotRequest(
+          request,
+          this.context,
+          this.selectionRevision
+        )
+      ) {
         this.loading = false;
         this.render();
       }
@@ -391,24 +433,24 @@ class FlowDeskDashboardView extends ItemView {
 
     this.renderHeader(container);
 
-    const displayState =
-      this.displayState?.taskPath === this.taskPath ? this.displayState : null;
-    const snapshot = displayState?.snapshot ?? null;
-
-    if (this.isPinnedToPreviousTask()) {
-      container.createDiv({
-        cls: "flowdesk-pinned-note",
-        text: "Pinned: 当前文件不是 TaskNotes task，面板显示的是上一次任务。",
-      });
+    if (this.context.kind === "non-task") {
+      this.renderNonTaskState(container, this.context);
+      return;
     }
 
-    if (!this.taskPath) {
+    if (this.context.kind === "empty") {
       container.createDiv({
         cls: "flowdesk-empty",
-        text: "打开一个 Tasks/*.md 文件后，执行 FlowDesk Dashboard 命令。",
+        text: "请打开一个 Tasks/*.md 或 TaskNotes/*.md 任务文件。",
       });
       return;
     }
+
+    const taskPath = this.context.taskPath;
+
+    const displayState =
+      this.displayState?.taskPath === taskPath ? this.displayState : null;
+    const snapshot = displayState?.snapshot ?? null;
 
     if (this.loading && !snapshot) {
       container.createDiv({ cls: "flowdesk-empty", text: "正在读取 snapshot..." });
@@ -432,7 +474,7 @@ class FlowDeskDashboardView extends ItemView {
     }
 
     const model = createDashboardViewModel(snapshot, {
-      expectedTaskPath: this.taskPath,
+      expectedTaskPath: taskPath,
       loadedAt: displayState?.loadedAt,
       staleReason: displayState?.staleReason,
     });
@@ -444,6 +486,40 @@ class FlowDeskDashboardView extends ItemView {
     this.renderDetails(container, snapshot, model);
   }
 
+  private renderNonTaskState(
+    container: HTMLElement,
+    context: Extract<DashboardContext, { kind: "non-task" }>
+  ) {
+    const card = container.createDiv({ cls: "flowdesk-context-pause" });
+    card.createDiv({ cls: "flowdesk-card-kicker", text: "Dashboard 已暂停" });
+    card.createDiv({
+      cls: "flowdesk-primary-title",
+      text: "当前文件不是 TaskNotes 任务",
+    });
+    card.createDiv({
+      cls: "flowdesk-card-copy",
+      text: "FlowDesk Dashboard 仅支持 Tasks/*.md 与 TaskNotes/*.md。",
+    });
+    card.createDiv({
+      cls: "flowdesk-context-path",
+      text: `当前文件：${context.activePath}`,
+    });
+    if (!context.previousTaskPath) {
+      return;
+    }
+    card.createDiv({
+      cls: "flowdesk-context-path",
+      text: `上一次任务：${context.previousTaskPath}`,
+    });
+    const back = card.createEl("button", {
+      cls: "flowdesk-context-back",
+      text: "回到上一次任务",
+    });
+    back.addEventListener("click", () => {
+      void this.openTask(context.previousTaskPath);
+    });
+  }
+
   private renderHeader(container: HTMLElement) {
     const header = container.createDiv({ cls: "flowdesk-dashboard-header" });
     const titleBlock = header.createDiv();
@@ -453,7 +529,12 @@ class FlowDeskDashboardView extends ItemView {
     });
     titleBlock.createDiv({
       cls: "flowdesk-dashboard-path",
-      text: this.taskPath || "No task selected",
+      text:
+        this.context.kind === "task"
+          ? this.context.taskPath
+          : this.context.kind === "non-task"
+            ? this.context.activePath
+            : "未选择文件",
     });
     titleBlock.createDiv({
       cls: "flowdesk-dashboard-meta",
@@ -463,18 +544,19 @@ class FlowDeskDashboardView extends ItemView {
     });
 
     const toolbar = header.createDiv({ cls: "flowdesk-dashboard-toolbar" });
+    if (this.context.kind !== "task") {
+      return;
+    }
+    const taskPath = this.context.taskPath;
     const copy = toolbar.createEl("button", {
       cls: "flowdesk-copy-button",
       text: "复制 CLI",
     });
-    copy.disabled = !this.taskPath || this.isPinnedToPreviousTask();
-    copy.title = copy.disabled
-      ? "请先打开一个 TaskNotes 任务"
-      : "复制当前任务的 terminal dashboard 命令";
+    copy.title = "复制当前任务的 terminal dashboard 命令";
     copy.addEventListener("click", async () => {
       copy.disabled = true;
       try {
-        await this.plugin.copyDashboardCommand(this.taskPath);
+        await this.plugin.copyDashboardCommand(taskPath);
         copy.setText("已复制");
         new Notice("CLI 命令已复制");
         window.setTimeout(() => {
@@ -494,10 +576,10 @@ class FlowDeskDashboardView extends ItemView {
       cls: "flowdesk-refresh-button",
       text: this.loading ? "刷新中" : "刷新",
     });
-    refresh.disabled = !this.taskPath || this.loading;
+    refresh.disabled = this.loading;
     refresh.title = "重新读取当前 TaskNotes task 的 FlowDesk snapshot";
     refresh.addEventListener("click", () => {
-      void this.plugin.refreshDashboard(this.taskPath);
+      void this.plugin.refreshDashboard(taskPath);
     });
   }
 
@@ -651,26 +733,31 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   private async openDiagnosticLocation(diagnostic: SnapshotDiagnostic) {
-    const file = this.app.vault.getAbstractFileByPath(this.taskPath);
+    const taskPath = this.currentTaskPath;
+    if (!taskPath) {
+      new Notice("当前文件不是 TaskNotes 任务。");
+      return;
+    }
+    const file = this.app.vault.getAbstractFileByPath(taskPath);
     if (!(file instanceof TFile)) {
-      new Notice(`未找到任务文件：${this.taskPath}`);
+      new Notice(`未找到任务文件：${taskPath}`);
       return;
     }
 
-    const target = resolveDiagnosticTarget(this.taskPath, diagnostic.source);
-    if (target.linkText === this.taskPath && target.line === null) {
+    const target = resolveDiagnosticTarget(taskPath, diagnostic.source);
+    if (target.linkText === taskPath && target.line === null) {
       new Notice("producer 未提供可定位的 section 或行号。");
       return;
     }
 
     try {
-      await this.app.workspace.openLinkText(target.linkText, this.taskPath, false);
+      await this.app.workspace.openLinkText(target.linkText, taskPath, false);
       if (target.line === null) {
         return;
       }
 
       const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (!view || view.file?.path !== this.taskPath) {
+      if (!view || view.file?.path !== taskPath) {
         new Notice("任务已打开，但当前视图无法定位到具体行。");
         return;
       }
@@ -940,10 +1027,6 @@ class FlowDeskDashboardView extends ItemView {
     }
 
     await this.app.workspace.getLeaf(false).openFile(file);
-  }
-
-  private isPinnedToPreviousTask(): boolean {
-    return Boolean(this.taskPath && !this.plugin.getActiveTaskPath());
   }
 
   private renderTaskEvidence(container: HTMLElement, snapshot: ExecutionSnapshot) {

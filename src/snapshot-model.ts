@@ -299,20 +299,6 @@ export function validateSnapshotSource(
   return actual === expected;
 }
 
-export function shouldResetDisplayState(
-  currentTaskPath: string,
-  nextTaskPath: string
-): boolean {
-  return currentTaskPath !== nextTaskPath;
-}
-
-export function isSnapshotRequestCurrent(
-  requestedTaskPath: string,
-  currentTaskPath: string
-): boolean {
-  return requestedTaskPath === currentTaskPath;
-}
-
 function createHero(
   snapshot: ExecutionSnapshot,
   inlineProgress: DashboardViewModel["inlineProgress"]

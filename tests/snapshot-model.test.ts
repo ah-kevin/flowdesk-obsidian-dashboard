@@ -6,9 +6,7 @@ import {
   formatNextAction,
   formatDiagnosticReason,
   formatDiagnosticRemediation,
-  isSnapshotRequestCurrent,
   resolveDiagnosticTarget,
-  shouldResetDisplayState,
   validateSnapshotSource,
 } from "../src/snapshot-model.ts";
 
@@ -214,11 +212,4 @@ test("校验 snapshot source identity，并将同任务刷新失败标为旧数�
   assert.equal(model.observation.staleReason, "刷新失败");
   assert.equal(model.observation.loadedAt, "12:30:00");
   assert.equal(model.observation.isTrustworthy, false);
-});
-
-test("切换任务立即清空旧显示，并拒绝迟到的旧任务结果", () => {
-  assert.equal(shouldResetDisplayState("Tasks/A.md", "Tasks/B.md"), true);
-  assert.equal(shouldResetDisplayState("Tasks/A.md", "Tasks/A.md"), false);
-  assert.equal(isSnapshotRequestCurrent("Tasks/A.md", "Tasks/B.md"), false);
-  assert.equal(isSnapshotRequestCurrent("Tasks/B.md", "Tasks/B.md"), true);
 });
