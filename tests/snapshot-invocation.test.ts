@@ -12,7 +12,6 @@ test("JSON 与 dashboard invocation 共享参数且只改变输出格式", () =>
     flowdeskRoot: "/Users/me/FlowDesk Plugin",
     taskPath: "Tasks/含 ' 引号.md",
     workingDirectory: "/Users/me/项目 A",
-    schema: "sdd-poc",
     apiUrl: "",
   };
 
@@ -23,8 +22,6 @@ test("JSON 与 dashboard invocation 共享参数且只改变输出格式", () =>
       "Tasks/含 ' 引号.md",
       "--working-directory",
       "/Users/me/项目 A",
-      "--schema",
-      "sdd-poc",
       "--format",
       "json",
     ],
@@ -35,7 +32,7 @@ test("JSON 与 dashboard invocation 共享参数且只改变输出格式", () =>
     formatShellCommand(buildSnapshotInvocation(input, "dashboard")),
     "'/Users/me/FlowDesk Plugin/bin/flowdesk-execution-snapshot' " +
       "'Tasks/含 '\"'\"' 引号.md' --working-directory '/Users/me/项目 A' " +
-      "--schema sdd-poc --format dashboard"
+      "--format dashboard"
   );
 });
 
@@ -45,7 +42,6 @@ test("显式 API URL 保留在 task path 后并安全转义", () => {
       flowdeskRoot: "/opt/flowdesk",
       taskPath: "Tasks/A.md",
       workingDirectory: "/work/project",
-      schema: "sdd-poc",
       apiUrl: "http://127.0.0.1:18090/api value",
     },
     "dashboard"
@@ -69,7 +65,6 @@ test("相对仓库和工作目录会转换为不依赖当前终端目录的绝�
       flowdeskRoot: "flowdesk-plugin",
       taskPath: "Tasks/A.md",
       workingDirectory: "projects/demo",
-      schema: "sdd-poc",
       apiUrl: "",
     },
     "dashboard"

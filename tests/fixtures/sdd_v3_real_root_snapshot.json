@@ -1,0 +1,524 @@
+{
+  "snapshot_schema_version": 3,
+  "generated_at": "2026-08-05T14:19:45.296667Z",
+  "source_task_id": "Tasks/FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐.md",
+  "observation": {
+    "health": "healthy",
+    "parent": "observed",
+    "children": "observed",
+    "tasknotes_api": "ok",
+    "source_identity_match": true
+  },
+  "contract": {
+    "version": "v3",
+    "role": "root",
+    "why": "FlowDesk SDD v2 在 parent Markdown 内维护虚拟 TASK，再物化为 TaskNotes children，形成重复身份、binding、revision、drift 与 granularity 复杂度；实际用户需要的是 TaskNotes 原生父子任务和面向人的分块 review。若不重构，完成状态、调度判断和 Dashboard 展示仍可能与真实任务结构脱节。",
+    "what": {
+      "allowed": [
+        "FlowDesk execution snapshot、CLI dashboard、SDD worker/spawn/task-update/scheduler 治理、Obsidian Dashboard snapshot model 与呈现。"
+      ],
+      "forbidden": [
+        "TaskNotes 对任务状态、父子关系、priority、blockedBy 的事实所有权；Dashboard 只读边界；两个源码仓库继续独立管理。"
+      ]
+    },
+    "requirements": [
+      {
+        "id": "REQ-001",
+        "text": "TaskNotes root/child 必须成为唯一任务实体，不再维护虚拟 TASK manifest。",
+        "source": {
+          "section": "Requirements",
+          "line_start": 14,
+          "line_end": 14,
+          "excerpt": "- REQ-001: TaskNotes root/child 必须成为唯一任务实体，不再维护虚拟 TASK manifest。"
+        }
+      },
+      {
+        "id": "REQ-002",
+        "text": "新实现只支持 SDD v3，删除 legacy/v1/v2、inline、materialization 与 granularity 运行分支。",
+        "source": {
+          "section": "Requirements",
+          "line_start": 15,
+          "line_end": 15,
+          "excerpt": "- REQ-002: 新实现只支持 SDD v3，删除 legacy/v1/v2、inline、materialization 与 granularity 运行分支。"
+        }
+      },
+      {
+        "id": "REQ-003",
+        "text": "合同与状态错误必须返回 task、section/line、实际原因、预期形态和建议修法。",
+        "source": {
+          "section": "Requirements",
+          "line_start": 16,
+          "line_end": 16,
+          "excerpt": "- REQ-003: 合同与状态错误必须返回 task、section/line、实际原因、预期形态和建议修法。"
+        }
+      },
+      {
+        "id": "REQ-004",
+        "text": "parent/children 观测不完整时必须显示无法可信判断，不能显示健康成功。",
+        "source": {
+          "section": "Requirements",
+          "line_start": 17,
+          "line_end": 17,
+          "excerpt": "- REQ-004: parent/children 观测不完整时必须显示无法可信判断，不能显示健康成功。"
+        }
+      },
+      {
+        "id": "REQ-005",
+        "text": "CLI 与 Obsidian 必须消费同一份 snapshot v3 JSON，并给出一致的状态、计数、诊断和下一动作。",
+        "source": {
+          "section": "Requirements",
+          "line_start": 18,
+          "line_end": 18,
+          "excerpt": "- REQ-005: CLI 与 Obsidian 必须消费同一份 snapshot v3 JSON，并给出一致的状态、计数、诊断和下一动作。"
+        }
+      },
+      {
+        "id": "REQ-006",
+        "text": "spawn、worker、task-update、parallel/ralph 必须直接消费 TaskNotes 原生 children 与 blockedBy。",
+        "source": {
+          "section": "Requirements",
+          "line_start": 19,
+          "line_end": 19,
+          "excerpt": "- REQ-006: spawn、worker、task-update、parallel/ralph 必须直接消费 TaskNotes 原生 children 与 blockedBy。"
+        }
+      },
+      {
+        "id": "REQ-007",
+        "text": "Plugin 与 Dashboard 分仓实现、测试和 PR，由当前 leader 完成跨仓库最终验收。",
+        "source": {
+          "section": "Requirements",
+          "line_start": 20,
+          "line_end": 20,
+          "excerpt": "- REQ-007: Plugin 与 Dashboard 分仓实现、测试和 PR，由当前 leader 完成跨仓库最终验收。"
+        }
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "SCN-001",
+        "text": "Given root 有两个 TaskNotes children, When snapshot 和 scheduler 读取任务, Then 直接使用这两个 children，不经过 TASK binding 或 materializer。",
+        "source": {
+          "section": "Scenarios",
+          "line_start": 24,
+          "line_end": 24,
+          "excerpt": "- SCN-001 (REQ-001, REQ-006): Given root 有两个 TaskNotes children, When snapshot 和 scheduler 读取任务, Then 直接使用这两个 children，不经过 TASK binding 或 materializer。"
+        },
+        "covers": [
+          "REQ-001",
+          "REQ-006"
+        ]
+      },
+      {
+        "id": "SCN-002",
+        "text": "Given Why 含占位词, When semantic validation 失败, Then 输出具体位置、触发原因和可执行修法。",
+        "source": {
+          "section": "Scenarios",
+          "line_start": 25,
+          "line_end": 25,
+          "excerpt": "- SCN-002 (REQ-003): Given Why 含占位词, When semantic validation 失败, Then 输出具体位置、触发原因和可执行修法。"
+        },
+        "covers": [
+          "REQ-003"
+        ]
+      },
+      {
+        "id": "SCN-003",
+        "text": "Given children 查询失败或只返回部分结果, When dashboard 渲染, Then 显示观测失败或降级并阻断可信完成。",
+        "source": {
+          "section": "Scenarios",
+          "line_start": 26,
+          "line_end": 26,
+          "excerpt": "- SCN-003 (REQ-004): Given children 查询失败或只返回部分结果, When dashboard 渲染, Then 显示观测失败或降级并阻断可信完成。"
+        },
+        "covers": [
+          "REQ-004"
+        ]
+      },
+      {
+        "id": "SCN-004",
+        "text": "Given root 已 done 但存在未完成 child, When 生成 snapshot, Then 报父子状态矛盾并列出具体 child。",
+        "source": {
+          "section": "Scenarios",
+          "line_start": 27,
+          "line_end": 27,
+          "excerpt": "- SCN-004 (REQ-004): Given root 已 done 但存在未完成 child, When 生成 snapshot, Then 报父子状态矛盾并列出具体 child。"
+        },
+        "covers": [
+          "REQ-004"
+        ]
+      },
+      {
+        "id": "SCN-005",
+        "text": "Given 同一 root task, When 分别使用 CLI dashboard 与 Obsidian, Then 两端显示一致的 rollup、children 计数和首要诊断。",
+        "source": {
+          "section": "Scenarios",
+          "line_start": 28,
+          "line_end": 28,
+          "excerpt": "- SCN-005 (REQ-005): Given 同一 root task, When 分别使用 CLI dashboard 与 Obsidian, Then 两端显示一致的 rollup、children 计数和首要诊断。"
+        },
+        "covers": [
+          "REQ-005"
+        ]
+      },
+      {
+        "id": "SCN-006",
+        "text": "Given v3 实现完成, When 搜索运行路径, Then 不再存在 v2、inline、materialization 或 granularity 分支。",
+        "source": {
+          "section": "Scenarios",
+          "line_start": 29,
+          "line_end": 29,
+          "excerpt": "- SCN-006 (REQ-002): Given v3 实现完成, When 搜索运行路径, Then 不再存在 v2、inline、materialization 或 granularity 分支。"
+        },
+        "covers": [
+          "REQ-002"
+        ]
+      }
+    ],
+    "overall_acceptance": [
+      {
+        "text": "FlowDesk Plugin 生成 schema 3 snapshot，并完成真实 v3 root/children smoke。",
+        "checked": false,
+        "source": {
+          "section": "Overall Acceptance",
+          "line_start": 33,
+          "line_end": 33,
+          "excerpt": "- [ ] FlowDesk Plugin 生成 schema 3 snapshot，并完成真实 v3 root/children smoke。"
+        }
+      },
+      {
+        "text": "FlowDesk worker 治理直接使用原生 children，旧 v2 运行逻辑已删除。",
+        "checked": false,
+        "source": {
+          "section": "Overall Acceptance",
+          "line_start": 34,
+          "line_end": 34,
+          "excerpt": "- [ ] FlowDesk worker 治理直接使用原生 children，旧 v2 运行逻辑已删除。"
+        }
+      },
+      {
+        "text": "Obsidian Dashboard 只消费 schema 3，清晰显示 root、children、rollup、observation 和诊断。",
+        "checked": false,
+        "source": {
+          "section": "Overall Acceptance",
+          "line_start": 35,
+          "line_end": 35,
+          "excerpt": "- [ ] Obsidian Dashboard 只消费 schema 3，清晰显示 root、children、rollup、observation 和诊断。"
+        }
+      },
+      {
+        "text": "两个仓库定向测试、全量测试、静态检查和构建全部通过。",
+        "checked": false,
+        "source": {
+          "section": "Overall Acceptance",
+          "line_start": 36,
+          "line_end": 36,
+          "excerpt": "- [ ] 两个仓库定向测试、全量测试、静态检查和构建全部通过。"
+        }
+      },
+      {
+        "text": "两个独立 PR 已创建，跨仓库真实集成验证通过。",
+        "checked": false,
+        "source": {
+          "section": "Overall Acceptance",
+          "line_start": 37,
+          "line_end": 37,
+          "excerpt": "- [ ] 两个独立 PR 已创建，跨仓库真实集成验证通过。"
+        }
+      },
+      {
+        "text": "用户完成最终 review 后再决定 merge、版本和 release。",
+        "checked": false,
+        "source": {
+          "section": "Overall Acceptance",
+          "line_start": 38,
+          "line_end": 38,
+          "excerpt": "- [ ] 用户完成最终 review 后再决定 merge、版本和 release。"
+        }
+      }
+    ],
+    "semantic_status": "valid"
+  },
+  "task_tree": {
+    "root": {
+      "id": "Tasks/FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐.md",
+      "title": "FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐",
+      "status": "in-progress",
+      "priority": "high"
+    },
+    "children": [
+      {
+        "id": "Tasks/FlowDesk Obsidian Dashboard — 消费 SDD v3 snapshot 并优化父子任务展示.md",
+        "title": "FlowDesk Obsidian Dashboard — 消费 SDD v3 snapshot 并优化父子任务展示",
+        "status": "in-progress",
+        "priority": "high",
+        "is_blocked": false,
+        "blocked_by": [],
+        "goal": "在独立 Dashboard 仓库只消费 snapshot schema 3，围绕 root/children、rollup、可信 observation 和结构化诊断重构侧栏呈现，删除 v2 compatibility/inline/materialization UI，并创建可审查 PR。",
+        "covers": [
+          "REQ-002",
+          "REQ-003",
+          "REQ-004",
+          "REQ-005",
+          "REQ-007",
+          "SCN-002",
+          "SCN-003",
+          "SCN-005",
+          "SCN-006"
+        ],
+        "acceptance": [
+          {
+            "text": "Dashboard 只接受 snapshot schema 3，不保留 v2/legacy fallback。",
+            "checked": false,
+            "source": {
+              "section": "Acceptance Criteria",
+              "line_start": 26,
+              "line_end": 26,
+              "excerpt": "- [ ] Dashboard 只接受 snapshot schema 3，不保留 v2/legacy fallback。"
+            }
+          },
+          {
+            "text": "hero 和 child 列表显示可信完成数、priority、blockedBy、Covers 与证据健康。",
+            "checked": false,
+            "source": {
+              "section": "Acceptance Criteria",
+              "line_start": 27,
+              "line_end": 27,
+              "excerpt": "- [ ] hero 和 child 列表显示可信完成数、priority、blockedBy、Covers 与证据健康。"
+            }
+          },
+          {
+            "text": "observation 非 healthy 时明确显示无法可信判断。",
+            "checked": false,
+            "source": {
+              "section": "Acceptance Criteria",
+              "line_start": 28,
+              "line_end": 28,
+              "excerpt": "- [ ] observation 非 healthy 时明确显示无法可信判断。"
+            }
+          },
+          {
+            "text": "诊断可定位到 root 或 child，并显示位置、原因和建议修法。",
+            "checked": false,
+            "source": {
+              "section": "Acceptance Criteria",
+              "line_start": 29,
+              "line_end": 29,
+              "excerpt": "- [ ] 诊断可定位到 root 或 child，并显示位置、原因和建议修法。"
+            }
+          },
+          {
+            "text": "首次打开 task 可加载；切到非 TaskNotes 文件清空旧 snapshot；同 task 刷新失败仅以 stale 方式保留旧数据。",
+            "checked": false,
+            "source": {
+              "section": "Acceptance Criteria",
+              "line_start": 30,
+              "line_end": 30,
+              "excerpt": "- [ ] 首次打开 task 可加载；切到非 TaskNotes 文件清空旧 snapshot；同 task 刷新失败仅以 stale 方式保留旧数据。"
+            }
+          },
+          {
+            "text": "删除 compatibility、inline、materialization 类型、UI、CSS 和测试。",
+            "checked": false,
+            "source": {
+              "section": "Acceptance Criteria",
+              "line_start": 31,
+              "line_end": 31,
+              "excerpt": "- [ ] 删除 compatibility、inline、materialization 类型、UI、CSS 和测试。"
+            }
+          },
+          {
+            "text": "`npm test`、`npm run build`、`npx tsc --noEmit`、`node -c main.js` 全部通过。",
+            "checked": false,
+            "source": {
+              "section": "Acceptance Criteria",
+              "line_start": 32,
+              "line_end": 32,
+              "excerpt": "- [ ] `npm test`、`npm run build`、`npx tsc --noEmit`、`node -c main.js` 全部通过。"
+            }
+          },
+          {
+            "text": "在 `codex/dashboard-sdd-v3` 分支提交、push 并创建 PR，不合并、不发布。",
+            "checked": false,
+            "source": {
+              "section": "Acceptance Criteria",
+              "line_start": 33,
+              "line_end": 33,
+              "excerpt": "- [ ] 在 `codex/dashboard-sdd-v3` 分支提交、push 并创建 PR，不合并、不发布。"
+            }
+          }
+        ],
+        "semantic_status": "valid",
+        "evidence_health": {
+          "execution": "missing",
+          "verification": "missing",
+          "delivery": "invalid"
+        },
+        "trusted_done": false
+      },
+      {
+        "id": "Tasks/FlowDesk Plugin — 实现 SDD v3 原生父子任务与 snapshot.md",
+        "title": "FlowDesk Plugin — 实现 SDD v3 原生父子任务与 snapshot",
+        "status": "in-progress",
+        "priority": "high",
+        "is_blocked": false,
+        "blocked_by": [],
+        "goal": "在 FlowDesk Plugin 仓库实现 v3-only 原生 TaskNotes root/child 合同、snapshot、CLI 与 worker/scheduler 治理，删除 v2 虚拟 TASK、inline、materialization 和 granularity 运行路径，并创建可审查 PR。",
+        "covers": [
+          "REQ-001",
+          "REQ-002",
+          "REQ-003",
+          "REQ-004",
+          "REQ-006",
+          "SCN-001",
+          "SCN-002",
+          "SCN-003",
+          "SCN-004",
+          "SCN-006"
+        ],
+        "acceptance": [
+          {
+            "text": "snapshot 输出固定 schema 3，children 只来自 TaskNotes 原生 parent relationship。",
+            "checked": false,
+            "source": {
+              "section": "Acceptance Criteria",
+              "line_start": 27,
+              "line_end": 27,
+              "excerpt": "- [ ] snapshot 输出固定 schema 3，children 只来自 TaskNotes 原生 parent relationship。"
+            }
+          },
+          {
+            "text": "输出 observation、contract、task_tree、rollup、evidence、diagnostics、next_actions，且错误含位置、原因和修法。",
+            "checked": false,
+            "source": {
+              "section": "Acceptance Criteria",
+              "line_start": 28,
+              "line_end": 28,
+              "excerpt": "- [ ] 输出 observation、contract、task_tree、rollup、evidence、diagnostics、next_actions，且错误含位置、原因和修法。"
+            }
+          },
+          {
+            "text": "root done 与 incomplete child 的矛盾阻断可信完成。",
+            "checked": false,
+            "source": {
+              "section": "Acceptance Criteria",
+              "line_start": 29,
+              "line_end": 29,
+              "excerpt": "- [ ] root done 与 incomplete child 的矛盾阻断可信完成。"
+            }
+          },
+          {
+            "text": "CLI dashboard 与 JSON 状态、children 计数、诊断和下一动作一致。",
+            "checked": false,
+            "source": {
+              "section": "Acceptance Criteria",
+              "line_start": 30,
+              "line_end": 30,
+              "excerpt": "- [ ] CLI dashboard 与 JSON 状态、children 计数、诊断和下一动作一致。"
+            }
+          },
+          {
+            "text": "spawn、worker、task-update、parallel/ralph 不再依赖 materialization binding。",
+            "checked": false,
+            "source": {
+              "section": "Acceptance Criteria",
+              "line_start": 31,
+              "line_end": 31,
+              "excerpt": "- [ ] spawn、worker、task-update、parallel/ralph 不再依赖 materialization binding。"
+            }
+          },
+          {
+            "text": "运行路径不存在 v2、inline、materialization、granularity 兼容分支。",
+            "checked": false,
+            "source": {
+              "section": "Acceptance Criteria",
+              "line_start": 32,
+              "line_end": 32,
+              "excerpt": "- [ ] 运行路径不存在 v2、inline、materialization、granularity 兼容分支。"
+            }
+          },
+          {
+            "text": "定向测试、全量测试和 Python 语法检查通过。",
+            "checked": false,
+            "source": {
+              "section": "Acceptance Criteria",
+              "line_start": 33,
+              "line_end": 33,
+              "excerpt": "- [ ] 定向测试、全量测试和 Python 语法检查通过。"
+            }
+          },
+          {
+            "text": "在 `codex/sdd-v3-native-tasknotes` 分支提交、push 并创建 PR，不合并。",
+            "checked": false,
+            "source": {
+              "section": "Acceptance Criteria",
+              "line_start": 34,
+              "line_end": 34,
+              "excerpt": "- [ ] 在 `codex/sdd-v3-native-tasknotes` 分支提交、push 并创建 PR，不合并。"
+            }
+          }
+        ],
+        "semantic_status": "valid",
+        "evidence_health": {
+          "execution": "missing",
+          "verification": "missing",
+          "delivery": "invalid"
+        },
+        "trusted_done": false
+      }
+    ],
+    "counts": {
+      "total": 2,
+      "open": 0,
+      "in_progress": 2,
+      "blocked": 0,
+      "done": 0,
+      "trusted_done": 0
+    }
+  },
+  "rollup": {
+    "state": "running",
+    "children_complete": false,
+    "trusted_children_complete": false,
+    "blocked_children": [],
+    "incomplete_children": [
+      {
+        "id": "Tasks/FlowDesk Obsidian Dashboard — 消费 SDD v3 snapshot 并优化父子任务展示.md",
+        "title": "FlowDesk Obsidian Dashboard — 消费 SDD v3 snapshot 并优化父子任务展示",
+        "status": "in-progress"
+      },
+      {
+        "id": "Tasks/FlowDesk Plugin — 实现 SDD v3 原生父子任务与 snapshot.md",
+        "title": "FlowDesk Plugin — 实现 SDD v3 原生父子任务与 snapshot",
+        "status": "in-progress"
+      }
+    ],
+    "contradictions": []
+  },
+  "evidence": {
+    "root": {
+      "execution": "missing",
+      "verification": "missing",
+      "delivery": "missing"
+    },
+    "children": {
+      "Tasks/FlowDesk Obsidian Dashboard — 消费 SDD v3 snapshot 并优化父子任务展示.md": {
+        "execution": "missing",
+        "verification": "missing",
+        "delivery": "invalid"
+      },
+      "Tasks/FlowDesk Plugin — 实现 SDD v3 原生父子任务与 snapshot.md": {
+        "execution": "missing",
+        "verification": "missing",
+        "delivery": "invalid"
+      }
+    }
+  },
+  "diagnostics": [],
+  "next_actions": [
+    {
+      "kind": "continue_child_work",
+      "summary": "继续当前 in-progress child",
+      "command": "bin/flowdesk-execution-snapshot 'Tasks/FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐.md' --working-directory '/Users/bjke/workspaces/flowdesk-plugin' --format dashboard"
+    }
+  ]
+}

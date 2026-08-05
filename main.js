@@ -58,13 +58,17 @@ function isCurrentSnapshotRequest(request, context, selectionRevision) {
   return context.kind === "task" && request.taskPath === context.taskPath && request.selectionRevision === selectionRevision;
 }
 function collectObservedTaskPaths(parentTaskPath, snapshot) {
-  var _a, _b;
+  var _a, _b, _c;
   const paths = /* @__PURE__ */ new Set();
   if (isTaskPath(parentTaskPath)) {
     paths.add(parentTaskPath);
   }
-  for (const task of (_b = (_a = snapshot == null ? void 0 : snapshot.task_graph) == null ? void 0 : _a.tasks) != null ? _b : []) {
-    if (task.id && isTaskPath(task.id)) {
+  const observed = [
+    (_a = snapshot == null ? void 0 : snapshot.task_tree) == null ? void 0 : _a.root,
+    ...(_c = (_b = snapshot == null ? void 0 : snapshot.task_tree) == null ? void 0 : _b.children) != null ? _c : []
+  ];
+  for (const task of observed) {
+    if ((task == null ? void 0 : task.id) && isTaskPath(task.id)) {
       paths.add(task.id);
     }
   }
@@ -113,8 +117,6 @@ function buildSnapshotInvocation(input, format) {
   args.push(
     "--working-directory",
     workingDirectory,
-    "--schema",
-    input.schema,
     "--format",
     format
   );
@@ -139,258 +141,242 @@ function shellQuote(value) {
 }
 
 // src/evidence-presentation.ts
-function getEvidenceDisplayItems(item) {
-  var _a;
-  if (Array.isArray(item == null ? void 0 : item.display_items)) {
-    return item.display_items;
+function getEvidenceDisplayState(health) {
+  if (health === "valid") {
+    return "done";
   }
-  return (_a = item == null ? void 0 : item.items) != null ? _a : [];
+  return health === "invalid" ? "error" : "blocked";
 }
-function getEvidenceDisplayState(item) {
-  if (!(item == null ? void 0 : item.exists)) {
-    return "blocked";
-  }
-  if (item.valid === false) {
-    return "error";
-  }
-  return "done";
-}
-function formatEvidenceSummary(label, item) {
-  var _a, _b;
-  if (!(item == null ? void 0 : item.exists)) {
-    return `${label}\uFF1A\u7F3A\u5931`;
-  }
-  const itemCount = (_b = (_a = item.items) == null ? void 0 : _a.length) != null ? _b : getEvidenceDisplayItems(item).length;
-  if (item.valid === false) {
-    return `${label}\uFF1A\u5B58\u5728\u4F46\u65E0\u6548\uFF08${itemCount} \u9879\uFF09`;
-  }
-  if (item.valid === true) {
-    return `${label}\uFF1A\u6709\u6548\uFF08${itemCount} \u9879\uFF09`;
-  }
-  return `${label}\uFF1A\u5DF2\u63D0\u4F9B\uFF08${itemCount} \u9879\uFF09`;
+function formatEvidenceSummary(label, health) {
+  const labels = {
+    missing: "\u7F3A\u5931",
+    invalid: "\u65E0\u6548",
+    valid: "\u6709\u6548"
+  };
+  return `${label}\uFF1A${labels[health]}`;
 }
 
 // src/snapshot-model.ts
-function createDashboardViewModel(snapshot, options = {}) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s;
-  const schemaVersion = Number(snapshot.snapshot_schema_version);
-  const health = normalizeObservationHealth((_a = snapshot.observation) == null ? void 0 : _a.health);
-  const compatibility = createCompatibility(snapshot);
-  const inlineExecution = (_c = snapshot.inline_execution) != null ? _c : (_b = snapshot.task_graph) == null ? void 0 : _b.inline_execution;
-  const semanticDiagnostics = (_f = (_e = (_d = snapshot.spec_contract) == null ? void 0 : _d.semantic_validation) == null ? void 0 : _e.errors) != null ? _f : [];
-  const inlineDiagnostics = (_g = inlineExecution == null ? void 0 : inlineExecution.diagnostics) != null ? _g : [];
-  const observationDiagnostics = (_i = (_h = snapshot.observation) == null ? void 0 : _h.diagnostics) != null ? _i : [];
-  const diagnostics = [
-    ...semanticDiagnostics,
-    ...inlineDiagnostics,
-    ...observationDiagnostics
-  ].map(normalizeDiagnostic);
-  const inlineProgress = inlineExecution ? {
-    completed: typeof inlineExecution.completed === "number" ? inlineExecution.completed : null,
-    total: typeof inlineExecution.total === "number" ? inlineExecution.total : 0,
-    status: normalizeText(inlineExecution.status, "unknown"),
-    explicit: inlineExecution.explicit === true,
-    tasks: Object.entries((_j = inlineExecution.statuses) != null ? _j : {}).map(([id, item]) => ({
-      id,
-      status: normalizeText(item.status, "unknown"),
-      inferred: item.inferred === true
-    }))
-  } : null;
-  const hero = createHero(snapshot, inlineProgress);
+function createDashboardViewModel(value, options = {}) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E;
+  const snapshot = isRecord(value) ? value : {};
+  const supported = snapshot.snapshot_schema_version === 3;
+  const root = (_b = (_a = snapshot.task_tree) == null ? void 0 : _a.root) != null ? _b : {};
+  const counts = (_d = (_c = snapshot.task_tree) == null ? void 0 : _c.counts) != null ? _d : {};
+  const rollup = (_e = snapshot.rollup) != null ? _e : {};
   const staleReason = normalizeText(options.staleReason, "");
   const sourceIdentity = validateSnapshotSource(
     snapshot,
     normalizeText(options.expectedTaskPath, "")
   );
-  const hasObservedSource = Boolean((_l = (_k = snapshot.observation) == null ? void 0 : _k.source_task_id) == null ? void 0 : _l.trim());
+  const observationHealth = normalizeObservationHealth(
+    (_f = snapshot.observation) == null ? void 0 : _f.health
+  );
+  const sourceIdentityMatch = typeof ((_g = snapshot.observation) == null ? void 0 : _g.source_identity_match) === "boolean" ? snapshot.observation.source_identity_match : "unknown";
+  const isTrustworthy = supported && observationHealth === "healthy" && ((_h = snapshot.observation) == null ? void 0 : _h.parent) === "observed" && ((_i = snapshot.observation) == null ? void 0 : _i.children) === "observed" && ((_j = snapshot.observation) == null ? void 0 : _j.tasknotes_api) === "ok" && sourceIdentityMatch === true && sourceIdentity === true && !staleReason;
+  const rootId = normalizeText(root.id, normalizeText(snapshot.source_task_id, ""));
+  const children = ((_l = (_k = snapshot.task_tree) == null ? void 0 : _k.children) != null ? _l : []).map(
+    (child) => {
+      var _a2;
+      return createChildViewModel(child, (_a2 = snapshot.evidence) == null ? void 0 : _a2.children);
+    }
+  );
+  const diagnostics = ((_m = snapshot.diagnostics) != null ? _m : []).map(
+    (diagnostic) => normalizeDiagnostic(diagnostic, rootId)
+  );
+  const total = finiteNumber(counts.total);
+  const trustedDone = finiteNumber(counts.trusted_done);
+  const blockedCount = finiteNumber(counts.blocked);
   return {
-    schemaLabel: schemaVersion === 2 ? "snapshot v2" : "\u65E7\u7248 snapshot",
-    state: normalizeText((_m = snapshot.state) == null ? void 0 : _m.value, "unknown"),
-    hero,
-    compatibility,
+    errorCode: supported ? null : "unsupported_snapshot_schema",
+    schemaLabel: supported ? "snapshot v3" : "\u4E0D\u652F\u6301\u7684 snapshot schema",
+    hero: {
+      title: normalizeText(root.title, "\u672A\u63D0\u4F9B\u4EFB\u52A1\u6807\u9898"),
+      status: normalizeText(root.status, "unknown"),
+      priority: normalizeText(root.priority, "\u672A\u63D0\u4F9B"),
+      rollupLabel: formatRollupState(rollup.state),
+      workProgressLabel: `${trustedDone}/${total} \u5B50\u4EFB\u52A1\u53EF\u4FE1\u5B8C\u6210`,
+      trustedDone,
+      total,
+      blockedCount
+    },
+    root: {
+      id: rootId,
+      title: normalizeText(root.title, "\u672A\u63D0\u4F9B\u4EFB\u52A1\u6807\u9898"),
+      status: normalizeText(root.status, "unknown"),
+      priority: normalizeText(root.priority, "\u672A\u63D0\u4F9B"),
+      evidenceHealth: normalizeEvidenceHealth((_n = snapshot.evidence) == null ? void 0 : _n.root)
+    },
+    children,
+    rollup: {
+      state: normalizeText(rollup.state, "unknown"),
+      childrenComplete: rollup.children_complete === true,
+      trustedChildrenComplete: rollup.trusted_children_complete === true,
+      blockedChildren: (_o = rollup.blocked_children) != null ? _o : [],
+      incompleteChildren: (_p = rollup.incomplete_children) != null ? _p : [],
+      contradictions: (_q = rollup.contradictions) != null ? _q : []
+    },
+    contract: {
+      version: normalizeText((_r = snapshot.contract) == null ? void 0 : _r.version, "\u672A\u63D0\u4F9B"),
+      role: normalizeText((_s = snapshot.contract) == null ? void 0 : _s.role, "\u672A\u63D0\u4F9B"),
+      semanticStatus: normalizeText((_t = snapshot.contract) == null ? void 0 : _t.semantic_status, "unknown"),
+      requirements: (_v = (_u = snapshot.contract) == null ? void 0 : _u.requirements) != null ? _v : [],
+      scenarios: (_x = (_w = snapshot.contract) == null ? void 0 : _w.scenarios) != null ? _x : [],
+      overallAcceptance: (_z = (_y = snapshot.contract) == null ? void 0 : _y.overall_acceptance) != null ? _z : []
+    },
     observation: {
-      health,
-      generatedAt: normalizeText((_n = snapshot.observation) == null ? void 0 : _n.generated_at, "\u672A\u63D0\u4F9B"),
-      sourceTaskId: normalizeText((_o = snapshot.observation) == null ? void 0 : _o.source_task_id, ""),
-      coverage: Object.entries((_q = (_p = snapshot.observation) == null ? void 0 : _p.coverage) != null ? _q : {}).map(
-        ([key, value]) => ({ key, value: normalizeText(value, "unknown") })
-      ),
-      isTrustworthy: schemaVersion === 2 && health === "healthy" && hasObservedSource && sourceIdentity !== false && !staleReason,
+      health: observationHealth,
+      parent: normalizeText((_A = snapshot.observation) == null ? void 0 : _A.parent, "unknown"),
+      children: normalizeText((_B = snapshot.observation) == null ? void 0 : _B.children, "unknown"),
+      tasknotesApi: normalizeText((_C = snapshot.observation) == null ? void 0 : _C.tasknotes_api, "unknown"),
+      sourceIdentityMatch,
+      sourceTaskId: normalizeText(snapshot.source_task_id, ""),
+      generatedAt: normalizeText(snapshot.generated_at, "\u672A\u63D0\u4F9B"),
+      isTrustworthy,
+      trustMessage: isTrustworthy ? "\u89C2\u6D4B\u53EF\u4FE1" : "\u89C2\u6D4B\u4E0D\u53EF\u4FE1\uFF0C\u65E0\u6CD5\u5224\u65AD\u4EFB\u52A1\u662F\u5426\u6B63\u5E38",
       isStale: Boolean(staleReason),
       staleReason,
       loadedAt: normalizeText(options.loadedAt, "\u672A\u63D0\u4F9B"),
       sourceIdentity
     },
-    inlineProgress,
-    primaryDiagnostic: (_r = diagnostics[0]) != null ? _r : null,
+    primaryDiagnostic: (_D = diagnostics[0]) != null ? _D : null,
     diagnostics,
-    nextAction: formatNextAction((_s = snapshot.next_actions) == null ? void 0 : _s[0])
+    nextAction: formatNextAction((_E = snapshot.next_actions) == null ? void 0 : _E[0])
   };
 }
-function validateSnapshotSource(snapshot, expectedTaskPath) {
-  var _a;
-  const actual = normalizeText((_a = snapshot.observation) == null ? void 0 : _a.source_task_id, "");
+function validateSnapshotSource(value, expectedTaskPath) {
+  const snapshot = isRecord(value) ? value : {};
+  const actual = normalizeText(snapshot.source_task_id, "");
   const expected = normalizeText(expectedTaskPath, "");
   if (!actual || !expected) {
     return "unknown";
   }
   return actual === expected;
 }
-function createHero(snapshot, inlineProgress) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o;
-  const nodes = (_b = (_a = snapshot.flow_graph) == null ? void 0 : _a.nodes) != null ? _b : [];
-  const completedStages = nodes.filter((node) => node.status === "done").length;
-  const progressLabel = nodes.length ? `${completedStages}/${nodes.length} \u9636\u6BB5` : "\u9636\u6BB5\u672A\u77E5";
-  const parent = (_c = snapshot.task_graph) == null ? void 0 : _c.parent;
-  const counts = (_e = (_d = snapshot.task_graph) == null ? void 0 : _d.counts) != null ? _e : {};
-  const childTotal = finiteNumber(counts.total);
-  const childDone = finiteNumber(counts.done);
-  if (inlineProgress) {
-    const completed = (_f = inlineProgress.completed) != null ? _f : "?";
-    const inlineLabel = `${completed}/${inlineProgress.total} TASK`;
-    return {
-      title: normalizeText(parent == null ? void 0 : parent.title, "\u672A\u63D0\u4F9B\u4EFB\u52A1\u6807\u9898"),
-      status: normalizeText(parent == null ? void 0 : parent.status, normalizeText((_g = snapshot.state) == null ? void 0 : _g.value, "unknown")),
-      currentStage: normalizeText((_h = snapshot.flow_graph) == null ? void 0 : _h.current, "\u672A\u63D0\u4F9B"),
-      progressLabel,
-      workProgressKind: "inline",
-      workProgressLabel: inlineLabel,
-      inlineLabel
-    };
-  }
-  const materializationMode = normalizeText(
-    (_i = snapshot.task_materialization) == null ? void 0 : _i.mode,
-    normalizeText((_k = (_j = snapshot.task_graph) == null ? void 0 : _j.task_materialization) == null ? void 0 : _k.mode, "")
-  );
-  if (materializationMode === "children" || childTotal > 0) {
-    return {
-      title: normalizeText(parent == null ? void 0 : parent.title, "\u672A\u63D0\u4F9B\u4EFB\u52A1\u6807\u9898"),
-      status: normalizeText(parent == null ? void 0 : parent.status, normalizeText((_l = snapshot.state) == null ? void 0 : _l.value, "unknown")),
-      currentStage: normalizeText((_m = snapshot.flow_graph) == null ? void 0 : _m.current, "\u672A\u63D0\u4F9B"),
-      progressLabel,
-      workProgressKind: "children",
-      workProgressLabel: `${childDone}/${childTotal} \u5B50\u4EFB\u52A1`,
-      inlineLabel: null
-    };
-  }
-  return {
-    title: normalizeText(parent == null ? void 0 : parent.title, "\u672A\u63D0\u4F9B\u4EFB\u52A1\u6807\u9898"),
-    status: normalizeText(parent == null ? void 0 : parent.status, normalizeText((_n = snapshot.state) == null ? void 0 : _n.value, "unknown")),
-    currentStage: normalizeText((_o = snapshot.flow_graph) == null ? void 0 : _o.current, "\u672A\u63D0\u4F9B"),
-    progressLabel,
-    workProgressKind: "unknown",
-    workProgressLabel: "\u4EFB\u52A1\u8FDB\u5EA6\u672A\u77E5",
-    inlineLabel: null
+function formatRollupState(value) {
+  var _a;
+  const state = normalizeText(value, "unknown");
+  const labels = {
+    running: "\u5B50\u4EFB\u52A1\u8FDB\u884C\u4E2D",
+    blocked: "\u5B58\u5728\u963B\u585E\u5B50\u4EFB\u52A1",
+    awaiting_parent_verification: "\u7B49\u5F85\u7236\u4EFB\u52A1\u6574\u4F53\u9A8C\u8BC1",
+    inconsistent: "\u7236\u5B50\u72B6\u6001\u77DB\u76FE",
+    contract_invalid: "\u4EFB\u52A1\u5408\u540C\u65E0\u6548",
+    done: "\u6574\u4F53\u5B8C\u6210",
+    unknown: "\u6C47\u603B\u72B6\u6001\u672A\u77E5"
   };
+  return (_a = labels[state]) != null ? _a : state;
+}
+function formatChildEvidenceHealth(value) {
+  const labels = {
+    missing: "\u7F3A\u5931",
+    invalid: "\u65E0\u6548",
+    valid: "\u6709\u6548"
+  };
+  if (isRecord(value)) {
+    return [
+      `\u6267\u884C${labels[normalizeEvidenceValue(value.execution)]}`,
+      `\u9A8C\u8BC1${labels[normalizeEvidenceValue(value.verification)]}`,
+      `\u4EA4\u4ED8${labels[normalizeEvidenceValue(value.delivery)]}`
+    ].join(" \xB7 ");
+  }
+  return labels[normalizeEvidenceValue(value)];
 }
 function formatNextAction(action) {
   var _a;
   if (!action) {
     return null;
   }
+  const summary = normalizeText(action.summary, "");
+  if (summary) {
+    return summary;
+  }
   const kind = normalizeText(action.kind, "unknown");
   const labels = {
-    complete_parent_task: "\u5B8C\u6210\u7236\u4EFB\u52A1",
-    continue_inline_implementation: "\u7EE7\u7EED inline \u5B9E\u65BD",
-    create_task_breakdown: "\u8865\u5145\u4EFB\u52A1\u62C6\u5206",
-    dispatch_ready_task: "\u6D3E\u53D1\u5C31\u7EEA\u4EFB\u52A1",
-    materialize_missing_tasks: "\u7269\u5316\u7F3A\u5931\u4EFB\u52A1",
-    reconcile_plan_revision: "\u5BF9\u9F50\u8BA1\u5212\u7248\u672C",
-    record_delivery: "\u8BB0\u5F55\u4EA4\u4ED8\u7ED3\u679C",
-    refine_spec_contract: "\u5B8C\u5584 Spec Contract",
-    refine_task_granularity: "\u8C03\u6574\u4EFB\u52A1\u7C92\u5EA6",
-    resolve_blockers: "\u5904\u7406\u963B\u585E\u9879",
-    resolve_inline_execution_conflict: "\u5904\u7406 inline \u6267\u884C\u51B2\u7A81",
-    resolve_materialization_conflict: "\u5904\u7406\u4EFB\u52A1\u7269\u5316\u51B2\u7A81",
-    start_implementation: "\u5F00\u59CB\u5B9E\u65BD",
-    start_inline_implementation: "\u5F00\u59CB inline \u5B9E\u65BD",
-    verify_scenarios: "\u9A8C\u8BC1\u9A8C\u6536\u573A\u666F",
-    wait_for_running_task: "\u7B49\u5F85\u8FD0\u884C\u4E2D\u7684\u4EFB\u52A1"
+    continue_child_work: "\u7EE7\u7EED\u5F53\u524D\u5B50\u4EFB\u52A1",
+    resolve_child_blockers: "\u5904\u7406\u5B50\u4EFB\u52A1\u963B\u585E",
+    complete_parent_verification: "\u5B8C\u6210\u7236\u4EFB\u52A1\u6574\u4F53\u9A8C\u8BC1",
+    resolve_contradictions: "\u5904\u7406\u7236\u5B50\u72B6\u6001\u77DB\u76FE",
+    repair_contract: "\u4FEE\u590D\u4EFB\u52A1\u5408\u540C"
   };
-  const ids = Array.isArray(action.task_ids) ? action.task_ids.map(String).filter(Boolean) : [];
+  const taskIds = Array.isArray(action.task_ids) ? action.task_ids.map(String).filter(Boolean) : [];
   const label = (_a = labels[kind]) != null ? _a : kind;
-  return ids.length ? `${label}\uFF1A${ids.join("\u3001")}` : label;
+  return taskIds.length ? `${label}\uFF1A${taskIds.join("\u3001")}` : label;
 }
 function resolveDiagnosticTarget(taskPath, source) {
   const line = typeof (source == null ? void 0 : source.line_start) === "number" && source.line_start > 0 ? source.line_start : null;
   const heading = line === null ? normalizeText(source == null ? void 0 : source.after_section, normalizeText(source == null ? void 0 : source.section, "")) : normalizeText(source == null ? void 0 : source.section, "");
   return {
     linkText: heading ? `${taskPath}#${heading}` : taskPath,
-    line
+    line,
+    editorLine: line === null ? null : line - 1
   };
 }
-function formatDiagnosticReason(value) {
-  const diagnostic = isRecord(value) ? value : {};
-  const hasWrapper = "reason" in diagnostic || "message" in diagnostic;
-  const reason = hasWrapper ? diagnostic.reason : value;
-  const message = hasWrapper ? diagnostic.message : void 0;
-  if (isRecord(reason)) {
-    return normalizeText(
-      reason.actual,
-      normalizeText(reason.expected, normalizeText(message, "producer \u672A\u63D0\u4F9B"))
-    );
-  }
-  return normalizeText(reason, normalizeText(message, "producer \u672A\u63D0\u4F9B"));
-}
-function formatDiagnosticRemediation(value) {
-  const diagnostic = isRecord(value) ? value : {};
-  const remediation = "remediation" in diagnostic ? diagnostic.remediation : value;
-  if (isRecord(remediation)) {
-    return normalizeText(
-      remediation.summary,
-      normalizeText(remediation.example, "producer \u672A\u63D0\u4F9B")
-    );
-  }
-  return normalizeText(remediation, "producer \u672A\u63D0\u4F9B");
-}
-function createCompatibility(snapshot) {
-  var _a, _b, _c, _d, _e, _f;
-  const profile = normalizeText(
-    (_a = snapshot.compatibility) == null ? void 0 : _a.profile,
-    normalizeText(
-      (_b = snapshot.spec_contract) == null ? void 0 : _b.execution_mode,
-      normalizeText((_c = snapshot.task_materialization) == null ? void 0 : _c.mode, "unknown")
-    )
-  );
-  const producerLabel = normalizeText((_d = snapshot.compatibility) == null ? void 0 : _d.label, "");
-  if (producerLabel) {
-    return { label: producerLabel, profile };
-  }
-  const contractVersion = normalizeText(
-    (_e = snapshot.compatibility) == null ? void 0 : _e.contract_version,
-    normalizeText((_f = snapshot.spec_contract) == null ? void 0 : _f.version, "")
-  );
-  if (contractVersion) {
-    return {
-      label: `SDD ${contractVersion}${profile !== "unknown" ? ` \xB7 ${profile}` : ""}`,
-      profile
-    };
-  }
-  return { label: "\u65E7\u7248 snapshot \xB7 \u80FD\u529B\u672A\u77E5", profile: "unknown" };
-}
-function normalizeDiagnostic(value) {
-  if (typeof value === "string") {
-    return {
-      code: value,
-      message: value,
-      reason: value,
-      remediation: "producer \u672A\u63D0\u4F9B"
-    };
-  }
-  const diagnostic = isRecord(value) ? value : {};
-  const code = normalizeText(diagnostic.code, "unknown_diagnostic");
+function createChildViewModel(child, evidenceByChild) {
+  var _a, _b, _c, _d;
+  const id = normalizeText(child.id, "");
+  const childEvidence = (_a = child.evidence_health) != null ? _a : evidenceByChild == null ? void 0 : evidenceByChild[id];
   return {
-    code,
-    message: normalizeText(diagnostic.message, code),
-    reason: formatDiagnosticReason(diagnostic),
-    remediation: formatDiagnosticRemediation(diagnostic),
-    source: isRecord(diagnostic.source) ? diagnostic.source : void 0,
-    severity: normalizeOptionalText(diagnostic.severity),
-    path: normalizeOptionalText(diagnostic.path)
+    id,
+    title: normalizeText(child.title, id || "\u672A\u547D\u540D\u5B50\u4EFB\u52A1"),
+    status: normalizeText(child.status, "unknown"),
+    priority: normalizeText(child.priority, "\u672A\u63D0\u4F9B"),
+    isBlocked: child.is_blocked === true,
+    blockedBy: ((_b = child.blocked_by) != null ? _b : []).map(normalizeBlockedBy).filter(Boolean),
+    goal: normalizeText(child.goal, "\u672A\u63D0\u4F9B"),
+    covers: ((_c = child.covers) != null ? _c : []).map(String),
+    acceptance: ((_d = child.acceptance) != null ? _d : []).map((item) => ({
+      text: normalizeText(item.text, "\u672A\u63D0\u4F9B"),
+      checked: item.checked === true,
+      source: item.source
+    })),
+    semanticStatus: normalizeText(child.semantic_status, "unknown"),
+    evidenceHealth: normalizeEvidenceHealth(childEvidence),
+    trustedDone: child.trusted_done === true
   };
+}
+function normalizeDiagnostic(value, fallbackTaskId) {
+  const diagnostic = isRecord(value) ? value : {};
+  const reason = isRecord(diagnostic.reason) ? diagnostic.reason : {};
+  const remediation = isRecord(diagnostic.remediation) ? diagnostic.remediation : {};
+  return {
+    code: normalizeText(diagnostic.code, "unknown_diagnostic"),
+    severity: normalizeText(diagnostic.severity, "error"),
+    taskId: normalizeText(diagnostic.task_id, fallbackTaskId),
+    path: normalizeText(diagnostic.path, "\u672A\u63D0\u4F9B"),
+    source: isRecord(diagnostic.source) ? diagnostic.source : void 0,
+    reason: normalizeText(
+      reason.actual,
+      normalizeText(diagnostic.reason, "producer \u672A\u63D0\u4F9B")
+    ),
+    expected: normalizeText(reason.expected, "producer \u672A\u63D0\u4F9B"),
+    remediation: normalizeText(
+      remediation.summary,
+      normalizeText(diagnostic.remediation, "producer \u672A\u63D0\u4F9B")
+    )
+  };
+}
+function normalizeBlockedBy(value) {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (isRecord(value)) {
+    return normalizeText(value.uid, normalizeText(value.id, ""));
+  }
+  return "";
+}
+function normalizeEvidenceHealth(value) {
+  return {
+    execution: normalizeEvidenceValue(value == null ? void 0 : value.execution),
+    verification: normalizeEvidenceValue(value == null ? void 0 : value.verification),
+    delivery: normalizeEvidenceValue(value == null ? void 0 : value.delivery)
+  };
+}
+function normalizeEvidenceValue(value) {
+  return value === "valid" || value === "invalid" ? value : "missing";
 }
 function normalizeObservationHealth(value) {
-  return value === "healthy" || value === "degraded" || value === "error" ? value : "unknown";
+  return value === "healthy" || value === "degraded" || value === "failed" || value === "error" ? value : "unknown";
 }
 function normalizeText(value, fallback) {
   if (typeof value === "string" && value.trim()) {
@@ -400,10 +386,6 @@ function normalizeText(value, fallback) {
     return String(value);
   }
   return fallback;
-}
-function normalizeOptionalText(value) {
-  const normalized = normalizeText(value, "");
-  return normalized || void 0;
 }
 function finiteNumber(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -419,7 +401,6 @@ var MAX_SNAPSHOT_BUFFER = 8 * 1024 * 1024;
 var DEFAULT_SETTINGS = {
   flowdeskRoot: "",
   workingDirectory: "",
-  schema: "sdd-poc",
   apiUrl: ""
 };
 var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
@@ -438,9 +419,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
       checkCallback: (checking) => {
         const file = this.app.workspace.getActiveFile();
         const canRun = this.isTaskFile(file);
-        if (checking) {
-          return canRun;
-        }
+        if (checking) return canRun;
         if (!file || !canRun) {
           new import_obsidian.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A Tasks/*.md \u4EFB\u52A1\u6587\u4EF6\u3002");
           return false;
@@ -472,9 +451,6 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
   async onunload() {
     this.app.workspace.detachLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE);
   }
-  async openDashboardForActiveTask() {
-    await this.refreshDashboard();
-  }
   async refreshDashboard(fallbackTaskPath = "") {
     const file = this.app.workspace.getActiveFile();
     const taskPath = this.isTaskFile(file) ? file.path : fallbackTaskPath;
@@ -495,15 +471,10 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
         active: true
       });
     }
-    const view = leaf.view;
-    if (view instanceof FlowDeskDashboardView) {
-      await view.loadTask(taskPath);
+    if (leaf.view instanceof FlowDeskDashboardView) {
+      await leaf.view.loadTask(taskPath);
     }
     workspace.revealLeaf(leaf);
-  }
-  getDashboardView() {
-    const leaf = this.app.workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE)[0];
-    return (leaf == null ? void 0 : leaf.view) instanceof FlowDeskDashboardView ? leaf.view : null;
   }
   async loadSnapshot(taskPath) {
     const invocation = this.createSnapshotInvocation(taskPath, "json");
@@ -527,21 +498,20 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
   createSnapshotInvocation(taskPath, format) {
     const flowdeskRoot = this.resolveFlowDeskRoot();
     const workingDirectory = expandHomePath(this.settings.workingDirectory.trim()) || flowdeskRoot;
-    const apiUrl = this.settings.apiUrl.trim();
     return buildSnapshotInvocation(
       {
         flowdeskRoot,
         taskPath,
         workingDirectory,
-        schema: this.settings.schema.trim() || DEFAULT_SETTINGS.schema,
-        apiUrl
+        apiUrl: this.settings.apiUrl.trim()
       },
       format
     );
   }
   async copyDashboardCommand(taskPath) {
-    const invocation = this.createSnapshotInvocation(taskPath, "dashboard");
-    await navigator.clipboard.writeText(formatShellCommand(invocation));
+    await navigator.clipboard.writeText(
+      formatShellCommand(this.createSnapshotInvocation(taskPath, "dashboard"))
+    );
   }
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -552,6 +522,10 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
   isTaskFile(file) {
     return Boolean(file && file.extension === "md" && isTaskPath(file.path));
   }
+  getDashboardView() {
+    const leaf = this.app.workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE)[0];
+    return (leaf == null ? void 0 : leaf.view) instanceof FlowDeskDashboardView ? leaf.view : null;
+  }
   resolveFlowDeskRoot() {
     const candidates = [
       expandHomePath(this.settings.flowdeskRoot.trim()),
@@ -559,23 +533,13 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
       path2.resolve(__dirname, "..", "..")
     ].filter(Boolean);
     for (const candidate of candidates) {
-      const cli = path2.join(candidate, "bin", "flowdesk-execution-snapshot");
-      if ((0, import_fs.existsSync)(cli)) {
+      if ((0, import_fs.existsSync)(path2.join(candidate, "bin", "flowdesk-execution-snapshot"))) {
         return candidate;
       }
     }
     throw new Error("\u672A\u627E\u5230 FlowDesk \u4ED3\u5E93\u8DEF\u5F84\uFF0C\u8BF7\u5728\u63D2\u4EF6\u8BBE\u7F6E\u91CC\u914D\u7F6E FlowDesk repo path\u3002");
   }
 };
-function expandHomePath(value) {
-  if (value === "~") {
-    return (0, import_os.homedir)();
-  }
-  if (value.startsWith("~/")) {
-    return path2.join((0, import_os.homedir)(), value.slice(2));
-  }
-  return value;
-}
 var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
@@ -609,15 +573,9 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   async onClose() {
     this.refreshScheduler.cancel();
   }
-  get currentTaskPath() {
-    return this.context.kind === "task" ? this.context.taskPath : "";
-  }
   async syncToActiveFile(file = this.app.workspace.getActiveFile()) {
     var _a;
-    const nextContext = resolveDashboardContext(
-      (_a = file == null ? void 0 : file.path) != null ? _a : null,
-      this.previousTaskPath
-    );
+    const nextContext = resolveDashboardContext((_a = file == null ? void 0 : file.path) != null ? _a : null, this.previousTaskPath);
     if (nextContext.kind === "task") {
       if (this.context.kind === "task" && this.context.taskPath === nextContext.taskPath) {
         if (!this.displayState && !this.loading) {
@@ -630,6 +588,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     }
     this.selectionRevision += 1;
     this.context = nextContext;
+    this.displayState = null;
     this.queuedRequest = null;
     this.refreshScheduler.cancel();
     this.loading = false;
@@ -637,34 +596,24 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     this.render();
   }
   async loadTask(taskPath) {
-    var _a;
-    const isSameSelection = this.context.kind === "task" && this.context.taskPath === taskPath;
-    if (!isSameSelection) {
-      const taskChanged = Boolean(
-        this.previousTaskPath && this.previousTaskPath !== taskPath
-      );
+    const sameTask = this.context.kind === "task" && this.context.taskPath === taskPath;
+    if (!sameTask) {
+      const taskChanged = Boolean(this.previousTaskPath && this.previousTaskPath !== taskPath);
       this.selectionRevision += 1;
       this.context = { kind: "task", taskPath };
       this.previousTaskPath = taskPath;
+      this.displayState = null;
+      this.error = "";
+      this.loading = true;
       this.refreshScheduler.cancel();
       if (taskChanged) {
         this.detailsOpen = false;
         this.detailsOpenInitialized = false;
       }
-      if (((_a = this.displayState) == null ? void 0 : _a.taskPath) !== taskPath) {
-        this.displayState = null;
-      }
-      this.error = "";
-      this.loading = true;
       this.render();
     }
-    this.queuedRequest = {
-      taskPath,
-      selectionRevision: this.selectionRevision
-    };
-    if (this.refreshPromise) {
-      return this.refreshPromise;
-    }
+    this.queuedRequest = { taskPath, selectionRevision: this.selectionRevision };
+    if (this.refreshPromise) return this.refreshPromise;
     this.refreshPromise = this.drainRefreshQueue();
     try {
       await this.refreshPromise;
@@ -681,18 +630,10 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   }
   observesTaskFile(filePath) {
     var _a;
-    if (this.context.kind !== "task") {
-      return false;
-    }
-    return collectObservedTaskPaths(
-      this.context.taskPath,
-      (_a = this.displayState) == null ? void 0 : _a.snapshot
-    ).has(filePath);
+    return this.context.kind === "task" ? collectObservedTaskPaths(this.context.taskPath, (_a = this.displayState) == null ? void 0 : _a.snapshot).has(filePath) : false;
   }
   async loadCurrentTask() {
-    if (this.context.kind === "task") {
-      await this.loadTask(this.context.taskPath);
-    }
+    if (this.context.kind === "task") await this.loadTask(this.context.taskPath);
   }
   async drainRefreshQueue() {
     while (this.queuedRequest) {
@@ -702,23 +643,20 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     }
   }
   async loadTaskNow(request) {
-    var _a, _b, _c;
+    var _a, _b;
     this.loading = true;
     this.error = "";
     this.render();
     try {
       const snapshot = await this.plugin.loadSnapshot(request.taskPath);
-      if (!isCurrentSnapshotRequest(
-        request,
-        this.context,
-        this.selectionRevision
-      )) {
-        return;
+      if (!isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) return;
+      if (snapshot.snapshot_schema_version !== 3) {
+        throw new Error("unsupported_snapshot_schema\uFF1ADashboard \u53EA\u652F\u6301 snapshot schema 3\u3002");
       }
       const sourceIdentity = validateSnapshotSource(snapshot, request.taskPath);
-      if (sourceIdentity === false) {
+      if (sourceIdentity !== true) {
         throw new Error(
-          `Snapshot source identity \u4E0D\u5339\u914D\uFF1A\u8BF7\u6C42 ${request.taskPath}\uFF0C\u8FD4\u56DE ${(_b = (_a = snapshot.observation) == null ? void 0 : _a.source_task_id) != null ? _b : "\u672A\u63D0\u4F9B"}\u3002`
+          `Snapshot source identity \u4E0D\u5339\u914D\uFF1A\u8BF7\u6C42 ${request.taskPath}\uFF0C\u8FD4\u56DE ${(_a = snapshot.source_task_id) != null ? _a : "\u672A\u63D0\u4F9B"}\u3002`
         );
       }
       this.displayState = {
@@ -728,35 +666,18 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         staleReason: ""
       };
     } catch (error) {
-      if (!isCurrentSnapshotRequest(
-        request,
-        this.context,
-        this.selectionRevision
-      )) {
-        return;
-      }
+      if (!isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) return;
       this.error = error instanceof Error ? error.message : String(error);
-      if (((_c = this.displayState) == null ? void 0 : _c.taskPath) === request.taskPath) {
-        this.displayState = {
-          ...this.displayState,
-          staleReason: this.error
-        };
-      } else {
-        this.displayState = null;
-      }
+      this.displayState = ((_b = this.displayState) == null ? void 0 : _b.taskPath) === request.taskPath ? { ...this.displayState, staleReason: this.error } : null;
     } finally {
-      if (isCurrentSnapshotRequest(
-        request,
-        this.context,
-        this.selectionRevision
-      )) {
+      if (isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) {
         this.loading = false;
         this.render();
       }
     }
   }
   render() {
-    var _a, _b;
+    var _a;
     const container = this.contentEl;
     container.empty();
     container.addClass("flowdesk-dashboard");
@@ -766,24 +687,19 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       return;
     }
     if (this.context.kind === "empty") {
-      container.createDiv({
-        cls: "flowdesk-empty",
-        text: "\u8BF7\u6253\u5F00\u4E00\u4E2A Tasks/*.md \u6216 TaskNotes/*.md \u4EFB\u52A1\u6587\u4EF6\u3002"
-      });
+      container.createDiv({ cls: "flowdesk-empty", text: "\u5F53\u524D\u4E0D\u662F TaskNotes \u4EFB\u52A1\uFF0CFlowDesk Dashboard \u4E0D\u53EF\u7528\u3002" });
       return;
     }
     const taskPath = this.context.taskPath;
     const displayState = ((_a = this.displayState) == null ? void 0 : _a.taskPath) === taskPath ? this.displayState : null;
-    const snapshot = (_b = displayState == null ? void 0 : displayState.snapshot) != null ? _b : null;
+    const snapshot = displayState == null ? void 0 : displayState.snapshot;
     if (this.loading && !snapshot) {
-      container.createDiv({ cls: "flowdesk-empty", text: "\u6B63\u5728\u8BFB\u53D6 snapshot..." });
+      container.createDiv({ cls: "flowdesk-empty", text: "\u6B63\u5728\u9996\u6B21\u8BFB\u53D6 snapshot v3..." });
       return;
     }
-    if (this.error) {
-      if (!snapshot) {
-        container.createDiv({ cls: "flowdesk-error", text: this.error });
-        return;
-      }
+    if (this.error && !snapshot) {
+      container.createDiv({ cls: "flowdesk-error", text: this.error });
+      return;
     }
     if (!snapshot) {
       container.createDiv({ cls: "flowdesk-empty", text: "\u5C1A\u672A\u8BFB\u53D6 snapshot\u3002" });
@@ -794,253 +710,132 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       loadedAt: displayState == null ? void 0 : displayState.loadedAt,
       staleReason: displayState == null ? void 0 : displayState.staleReason
     });
+    if (model.errorCode) {
+      container.createDiv({ cls: "flowdesk-error", text: "Dashboard \u53EA\u652F\u6301 snapshot schema 3\u3002" });
+      return;
+    }
     this.renderTrustStrip(container, model);
-    this.renderTaskHero(container, model, snapshot);
+    this.renderRootHero(container, model);
     this.renderPrimaryDiagnostic(container, model);
-    this.renderPrimaryNextAction(container, model);
-    this.renderStageRail(container, snapshot);
-    this.renderDetails(container, snapshot, model);
+    this.renderNextAction(container, model);
+    this.renderChildren(container, model.children);
+    this.renderDetails(container, model);
+  }
+  renderHeader(container) {
+    const header = container.createDiv({ cls: "flowdesk-dashboard-header" });
+    const title = header.createDiv();
+    title.createDiv({ cls: "flowdesk-dashboard-title", text: "FlowDesk SDD v3 Dashboard" });
+    title.createDiv({
+      cls: "flowdesk-dashboard-path",
+      text: this.context.kind === "task" ? this.context.taskPath : this.context.kind === "non-task" ? this.context.activePath : "\u672A\u9009\u62E9\u4EFB\u52A1"
+    });
+    const toolbar = header.createDiv({ cls: "flowdesk-dashboard-toolbar" });
+    if (this.context.kind !== "task") return;
+    const taskPath = this.context.taskPath;
+    const copy = toolbar.createEl("button", { text: "\u590D\u5236 CLI" });
+    copy.addEventListener("click", async () => {
+      try {
+        await this.plugin.copyDashboardCommand(taskPath);
+        new import_obsidian.Notice("CLI \u547D\u4EE4\u5DF2\u590D\u5236");
+      } catch (error) {
+        new import_obsidian.Notice(`\u65E0\u6CD5\u590D\u5236 CLI \u547D\u4EE4\uFF1A${String(error)}`);
+      }
+    });
+    const refresh = toolbar.createEl("button", { text: this.loading ? "\u5237\u65B0\u4E2D" : "\u5237\u65B0" });
+    refresh.disabled = this.loading;
+    refresh.addEventListener("click", () => void this.refreshCurrentTask());
   }
   renderNonTaskState(container, context) {
     const card = container.createDiv({ cls: "flowdesk-context-pause" });
-    card.createDiv({ cls: "flowdesk-card-kicker", text: "Dashboard \u5DF2\u6682\u505C" });
+    card.createDiv({ cls: "flowdesk-card-kicker", text: "Dashboard \u4E0D\u53EF\u7528" });
     card.createDiv({
       cls: "flowdesk-primary-title",
-      text: "\u5F53\u524D\u6587\u4EF6\u4E0D\u662F TaskNotes \u4EFB\u52A1"
+      text: "\u5F53\u524D\u4E0D\u662F TaskNotes \u4EFB\u52A1\uFF0CFlowDesk Dashboard \u4E0D\u53EF\u7528\u3002"
     });
-    card.createDiv({
-      cls: "flowdesk-card-copy",
-      text: "FlowDesk Dashboard \u4EC5\u652F\u6301 Tasks/*.md \u4E0E TaskNotes/*.md\u3002"
-    });
-    card.createDiv({
-      cls: "flowdesk-context-path",
-      text: `\u5F53\u524D\u6587\u4EF6\uFF1A${context.activePath}`
-    });
-    if (!context.previousTaskPath) {
-      return;
+    card.createDiv({ cls: "flowdesk-subline", text: `\u5F53\u524D\u6587\u4EF6\uFF1A${context.activePath}` });
+    if (context.previousTaskPath) {
+      const back = card.createEl("button", { text: "\u56DE\u5230\u4E0A\u4E00\u6B21\u4EFB\u52A1" });
+      back.addEventListener("click", () => void this.openTask(context.previousTaskPath));
     }
-    card.createDiv({
-      cls: "flowdesk-context-path",
-      text: `\u4E0A\u4E00\u6B21\u4EFB\u52A1\uFF1A${context.previousTaskPath}`
-    });
-    const back = card.createEl("button", {
-      cls: "flowdesk-context-back",
-      text: "\u56DE\u5230\u4E0A\u4E00\u6B21\u4EFB\u52A1"
-    });
-    back.addEventListener("click", () => {
-      void this.openTask(context.previousTaskPath);
-    });
-  }
-  renderHeader(container) {
-    var _a, _b;
-    const header = container.createDiv({ cls: "flowdesk-dashboard-header" });
-    const titleBlock = header.createDiv();
-    titleBlock.createDiv({
-      cls: "flowdesk-dashboard-title",
-      text: "FlowDesk Execution Dashboard"
-    });
-    titleBlock.createDiv({
-      cls: "flowdesk-dashboard-path",
-      text: this.context.kind === "task" ? this.context.taskPath : this.context.kind === "non-task" ? this.context.activePath : "\u672A\u9009\u62E9\u6587\u4EF6"
-    });
-    titleBlock.createDiv({
-      cls: "flowdesk-dashboard-meta",
-      text: this.loading ? ((_a = this.displayState) == null ? void 0 : _a.loadedAt) ? `\u6B63\u5728\u5237\u65B0 \xB7 \u4E0A\u6B21\u8BFB\u53D6 ${this.displayState.loadedAt}` : "\u6B63\u5728\u8BFB\u53D6 snapshot" : ((_b = this.displayState) == null ? void 0 : _b.loadedAt) ? `\u672C\u5730\u8BFB\u53D6 ${this.displayState.loadedAt}` : "\u7B49\u5F85\u5237\u65B0"
-    });
-    const toolbar = header.createDiv({ cls: "flowdesk-dashboard-toolbar" });
-    if (this.context.kind !== "task") {
-      return;
-    }
-    const taskPath = this.context.taskPath;
-    const copy = toolbar.createEl("button", {
-      cls: "flowdesk-copy-button",
-      text: "\u590D\u5236 CLI"
-    });
-    copy.title = "\u590D\u5236\u5F53\u524D\u4EFB\u52A1\u7684\u7EC8\u7AEF Dashboard \u547D\u4EE4";
-    copy.addEventListener("click", async () => {
-      copy.disabled = true;
-      try {
-        await this.plugin.copyDashboardCommand(taskPath);
-        copy.setText("\u5DF2\u590D\u5236");
-        new import_obsidian.Notice("CLI \u547D\u4EE4\u5DF2\u590D\u5236");
-        window.setTimeout(() => {
-          if (copy.isConnected) {
-            copy.setText("\u590D\u5236 CLI");
-            copy.disabled = false;
-          }
-        }, 1500);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        new import_obsidian.Notice(`\u65E0\u6CD5\u590D\u5236 CLI \u547D\u4EE4\uFF1A${message}`);
-        copy.disabled = false;
-      }
-    });
-    const refresh = toolbar.createEl("button", {
-      cls: "flowdesk-refresh-button",
-      text: this.loading ? "\u5237\u65B0\u4E2D" : "\u5237\u65B0"
-    });
-    refresh.disabled = this.loading;
-    refresh.title = "\u91CD\u65B0\u8BFB\u53D6\u5F53\u524D TaskNotes \u4EFB\u52A1\u7684 FlowDesk snapshot";
-    refresh.addEventListener("click", () => {
-      void this.refreshCurrentTask();
-    });
   }
   renderTrustStrip(container, model) {
-    var _a;
-    const trustState = model.observation.isStale ? "stale" : model.observation.health;
-    const strip = container.createDiv({
-      cls: `flowdesk-trust-strip flowdesk-trust-${trustState}`
-    });
-    const labels = {
-      healthy: "\u89C2\u6D4B\u5065\u5EB7",
-      degraded: "\u89C2\u6D4B\u964D\u7EA7",
-      error: "\u89C2\u6D4B\u5F02\u5E38",
-      unknown: "\u89C2\u6D4B\u672A\u77E5"
-    };
+    const state = model.observation.isStale ? "stale" : model.observation.health;
+    const strip = container.createDiv({ cls: `flowdesk-trust-strip is-${state}` });
     strip.createSpan({
       cls: "flowdesk-trust-badge",
-      text: model.observation.isStale ? "\u65E7\u6570\u636E" : (_a = labels[model.observation.health]) != null ? _a : "\u89C2\u6D4B\u672A\u77E5"
+      text: model.observation.isStale ? "\u65E7\u6570\u636E" : model.observation.trustMessage
     });
-    strip.createSpan({
-      cls: "flowdesk-trust-contract",
-      text: `${model.schemaLabel} \xB7 ${model.compatibility.label}`
-    });
-    strip.createSpan({
-      cls: "flowdesk-trust-generated",
-      text: `\u751F\u6210\u65F6\u95F4 ${model.observation.generatedAt} \xB7 \u672C\u5730\u8BFB\u53D6 ${model.observation.loadedAt}`
-    });
+    strip.createSpan({ text: `${model.schemaLabel} \xB7 ${model.observation.generatedAt}` });
+    if (!model.observation.isTrustworthy) {
+      strip.createDiv({ cls: "flowdesk-warning", text: "\u89C2\u6D4B\u4E0D\u53EF\u4FE1\uFF0C\u65E0\u6CD5\u5224\u65AD\u4EFB\u52A1\u662F\u5426\u6B63\u5E38" });
+    }
     if (model.observation.isStale) {
-      strip.createDiv({
-        cls: "flowdesk-stale-reason",
-        text: `\u5237\u65B0\u5931\u8D25\uFF1A${model.observation.staleReason}`
-      });
+      strip.createDiv({ cls: "flowdesk-stale-reason", text: `\u5237\u65B0\u5931\u8D25\uFF1A${model.observation.staleReason}` });
     }
   }
-  renderTaskHero(container, model, snapshot) {
-    var _a;
+  renderRootHero(container, model) {
     const hero = container.createDiv({ cls: "flowdesk-hero" });
-    const titleRow = hero.createDiv({ cls: "flowdesk-hero-title-row" });
-    titleRow.createDiv({ cls: "flowdesk-hero-title", text: model.hero.title });
-    titleRow.createSpan({
-      cls: `flowdesk-state-pill flowdesk-state-${normalizeStatus(model.hero.status)}`,
+    hero.createDiv({ cls: "flowdesk-card-kicker", text: "Root task" });
+    const title = hero.createDiv({ cls: "flowdesk-hero-title-row" });
+    title.createDiv({ cls: "flowdesk-hero-title", text: model.hero.title });
+    title.createSpan({
+      cls: `flowdesk-state-pill is-${normalizeStatus(model.hero.status)}`,
       text: formatStatusLabel(model.hero.status)
     });
     const metrics = hero.createDiv({ cls: "flowdesk-hero-metrics" });
-    metricCard(metrics, "\u5F53\u524D\u9636\u6BB5", formatFlowNodeId(model.hero.currentStage));
-    metricCard(metrics, "\u6D41\u7A0B\u8FDB\u5EA6", model.hero.progressLabel);
-    metricCard(
-      metrics,
-      model.hero.workProgressKind === "inline" ? "Inline \u8FDB\u5EA6" : "\u4EFB\u52A1\u8FDB\u5EA6",
-      model.hero.workProgressLabel
-    );
-    if ((_a = snapshot.state) == null ? void 0 : _a.blocked_reason) {
-      hero.createDiv({
-        cls: "flowdesk-hero-blocked",
-        text: `\u963B\u585E\u539F\u56E0\uFF1A${snapshot.state.blocked_reason}`
-      });
+    metricCard(metrics, "\u6574\u4F53\u6C47\u603B", model.hero.rollupLabel);
+    metricCard(metrics, "\u53EF\u4FE1\u8FDB\u5EA6", model.hero.workProgressLabel);
+    metricCard(metrics, "Priority", formatPriority(model.hero.priority));
+    if (model.hero.blockedCount > 0) {
+      hero.createDiv({ cls: "flowdesk-warning", text: `${model.hero.blockedCount} \u4E2A child \u5904\u4E8E\u963B\u585E\u72B6\u6001` });
     }
   }
   renderPrimaryDiagnostic(container, model) {
-    const diagnostic = model.primaryDiagnostic;
-    if (!diagnostic) {
-      const empty = container.createDiv({
-        cls: `flowdesk-primary-status ${model.observation.isTrustworthy ? "is-clear" : "is-unknown"}`
-      });
-      empty.createDiv({ cls: "flowdesk-card-kicker", text: "\u9996\u8981\u95EE\u9898" });
-      empty.createDiv({
+    const card = container.createDiv({ cls: "flowdesk-primary-status" });
+    card.createDiv({ cls: "flowdesk-card-kicker", text: "\u9996\u8981\u8BCA\u65AD" });
+    if (!model.primaryDiagnostic) {
+      card.createDiv({
         cls: "flowdesk-primary-title",
-        text: model.observation.isTrustworthy ? "\u672A\u53D1\u73B0\u5408\u540C\u6216\u6267\u884C\u8BCA\u65AD" : "\u5F53\u524D\u6CA1\u6709\u53EF\u9A8C\u8BC1\u7684\u8BCA\u65AD\u7ED3\u8BBA"
+        text: model.observation.isTrustworthy ? "\u5F53\u524D\u6CA1\u6709\u7ED3\u6784\u5316\u8BCA\u65AD" : "\u89C2\u6D4B\u4E0D\u53EF\u4FE1\uFF0C\u65E0\u6CD5\u786E\u8BA4\u65E0\u5F02\u5E38"
       });
-      if (!model.observation.isTrustworthy) {
-        empty.createDiv({
-          cls: "flowdesk-card-copy",
-          text: "\u89C2\u6D4B\u5E76\u975E healthy v2\uFF0C\u4E0D\u80FD\u636E\u6B64\u5224\u65AD\u4EFB\u52A1\u6CA1\u6709\u95EE\u9898\u3002"
-        });
-      }
       return;
     }
-    const card = container.createDiv({ cls: "flowdesk-primary-issue" });
-    card.createDiv({ cls: "flowdesk-card-kicker", text: "\u9996\u8981\u95EE\u9898" });
-    card.createDiv({
-      cls: "flowdesk-primary-title",
-      text: diagnostic.message || diagnostic.code
-    });
-    card.createDiv({ cls: "flowdesk-diagnostic-code", text: diagnostic.code });
-    this.renderDiagnosticBody(card, diagnostic);
+    card.createDiv({ cls: "flowdesk-primary-title", text: model.primaryDiagnostic.code });
+    this.renderDiagnosticBody(card, model.primaryDiagnostic);
   }
   renderDiagnosticBody(container, diagnostic) {
-    const source = diagnostic.source;
-    if (source) {
-      const location = [
-        source.section ? `\xA7 ${source.section}` : "",
-        source.field ? `\u5B57\u6BB5 ${source.field}` : "",
-        source.line_start ? `\u7B2C ${source.line_start} \u884C` : ""
-      ].filter(Boolean).join(" \xB7 ");
-      if (location) {
-        container.createDiv({ cls: "flowdesk-diagnostic-location", text: location });
-      }
-      if (source.excerpt) {
-        container.createEl("code", {
-          cls: "flowdesk-diagnostic-excerpt",
-          text: source.excerpt
-        });
-      }
-    } else {
-      container.createDiv({
-        cls: "flowdesk-diagnostic-location",
-        text: "\u4F4D\u7F6E\uFF1Aproducer \u672A\u63D0\u4F9B"
-      });
-    }
+    const target = resolveDiagnosticTarget(diagnostic.taskId, diagnostic.source);
+    diagnosticRow(container, "\u4EFB\u52A1", diagnostic.taskId);
+    diagnosticRow(container, "\u4F4D\u7F6E", target.line ? `${target.linkText} \xB7 \u7B2C ${target.line} \u884C` : target.linkText);
+    diagnosticRow(container, "\u5B57\u6BB5\u8DEF\u5F84", diagnostic.path);
     diagnosticRow(container, "\u539F\u56E0", diagnostic.reason);
+    diagnosticRow(container, "\u9884\u671F", diagnostic.expected);
     diagnosticRow(container, "\u5EFA\u8BAE\u4FEE\u6CD5", diagnostic.remediation);
-    const canLocate = Boolean(
-      (source == null ? void 0 : source.line_start) || (source == null ? void 0 : source.section) || (source == null ? void 0 : source.after_section)
-    );
-    if (canLocate) {
-      const actions = container.createDiv({ cls: "flowdesk-diagnostic-actions" });
-      const locate = actions.createEl("button", {
-        cls: "flowdesk-diagnostic-locate",
-        text: "\u5B9A\u4F4D"
-      });
-      locate.title = "\u53EA\u8BFB\u6253\u5F00\u8BCA\u65AD\u6240\u5728\u7684 TaskNotes \u4F4D\u7F6E";
-      locate.addEventListener("click", () => {
-        void this.openDiagnosticLocation(diagnostic);
-      });
-    }
+    const open = container.createEl("button", { text: "\u6253\u5F00\u8BCA\u65AD\u4F4D\u7F6E" });
+    open.addEventListener("click", () => {
+      void this.openDiagnosticLocation(diagnostic);
+    });
   }
   async openDiagnosticLocation(diagnostic) {
     var _a;
-    const taskPath = this.currentTaskPath;
-    if (!taskPath) {
-      new import_obsidian.Notice("\u5F53\u524D\u6587\u4EF6\u4E0D\u662F TaskNotes \u4EFB\u52A1\u3002");
-      return;
-    }
-    const file = this.app.vault.getAbstractFileByPath(taskPath);
-    if (!(file instanceof import_obsidian.TFile)) {
-      new import_obsidian.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${taskPath}`);
-      return;
-    }
-    const target = resolveDiagnosticTarget(taskPath, diagnostic.source);
-    if (target.linkText === taskPath && target.line === null) {
-      new import_obsidian.Notice("producer \u672A\u63D0\u4F9B\u53EF\u5B9A\u4F4D\u7684 section \u6216\u884C\u53F7\u3002");
+    const target = resolveDiagnosticTarget(diagnostic.taskId, diagnostic.source);
+    if (!diagnostic.taskId || target.linkText === diagnostic.taskId && target.line === null) {
+      new import_obsidian.Notice("producer \u672A\u63D0\u4F9B\u53EF\u5B9A\u4F4D\u7684 task\u3001section \u6216\u884C\u53F7\u3002");
       return;
     }
     try {
-      await this.app.workspace.openLinkText(target.linkText, taskPath, false);
-      if (target.line === null) {
-        return;
-      }
+      await this.app.workspace.openLinkText(target.linkText, diagnostic.taskId, false);
+      if (target.editorLine === null) return;
       const view = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
-      if (!view || ((_a = view.file) == null ? void 0 : _a.path) !== taskPath) {
+      if (!view || ((_a = view.file) == null ? void 0 : _a.path) !== diagnostic.taskId) {
         new import_obsidian.Notice("\u4EFB\u52A1\u5DF2\u6253\u5F00\uFF0C\u4F46\u5F53\u524D\u89C6\u56FE\u65E0\u6CD5\u5B9A\u4F4D\u5230\u5177\u4F53\u884C\u3002");
         return;
       }
-      const line = target.line - 1;
-      if (line < 0 || line >= view.editor.lineCount()) {
+      if (target.editorLine >= view.editor.lineCount()) {
         new import_obsidian.Notice(`\u8BCA\u65AD\u884C\u53F7\u5DF2\u8D85\u51FA\u5F53\u524D\u6587\u4EF6\u8303\u56F4\uFF1A${target.line}`);
         return;
       }
-      const position = { line, ch: 0 };
+      const position = { line: target.editorLine, ch: 0 };
       view.editor.setCursor(position);
       view.editor.scrollIntoView({ from: position, to: position }, true);
       view.editor.focus();
@@ -1049,299 +844,83 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       new import_obsidian.Notice(`\u65E0\u6CD5\u5B9A\u4F4D\u8BCA\u65AD\u4F4D\u7F6E\uFF1A${message}`);
     }
   }
-  renderPrimaryNextAction(container, model) {
+  renderNextAction(container, model) {
     var _a;
     const card = container.createDiv({ cls: "flowdesk-primary-action" });
     card.createDiv({ cls: "flowdesk-card-kicker", text: "\u4E0B\u4E00\u52A8\u4F5C" });
-    const noAction = model.state === "done" && model.observation.isTrustworthy ? "\u65E0\u540E\u7EED\u52A8\u4F5C" : "snapshot \u672A\u63D0\u4F9B\u4E0B\u4E00\u52A8\u4F5C";
-    card.createDiv({
-      cls: "flowdesk-primary-title",
-      text: (_a = model.nextAction) != null ? _a : noAction
-    });
+    card.createDiv({ cls: "flowdesk-primary-title", text: (_a = model.nextAction) != null ? _a : "snapshot \u672A\u63D0\u4F9B\u4E0B\u4E00\u52A8\u4F5C" });
   }
-  renderStageRail(container, snapshot) {
-    var _a, _b;
-    const section = createSection(container, "\u6267\u884C\u9636\u6BB5");
-    const rail = section.createDiv({ cls: "flowdesk-stage-rail" });
-    const nodes = (_b = (_a = snapshot.flow_graph) == null ? void 0 : _a.nodes) != null ? _b : [];
-    if (!nodes.length) {
-      rail.createDiv({ cls: "flowdesk-muted", text: "\u672A\u63D0\u4F9B\u9636\u6BB5\u6570\u636E\u3002" });
+  renderChildren(container, children) {
+    const section = createSection(container, `Children review\uFF08${children.length}\uFF09`);
+    if (!children.length) {
+      section.createDiv({ cls: "flowdesk-muted", text: "\u5F53\u524D root \u6CA1\u6709 child\u3002" });
       return;
     }
-    for (const node of nodes) {
-      const status = normalizeStatus(node.status);
-      const item = rail.createDiv({
-        cls: `flowdesk-stage-item flowdesk-stage-${status}`
-      });
-      item.createSpan({ cls: "flowdesk-stage-symbol", text: statusSymbol(status) });
-      item.createSpan({
-        cls: "flowdesk-stage-label",
-        text: formatFlowNodeId(node.id) || node.label || "\u672A\u547D\u540D\u9636\u6BB5"
-      });
+    const list = section.createDiv({ cls: "flowdesk-child-list" });
+    for (const child of children) {
+      const card = list.createDiv({ cls: `flowdesk-child-card${child.isBlocked ? " is-blocked" : ""}` });
+      const header = card.createDiv({ cls: "flowdesk-child-header" });
+      header.createSpan({ cls: `flowdesk-status-dot is-${normalizeStatus(child.status)}`, text: statusSymbol(child.status) });
+      header.createDiv({ cls: "flowdesk-child-title", text: child.title });
+      header.createSpan({ cls: "flowdesk-priority", text: formatPriority(child.priority) });
+      card.createDiv({ cls: "flowdesk-subline", text: child.id });
+      card.createDiv({ cls: "flowdesk-child-goal", text: child.goal });
+      childMeta(card, "\u72B6\u6001", `${formatStatusLabel(child.status)}${child.trustedDone ? " \xB7 \u53EF\u4FE1\u5B8C\u6210" : ""}`);
+      childMeta(card, "Blocked by", child.blockedBy.length ? child.blockedBy.join("\u3001") : "\u65E0");
+      childMeta(card, "Covers", child.covers.length ? child.covers.join("\u3001") : "\u65E0");
+      childMeta(card, "\u8BC1\u636E", formatChildEvidenceHealth(child.evidenceHealth));
+      const acceptance = card.createDiv({ cls: "flowdesk-acceptance-list" });
+      acceptance.createDiv({ cls: "flowdesk-summary-label", text: "Acceptance" });
+      for (const item of child.acceptance) {
+        acceptance.createDiv({ text: `${item.checked ? "\u2611" : "\u2610"} ${item.text}` });
+      }
+      const open = card.createEl("button", { text: "\u6253\u5F00 child" });
+      open.addEventListener("click", () => void this.openTask(child.id));
     }
   }
-  renderDetails(container, snapshot, model) {
+  renderDetails(container, model) {
     const details = container.createEl("details", { cls: "flowdesk-detail-group" });
     if (!this.detailsOpenInitialized) {
-      this.detailsOpen = resolveDetailsOpen(
-        this.detailsOpen,
-        true,
-        model.diagnostics.length
-      );
+      this.detailsOpen = resolveDetailsOpen(this.detailsOpen, true, model.diagnostics.length);
       this.detailsOpenInitialized = true;
     }
     details.open = this.detailsOpen;
-    details.addEventListener("toggle", () => {
-      this.detailsOpen = details.open;
-    });
-    details.createEl("summary", { text: "\u67E5\u770B\u6267\u884C\u8BE6\u60C5" });
+    details.addEventListener("toggle", () => this.detailsOpen = details.open);
+    details.createEl("summary", { text: "\u67E5\u770B\u5408\u540C\u4E0E\u8BC1\u636E\u8BE6\u60C5" });
     const body = details.createDiv({ cls: "flowdesk-detail-body" });
-    this.renderObservationDetails(body, model);
-    this.renderInlineExecution(body, model);
-    this.renderFlowGraph(body, snapshot);
-    this.renderContract(body, snapshot);
-    this.renderTasksOrEvidence(body, snapshot);
-    this.renderMaterialization(body, snapshot);
-    this.renderNotepad(body, snapshot);
+    const observation = createSection(body, "Observation");
+    childMeta(observation, "health", model.observation.health);
+    childMeta(observation, "parent", model.observation.parent);
+    childMeta(observation, "children", model.observation.children);
+    childMeta(observation, "TaskNotes API", model.observation.tasknotesApi);
+    childMeta(observation, "source", model.observation.sourceTaskId || "\u672A\u63D0\u4F9B");
+    const contract = createSection(body, "Contract");
+    childMeta(contract, "\u7248\u672C", model.contract.version);
+    childMeta(contract, "\u89D2\u8272", model.contract.role);
+    childMeta(contract, "\u8BED\u4E49\u72B6\u6001", model.contract.semanticStatus);
+    childMeta(contract, "Requirements", model.contract.requirements.map((item) => item.id).filter(Boolean).join("\u3001") || "\u65E0");
+    childMeta(contract, "Scenarios", model.contract.scenarios.map((item) => item.id).filter(Boolean).join("\u3001") || "\u65E0");
+    const evidence = createSection(body, "Root evidence");
+    evidenceRow(evidence, "\u6267\u884C\u7ED3\u679C", model.root.evidenceHealth.execution);
+    evidenceRow(evidence, "\u9A8C\u8BC1\u7ED3\u679C", model.root.evidenceHealth.verification);
+    evidenceRow(evidence, "\u4EA4\u4ED8\u8BB0\u5F55", model.root.evidenceHealth.delivery);
     if (model.diagnostics.length > 1) {
-      this.renderAllDiagnostics(body, model.diagnostics);
-    }
-    this.renderNextActions(body, snapshot);
-  }
-  renderObservationDetails(container, model) {
-    const section = createSection(container, "\u89C2\u6D4B\u4FE1\u606F");
-    const list = section.createDiv({ cls: "flowdesk-contract-list" });
-    contractRow(list, "\u6765\u6E90\u4EFB\u52A1", [model.observation.sourceTaskId || "\u672A\u63D0\u4F9B"]);
-    contractRow(list, "\u6765\u6E90\u4E00\u81F4", [
-      model.observation.sourceIdentity ? "\u4E00\u81F4" : "\u4E0D\u4E00\u81F4\u6216\u672A\u63D0\u4F9B"
-    ]);
-    contractRow(list, "\u6267\u884C\u6A21\u5F0F", [model.compatibility.profile]);
-    if (!model.observation.coverage.length) {
-      list.createDiv({ cls: "flowdesk-muted", text: "\u89C2\u6D4B\u8986\u76D6\uFF1A\u672A\u63D0\u4F9B" });
-      return;
-    }
-    for (const item of model.observation.coverage) {
-      contractRow(list, item.key, [item.value]);
-    }
-  }
-  renderInlineExecution(container, model) {
-    var _a;
-    const inline = model.inlineProgress;
-    if (!inline) {
-      return;
-    }
-    const section = createSection(container, "\u884C\u5185\u6267\u884C");
-    section.createDiv({
-      cls: "flowdesk-main-text",
-      text: `${(_a = inline.completed) != null ? _a : "?"}/${inline.total} TASK \xB7 ${formatStatusLabel(inline.status)} \xB7 ${inline.explicit ? "\u663E\u5F0F\u8BB0\u5F55" : "\u63A8\u65AD\u72B6\u6001"}`
-    });
-    const list = section.createDiv({ cls: "flowdesk-inline-task-list" });
-    for (const task of inline.tasks) {
-      const row = list.createDiv({ cls: "flowdesk-inline-task" });
-      row.createSpan({
-        cls: `flowdesk-status-dot flowdesk-status-${normalizeStatus(task.status)}`,
-        text: statusSymbol(normalizeStatus(task.status))
-      });
-      row.createSpan({ text: `${task.id} \xB7 ${formatStatusLabel(task.status)}` });
-      if (task.inferred) {
-        row.createSpan({ cls: "flowdesk-inferred-label", text: "\u63A8\u65AD" });
-      }
-    }
-  }
-  renderMaterialization(container, snapshot) {
-    var _a, _b, _c;
-    const materialization = (_b = snapshot.task_materialization) != null ? _b : (_a = snapshot.task_graph) == null ? void 0 : _a.task_materialization;
-    if (!materialization) {
-      return;
-    }
-    const section = createSection(container, "\u4EFB\u52A1\u7269\u5316");
-    const list = section.createDiv({ cls: "flowdesk-contract-list" });
-    contractRow(list, "\u6A21\u5F0F", [(_c = materialization.mode) != null ? _c : "\u672A\u63D0\u4F9B"]);
-    contractRow(list, "\u72B6\u6001", [formatStatusLabel(materialization.status)]);
-    contractRow(list, "\u5DF2\u58F0\u660E", materialization.declared);
-    contractRow(list, "\u5DF2\u7269\u5316", materialization.materialized);
-    contractRow(list, "\u7F3A\u5931", materialization.missing);
-    contractRow(list, "\u51B2\u7A81", materialization.conflicts);
-  }
-  renderAllDiagnostics(container, diagnostics) {
-    const section = createSection(container, `\u5168\u90E8\u8BCA\u65AD\uFF08${diagnostics.length}\uFF09`);
-    const list = section.createDiv({ cls: "flowdesk-diagnostic-list" });
-    for (const diagnostic of diagnostics) {
-      const item = list.createDiv({ cls: "flowdesk-diagnostic-item" });
-      item.createDiv({ cls: "flowdesk-main-text", text: diagnostic.code });
-      this.renderDiagnosticBody(item, diagnostic);
-    }
-  }
-  renderFlowGraph(container, snapshot) {
-    var _a, _b, _c, _d, _e;
-    const section = createSection(container, "\u6267\u884C\u6D41\u7A0B");
-    const list = section.createDiv({ cls: "flowdesk-flow-list" });
-    const nodes = (_b = (_a = snapshot.flow_graph) == null ? void 0 : _a.nodes) != null ? _b : [];
-    if (!nodes.length) {
-      list.createDiv({ cls: "flowdesk-muted", text: "\u672A\u63D0\u4F9B\u6D41\u7A0B\u8282\u70B9\u3002" });
-      return;
-    }
-    for (const node of nodes) {
-      const status = normalizeStatus(node.status);
-      const row = list.createDiv({
-        cls: `flowdesk-flow-row flowdesk-task-state-${status}`
-      });
-      row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${status}`, text: statusSymbol(status) });
-      const body = row.createDiv({ cls: "flowdesk-row-body" });
-      body.createDiv({
-        cls: "flowdesk-main-text",
-        text: `[${formatStatusLabel(status)}] ${(_d = (_c = node.label) != null ? _c : node.id) != null ? _d : ""} (${formatFlowNodeId(node.id)})`
-      });
-      if ((_e = node.missing_deps) == null ? void 0 : _e.length) {
-        body.createDiv({
-          cls: "flowdesk-subline",
-          text: `\u88AB\u4EE5\u4E0B\u8282\u70B9\u963B\u585E\uFF1A${formatIds(node.missing_deps)}`
-        });
-      }
-    }
-  }
-  renderContract(container, snapshot) {
-    var _a, _b, _c, _d, _e, _f;
-    const section = createSection(container, "\u89C4\u683C\u5951\u7EA6");
-    const list = section.createDiv({ cls: "flowdesk-contract-list" });
-    const contract = (_a = snapshot.spec_contract) != null ? _a : {};
-    contractRow(list, "\u9700\u6C42", (_b = contract.requirements) == null ? void 0 : _b.ids);
-    contractRow(list, "\u573A\u666F", (_c = contract.scenarios) == null ? void 0 : _c.ids);
-    contractRow(list, "\u5B9E\u65BD\u4EFB\u52A1", (_d = contract.tasks) == null ? void 0 : _d.ids);
-    const questions = (_f = (_e = contract.open_questions) == null ? void 0 : _e.items) != null ? _f : [];
-    if (questions.length) {
-      const row = list.createDiv();
-      row.createDiv({ cls: "flowdesk-main-text", text: "\u5F85\u786E\u8BA4\u95EE\u9898" });
-      for (const question of questions) {
-        row.createDiv({ cls: "flowdesk-subline", text: `- ${question}` });
-      }
-    }
-  }
-  renderTasksOrEvidence(container, snapshot) {
-    var _a, _b;
-    const tasks = (_b = (_a = snapshot.task_graph) == null ? void 0 : _a.tasks) != null ? _b : [];
-    if (tasks.length) {
-      this.renderChildTasks(container, tasks);
-      return;
-    }
-    this.renderTaskEvidence(container, snapshot);
-  }
-  renderChildTasks(container, tasks) {
-    var _a, _b, _c, _d;
-    const section = createSection(container, "\u5B50\u4EFB\u52A1\u8BC1\u636E");
-    const list = section.createDiv({ cls: "flowdesk-task-list" });
-    for (const task of tasks) {
-      const state = normalizeStatus(task.state);
-      const row = list.createDiv({
-        cls: `flowdesk-child-task flowdesk-task-state-${state}`
-      });
-      row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${state}`, text: statusSymbol(state) });
-      const body = row.createDiv({ cls: "flowdesk-row-body" });
-      const title = body.createDiv({ cls: "flowdesk-task-title-row" });
-      title.createSpan({ cls: "flowdesk-task-badge", text: "\u4EFB\u52A1" });
-      title.createSpan({
-        cls: "flowdesk-main-text",
-        text: `[${formatStatusLabel(state)}] ${(_a = task.title) != null ? _a : ""}`
-      });
-      if (task.id) {
-        body.createDiv({ cls: "flowdesk-subline", text: `\u4EFB\u52A1\u8DEF\u5F84\uFF1A${task.id}` });
-      }
-      if ((_b = task.covers) == null ? void 0 : _b.length) {
-        body.createDiv({ cls: "flowdesk-subline", text: `\u8986\u76D6\uFF1A${formatIds(task.covers)}` });
-      }
-      if ((_c = task.blocked_by) == null ? void 0 : _c.length) {
-        body.createDiv({ cls: "flowdesk-subline", text: `\u88AB\u4EE5\u4E0B\u4EFB\u52A1\u963B\u585E\uFF1A${formatIds(task.blocked_by)}` });
-      }
-      if (task.covers_unresolved) {
-        body.createDiv({ cls: "flowdesk-warning", text: (_d = task.limitation) != null ? _d : "\u4EFB\u52A1\u8986\u76D6\u5173\u7CFB\u5C1A\u672A\u89E3\u6790\u3002" });
-      }
-      if (task.id) {
-        const openButton = row.createEl("button", {
-          cls: "flowdesk-task-open-button",
-          text: "\u6253\u5F00"
-        });
-        openButton.title = `\u6253\u5F00 ${task.id}`;
-        openButton.addEventListener("click", () => {
-          void this.openTask(task.id);
-        });
+      const diagnostics = createSection(body, `\u5168\u90E8\u8BCA\u65AD\uFF08${model.diagnostics.length}\uFF09`);
+      for (const diagnostic of model.diagnostics) {
+        const item = diagnostics.createDiv({ cls: "flowdesk-diagnostic-item" });
+        item.createDiv({ cls: "flowdesk-main-text", text: diagnostic.code });
+        this.renderDiagnosticBody(item, diagnostic);
       }
     }
   }
   async openTask(taskPath) {
-    if (!taskPath) {
-      return;
-    }
+    if (!taskPath) return;
     const file = this.app.vault.getAbstractFileByPath(taskPath);
     if (!(file instanceof import_obsidian.TFile)) {
       new import_obsidian.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${taskPath}`);
       return;
     }
     await this.app.workspace.getLeaf(false).openFile(file);
-  }
-  renderTaskEvidence(container, snapshot) {
-    var _a, _b, _c;
-    const section = createSection(container, "\u6267\u884C\u8BC1\u636E");
-    const list = section.createDiv({ cls: "flowdesk-evidence-list" });
-    const evidence = (_b = (_a = snapshot.spec_contract) == null ? void 0 : _a.evidence) != null ? _b : {};
-    evidenceRow(list, "\u6267\u884C\u7ED3\u679C", evidence.execution_result);
-    evidenceRow(list, "\u9A8C\u8BC1\u7ED3\u679C", evidence.verification_result);
-    evidenceRow(list, "\u4EA4\u4ED8\u8BB0\u5F55", evidence.delivery_record);
-    const checklist = (_c = snapshot.spec_contract) == null ? void 0 : _c.checklist;
-    if (checklist == null ? void 0 : checklist.total) {
-      const unchecked = numberValue(checklist.unchecked);
-      const row = list.createDiv({ cls: "flowdesk-evidence-row" });
-      row.createSpan({
-        cls: `flowdesk-status-dot flowdesk-status-${unchecked ? "ready" : "done"}`,
-        text: statusSymbol(unchecked ? "ready" : "done")
-      });
-      const body = row.createDiv({ cls: "flowdesk-row-body" });
-      body.createDiv({
-        cls: "flowdesk-main-text",
-        text: `\u9A8C\u6536\u6E05\u5355\uFF1A\u5DF2\u52FE\u9009 ${numberValue(checklist.checked)}/${numberValue(checklist.total)}`
-      });
-      if (unchecked) {
-        body.createDiv({
-          cls: "flowdesk-warning",
-          text: "\u63D0\u9192\uFF1A\u4ECD\u6709\u672A\u52FE\u9009\u7684\u9A8C\u6536\u9879\u3002"
-        });
-      }
-    }
-  }
-  renderNotepad(container, snapshot) {
-    var _a, _b;
-    const section = createSection(container, "\u5DE5\u4F5C\u533A\u8BB0\u4E8B\u677F");
-    const notepad = (_a = snapshot.notepad) != null ? _a : {};
-    if (!notepad.exists) {
-      section.createDiv({ cls: "flowdesk-muted", text: "\u672A\u63D0\u4F9B\u8BB0\u4E8B\u677F\u3002" });
-      return;
-    }
-    section.createDiv({
-      cls: "flowdesk-main-text",
-      text: "\u5DF2\u8BFB\u53D6\u8BB0\u4E8B\u677F\uFF08\u4EC5\u4F9B\u53C2\u8003\uFF0C\u4E0D\u4F5C\u4E3A\u72B6\u6001\u4E8B\u5B9E\u6E90\uFF09"
-    });
-    const priority = ((_b = notepad.priority) != null ? _b : "").trim();
-    if (priority) {
-      for (const line of priority.split("\n").slice(0, 5)) {
-        section.createDiv({ cls: "flowdesk-subline", text: line });
-      }
-    }
-  }
-  renderNextActions(container, snapshot) {
-    var _a, _b;
-    const section = createSection(container, "\u540E\u7EED\u52A8\u4F5C");
-    const list = section.createDiv({ cls: "flowdesk-next-list" });
-    const actions = (_a = snapshot.next_actions) != null ? _a : [];
-    if (!actions.length) {
-      list.createDiv({ cls: "flowdesk-muted", text: "\u6CA1\u6709\u540E\u7EED\u52A8\u4F5C\u3002" });
-      return;
-    }
-    for (const action of actions) {
-      const label = (_b = formatNextAction(action)) != null ? _b : "\u672A\u77E5\u52A8\u4F5C";
-      list.createDiv({
-        cls: "flowdesk-next-action",
-        text: `\u2192 ${label}`
-      });
-    }
   }
 };
 var FlowDeskDashboardSettingTab = class extends import_obsidian.PluginSettingTab {
@@ -1353,21 +932,15 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian.PluginSettingTab
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "FlowDesk Dashboard" });
-    new import_obsidian.Setting(containerEl).setName("FlowDesk \u4ED3\u5E93\u8DEF\u5F84").setDesc("\u672C\u5730 FlowDesk-Plugin \u4ED3\u5E93\u8DEF\u5F84\uFF1B\u7B26\u53F7\u94FE\u63A5\u5B89\u88C5\u65F6\u901A\u5E38\u53EF\u4EE5\u7559\u7A7A\u3002").addText(
-      (text) => text.setPlaceholder("/Users/bjke/workspaces/flowdesk-plugin").setValue(this.plugin.settings.flowdeskRoot).onChange(async (value) => {
+    new import_obsidian.Setting(containerEl).setName("FlowDesk \u4ED3\u5E93\u8DEF\u5F84").setDesc("\u672C\u5730 FlowDesk-Plugin \u4ED3\u5E93\u8DEF\u5F84\u3002").addText(
+      (text) => text.setPlaceholder("/Users/me/workspaces/flowdesk-plugin").setValue(this.plugin.settings.flowdeskRoot).onChange(async (value) => {
         this.plugin.settings.flowdeskRoot = value.trim();
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("\u5DE5\u4F5C\u76EE\u5F55").setDesc("\u4F20\u7ED9 --working-directory\uFF0C\u7528\u4E8E\u8BFB\u53D6 .flowdesk/notepad.md\uFF1B\u7559\u7A7A\u65F6\u4F7F\u7528 FlowDesk \u4ED3\u5E93\u8DEF\u5F84\u3002").addText(
-      (text) => text.setPlaceholder("/Users/bjke/workspaces/flowdesk-plugin").setValue(this.plugin.settings.workingDirectory).onChange(async (value) => {
+    new import_obsidian.Setting(containerEl).setName("\u5DE5\u4F5C\u76EE\u5F55").setDesc("\u4F20\u7ED9 --working-directory\uFF1B\u7559\u7A7A\u65F6\u4F7F\u7528 FlowDesk \u4ED3\u5E93\u8DEF\u5F84\u3002").addText(
+      (text) => text.setValue(this.plugin.settings.workingDirectory).onChange(async (value) => {
         this.plugin.settings.workingDirectory = value.trim();
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Schema \u540D\u79F0").setDesc("\u4F20\u7ED9 --schema\uFF0C\u9ED8\u8BA4 sdd-poc\u3002").addText(
-      (text) => text.setPlaceholder("sdd-poc").setValue(this.plugin.settings.schema).onChange(async (value) => {
-        this.plugin.settings.schema = value.trim() || DEFAULT_SETTINGS.schema;
         await this.plugin.saveSettings();
       })
     );
@@ -1382,7 +955,6 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian.PluginSettingTab
 function createSection(container, title) {
   const section = container.createDiv({ cls: "flowdesk-dashboard-section" });
   section.createDiv({ cls: "flowdesk-dashboard-section-title", text: title });
-  section.createDiv({ cls: "flowdesk-dashboard-rule" });
   return section;
 }
 function metricCard(container, label, value) {
@@ -1390,92 +962,59 @@ function metricCard(container, label, value) {
   card.createDiv({ cls: "flowdesk-metric-label", text: label });
   card.createDiv({ cls: "flowdesk-metric-value", text: value });
 }
-function diagnosticRow(container, label, value) {
-  const row = container.createDiv({ cls: "flowdesk-diagnostic-row" });
-  row.createSpan({ cls: "flowdesk-diagnostic-label", text: `${label}\uFF1A` });
+function childMeta(container, label, value) {
+  const row = container.createDiv({ cls: "flowdesk-meta-row" });
+  row.createSpan({ cls: "flowdesk-summary-label", text: `${label}\uFF1A` });
   row.createSpan({ text: value });
 }
-function contractRow(container, label, ids) {
-  const row = container.createDiv();
+function diagnosticRow(container, label, value) {
+  const row = container.createDiv({ cls: "flowdesk-diagnostic-row" });
   row.createSpan({ cls: "flowdesk-summary-label", text: `${label}\uFF1A` });
-  row.createSpan({ text: formatIds(ids) });
+  row.createSpan({ text: value });
 }
-function evidenceRow(container, label, item) {
-  const status = getEvidenceDisplayState(item);
+function evidenceRow(container, label, health) {
+  const state = getEvidenceDisplayState(health);
   const row = container.createDiv({ cls: "flowdesk-evidence-row" });
-  row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${status}`, text: statusSymbol(status) });
-  const body = row.createDiv({ cls: "flowdesk-row-body" });
-  const items = getEvidenceDisplayItems(item);
-  body.createDiv({
-    cls: "flowdesk-main-text",
-    text: formatEvidenceSummary(label, item)
-  });
-  for (const detail of items.slice(0, 2)) {
-    body.createDiv({ cls: "flowdesk-subline", text: `- ${detail}` });
-  }
-  if (items.length > 2) {
-    const details = body.createEl("details", { cls: "flowdesk-evidence-details" });
-    details.createEl("summary", { text: `\u663E\u793A\u5269\u4F59 ${items.length - 2} \u6761` });
-    for (const detail of items.slice(2)) {
-      details.createDiv({ cls: "flowdesk-subline", text: `- ${detail}` });
-    }
-  }
+  row.createSpan({ cls: `flowdesk-status-dot is-${state}`, text: statusSymbol(state) });
+  row.createSpan({ text: formatEvidenceSummary(label, health) });
 }
-function normalizeStatus(status) {
-  const value = String(status || "unknown").toLowerCase().replace(/_/g, "-");
-  if (["done", "running", "ready", "blocked", "error", "unknown"].includes(value)) {
-    return value;
-  }
-  if (value === "complete" || value === "completed") {
-    return "done";
-  }
-  if (value === "in-progress") {
-    return "running";
-  }
-  return "unknown";
+function normalizeStatus(value) {
+  const status = String(value || "unknown").toLowerCase().replace(/_/g, "-");
+  if (status === "in-progress") return "running";
+  if (status === "complete" || status === "completed") return "done";
+  return ["done", "running", "open", "blocked", "error", "valid", "invalid", "unknown"].includes(status) ? status : "unknown";
 }
-function formatStatusLabel(status) {
+function formatStatusLabel(value) {
   var _a;
-  const value = normalizeStatus(status);
   const labels = {
     done: "\u5DF2\u5B8C\u6210",
     running: "\u8FDB\u884C\u4E2D",
-    ready: "\u53EF\u5F00\u59CB",
+    open: "\u5F85\u5F00\u59CB",
     blocked: "\u5DF2\u963B\u585E",
     error: "\u5F02\u5E38",
     unknown: "\u672A\u77E5"
   };
-  return (_a = labels[value]) != null ? _a : String(status || "\u672A\u77E5");
+  return (_a = labels[normalizeStatus(value)]) != null ? _a : String(value || "\u672A\u77E5");
 }
-function statusSymbol(status) {
-  if (status === "done") return "\u2713";
+function formatPriority(value) {
+  var _a;
+  const labels = { high: "\u9AD8", normal: "\u666E\u901A", low: "\u4F4E" };
+  return (_a = labels[value]) != null ? _a : value;
+}
+function statusSymbol(value) {
+  const status = normalizeStatus(value);
+  if (status === "done" || status === "valid") return "\u2713";
   if (status === "running") return "\u25C9";
-  if (status === "ready") return "\u25CF";
-  if (status === "blocked") return "\u25CB";
+  if (status === "blocked" || status === "error" || status === "invalid") return "!";
   return "\u2022";
 }
-function formatIds(value) {
-  if (!value) {
-    return "\u65E0";
-  }
-  if (Array.isArray(value)) {
-    if (!value.length) {
-      return "\u65E0";
-    }
-    return value.map((item) => formatId(item)).join(", ");
-  }
-  return formatId(value);
+function expandHomePath(value) {
+  if (value === "~") return (0, import_os.homedir)();
+  if (value.startsWith("~/")) return path2.join((0, import_os.homedir)(), value.slice(2));
+  return value;
 }
-function formatId(value) {
-  var _a, _b;
-  if (typeof value === "object" && value !== null) {
-    const record = value;
-    return String((_b = (_a = record.uid) != null ? _a : record.id) != null ? _b : JSON.stringify(record));
-  }
-  return String(value);
-}
-function numberValue(value) {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+function formatTime(date) {
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 function formatSnapshotCommandError(error) {
   const failure = error;
@@ -1483,44 +1022,16 @@ function formatSnapshotCommandError(error) {
   const stdout = typeof failure.stdout === "string" ? failure.stdout.trim() : "";
   const message = error instanceof Error ? error.message : String(error);
   const output = stderr || stdout || message;
-  const tasknotesUnavailable = output.match(/TaskNotes HTTP API unavailable at (\S+)/);
-  if (tasknotesUnavailable) {
-    return [
-      `TaskNotes HTTP API \u5C1A\u672A\u5C31\u7EEA\uFF1A${tasknotesUnavailable[1]}`,
-      "\u8BF7\u786E\u8BA4 Obsidian \u548C TaskNotes HTTP API \u5DF2\u542F\u52A8\u540E\u518D\u5237\u65B0\u3002"
-    ].join("\n");
+  const unavailable = output.match(/TaskNotes HTTP API unavailable at (\S+)/);
+  if (unavailable) {
+    return `TaskNotes HTTP API \u5C1A\u672A\u5C31\u7EEA\uFF1A${unavailable[1]}
+\u8BF7\u786E\u8BA4 Obsidian \u548C TaskNotes HTTP API \u5DF2\u542F\u52A8\u540E\u518D\u5237\u65B0\u3002`;
   }
   if (output.includes("Connection refused")) {
-    return [
-      "TaskNotes HTTP API \u8FDE\u63A5\u88AB\u62D2\u7EDD\uFF0C\u53EF\u80FD\u8FD8\u5728\u542F\u52A8\u4E2D\u3002",
-      "\u8BF7\u7A0D\u540E\u70B9\u51FB\u5237\u65B0\uFF1B\u5982\u679C\u4E00\u76F4\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u63D2\u4EF6\u8BBE\u7F6E\u91CC\u7684 TaskNotes API URL\u3002"
-    ].join("\n");
+    return "TaskNotes HTTP API \u8FDE\u63A5\u88AB\u62D2\u7EDD\uFF0C\u8BF7\u7A0D\u540E\u5237\u65B0\u5E76\u68C0\u67E5 API URL\u3002";
   }
-  const runtimeError = output.match(/RuntimeError: ([\s\S]+)$/);
-  if (runtimeError) {
-    return `FlowDesk snapshot \u8BFB\u53D6\u5931\u8D25\uFF1A${runtimeError[1].trim()}`;
-  }
-  return `FlowDesk snapshot \u547D\u4EE4\u5931\u8D25\uFF1A${message}`;
-}
-function formatFlowNodeId(id) {
-  var _a;
-  const value = String(id != null ? id : "");
-  const labels = {
-    spec_contract: "\u89C4\u683C\u5951\u7EA6",
-    task_breakdown: "\u4EFB\u52A1\u62C6\u5206",
-    task_materialization: "\u4EFB\u52A1\u7269\u5316",
-    implementation: "\u5B9E\u73B0",
-    verification: "\u9A8C\u8BC1",
-    delivery: "\u4EA4\u4ED8"
-  };
-  return (_a = labels[value]) != null ? _a : value;
-}
-function formatTime(date) {
-  return date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit"
-  });
+  const runtime = output.match(/RuntimeError: ([\s\S]+)$/);
+  return runtime ? `FlowDesk snapshot \u8BFB\u53D6\u5931\u8D25\uFF1A${runtime[1].trim()}` : `FlowDesk snapshot \u547D\u4EE4\u5931\u8D25\uFF1A${message}`;
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

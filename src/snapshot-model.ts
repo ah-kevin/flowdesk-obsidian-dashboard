@@ -1,4 +1,11 @@
-export type ObservationHealth = "healthy" | "degraded" | "error" | "unknown";
+export type ObservationHealth =
+  | "healthy"
+  | "degraded"
+  | "failed"
+  | "error"
+  | "unknown";
+
+export type EvidenceHealth = "missing" | "invalid" | "valid";
 
 export interface SnapshotSource {
   section?: string | null;
@@ -12,200 +19,178 @@ export interface SnapshotSource {
 
 export interface SnapshotDiagnostic {
   code: string;
-  message: string;
-  reason: string;
-  remediation: string;
+  severity: string;
+  taskId: string;
+  path: string;
   source?: SnapshotSource;
-  severity?: string;
-  path?: string;
+  reason: string;
+  expected: string;
+  remediation: string;
 }
 
-interface RawDiagnostic {
-  code?: unknown;
-  message?: unknown;
-  reason?: unknown;
-  remediation?: unknown;
-  source?: unknown;
-  severity?: unknown;
-  path?: unknown;
-  [key: string]: unknown;
+export interface SnapshotAcceptanceItem {
+  text?: string;
+  checked?: boolean;
+  source?: SnapshotSource;
 }
 
-export interface FlowNode {
+export interface SnapshotContractItem {
   id?: string;
-  label?: string;
-  status?: string;
-  missing_deps?: string[];
-  evidence?: unknown[];
+  text?: string;
+  covers?: string[];
+  source?: SnapshotSource;
 }
 
-export interface ChildTask {
+export interface SnapshotEvidenceHealth {
+  execution?: EvidenceHealth;
+  verification?: EvidenceHealth;
+  delivery?: EvidenceHealth;
+}
+
+export interface TaskTreeRoot {
   id?: string;
   title?: string;
   status?: string;
-  state?: string;
-  covers?: string[];
+  priority?: string;
+}
+
+export interface TaskTreeChild extends TaskTreeRoot {
+  is_blocked?: boolean;
   blocked_by?: unknown[];
-  limitation?: string;
-  covers_unresolved?: boolean;
+  goal?: string;
+  covers?: string[];
+  acceptance?: SnapshotAcceptanceItem[];
+  semantic_status?: string;
+  evidence_health?: SnapshotEvidenceHealth;
+  trusted_done?: boolean;
 }
 
-export interface IdList {
-  count?: number;
-  ids?: string[];
-}
-
-export interface EvidenceItem {
-  exists?: boolean;
-  valid?: boolean;
-  items?: string[];
-  valid_items?: string[];
-  display_items?: string[];
-  display_order?: string;
-}
-
-interface InlineTaskStatus {
+export interface RollupTaskReference {
+  id?: string;
+  title?: string;
   status?: string;
-  evidence_ref?: string;
-  inferred?: boolean;
 }
 
-export interface InlineExecution {
-  total?: number;
-  completed?: number;
-  status?: string;
-  explicit?: boolean;
-  revision?: string;
-  revision_match?: boolean;
-  derived_from?: string;
-  statuses?: Record<string, InlineTaskStatus>;
-  diagnostics?: unknown[];
-}
-
-export interface TaskMaterialization {
-  mode?: string;
-  status?: string;
-  revision?: string;
-  declared?: string[];
-  materialized?: string[];
-  missing?: string[];
-  duplicate?: string[];
-  orphan?: string[];
-  drifted?: string[];
-  conflicts?: string[];
-  limitations?: string[];
-  coverage?: { complete?: boolean };
-}
-
-export interface ExecutionSnapshot {
-  snapshot_schema_version?: number | string;
+export interface SnapshotV3 {
+  snapshot_schema_version?: number;
+  generated_at?: string;
+  source_task_id?: string;
   observation?: {
-    generated_at?: string;
-    source_task_id?: string;
     health?: string;
-    coverage?: Record<string, string>;
-    diagnostics?: unknown[];
+    parent?: string;
+    children?: string;
+    tasknotes_api?: string;
+    source_identity_match?: boolean;
   };
-  compatibility?: {
-    contract_version?: string;
-    semantic_mode?: string;
-    profile?: string;
-    label?: string;
-  };
-  capabilities?: Record<string, boolean>;
-  state?: {
-    value?: string;
-    blocked_reason?: string;
-    read_only?: boolean;
-  };
-  flow_graph?: {
-    mode?: string;
-    current?: string;
-    nodes?: FlowNode[];
-    ready?: string[];
-    blocked?: string[];
-  };
-  task_graph?: {
-    parent?: {
-      id?: string;
-      title?: string;
-      status?: string;
-    };
-    counts?: Record<string, number>;
-    tasks?: ChildTask[];
-    task_materialization?: TaskMaterialization;
-    inline_execution?: InlineExecution;
-  };
-  spec_contract?: {
+  contract?: {
     version?: string;
-    status?: string;
-    contract_phase?: string;
-    execution_mode?: string;
-    requirements?: IdList;
-    scenarios?: IdList;
-    tasks?: IdList;
-    checklist?: {
+    role?: string;
+    why?: string;
+    what?: {
+      allowed?: string[];
+      forbidden?: string[];
+    };
+    requirements?: SnapshotContractItem[];
+    scenarios?: SnapshotContractItem[];
+    overall_acceptance?: SnapshotAcceptanceItem[];
+    semantic_status?: string;
+  };
+  task_tree?: {
+    root?: TaskTreeRoot;
+    children?: TaskTreeChild[];
+    counts?: {
       total?: number;
-      checked?: number;
-      unchecked?: number;
-    };
-    open_questions?: {
-      count?: number;
-      items?: string[];
-    };
-    evidence?: Record<string, EvidenceItem>;
-    semantic_validation?: {
-      mode?: string;
-      status?: string;
-      errors?: unknown[];
-      warnings?: unknown[];
-      limitations?: unknown[];
+      open?: number;
+      in_progress?: number;
+      blocked?: number;
+      done?: number;
+      trusted_done?: number;
     };
   };
-  notepad?: {
-    exists?: boolean;
-    path?: string;
-    priority?: string;
-    authoritative?: boolean;
+  rollup?: {
+    state?: string;
+    children_complete?: boolean;
+    trusted_children_complete?: boolean;
+    blocked_children?: RollupTaskReference[];
+    incomplete_children?: RollupTaskReference[];
+    contradictions?: unknown[];
   };
+  evidence?: {
+    root?: SnapshotEvidenceHealth;
+    children?: Record<string, SnapshotEvidenceHealth>;
+  };
+  diagnostics?: unknown[];
   next_actions?: Record<string, unknown>[];
-  task_materialization?: TaskMaterialization;
-  inline_execution?: InlineExecution;
+}
+
+export type ExecutionSnapshot = SnapshotV3;
+
+export interface DashboardChildViewModel {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  isBlocked: boolean;
+  blockedBy: string[];
+  goal: string;
+  covers: string[];
+  acceptance: Array<{ text: string; checked: boolean; source?: SnapshotSource }>;
+  semanticStatus: string;
+  evidenceHealth: Required<SnapshotEvidenceHealth>;
+  trustedDone: boolean;
 }
 
 export interface DashboardViewModel {
+  errorCode: "unsupported_snapshot_schema" | null;
   schemaLabel: string;
-  state: string;
   hero: {
     title: string;
     status: string;
-    currentStage: string;
-    progressLabel: string;
-    workProgressKind: "inline" | "children" | "unknown";
+    priority: string;
+    rollupLabel: string;
     workProgressLabel: string;
-    inlineLabel: string | null;
+    trustedDone: number;
+    total: number;
+    blockedCount: number;
   };
-  compatibility: {
-    label: string;
-    profile: string;
+  root: {
+    id: string;
+    title: string;
+    status: string;
+    priority: string;
+    evidenceHealth: Required<SnapshotEvidenceHealth>;
+  };
+  children: DashboardChildViewModel[];
+  rollup: {
+    state: string;
+    childrenComplete: boolean;
+    trustedChildrenComplete: boolean;
+    blockedChildren: RollupTaskReference[];
+    incompleteChildren: RollupTaskReference[];
+    contradictions: unknown[];
+  };
+  contract: {
+    version: string;
+    role: string;
+    semanticStatus: string;
+    requirements: SnapshotContractItem[];
+    scenarios: SnapshotContractItem[];
+    overallAcceptance: SnapshotAcceptanceItem[];
   };
   observation: {
     health: ObservationHealth;
-    generatedAt: string;
+    parent: string;
+    children: string;
+    tasknotesApi: string;
+    sourceIdentityMatch: boolean | "unknown";
     sourceTaskId: string;
-    coverage: Array<{ key: string; value: string }>;
+    generatedAt: string;
     isTrustworthy: boolean;
+    trustMessage: string;
     isStale: boolean;
     staleReason: string;
     loadedAt: string;
     sourceIdentity: true | false | "unknown";
-  };
-  inlineProgress: null | {
-    completed: number | null;
-    total: number;
-    status: string;
-    explicit: boolean;
-    tasks: Array<{ id: string; status: string; inferred: boolean }>;
   };
   primaryDiagnostic: SnapshotDiagnostic | null;
   diagnostics: SnapshotDiagnostic[];
@@ -219,70 +204,100 @@ export interface DashboardModelOptions {
 }
 
 export function createDashboardViewModel(
-  snapshot: ExecutionSnapshot,
+  value: unknown,
   options: DashboardModelOptions = {}
 ): DashboardViewModel {
-  const schemaVersion = Number(snapshot.snapshot_schema_version);
-  const health = normalizeObservationHealth(snapshot.observation?.health);
-  const compatibility = createCompatibility(snapshot);
-  const inlineExecution =
-    snapshot.inline_execution ?? snapshot.task_graph?.inline_execution;
-  const semanticDiagnostics = snapshot.spec_contract?.semantic_validation?.errors ?? [];
-  const inlineDiagnostics = inlineExecution?.diagnostics ?? [];
-  const observationDiagnostics = snapshot.observation?.diagnostics ?? [];
-  const diagnostics = [
-    ...semanticDiagnostics,
-    ...inlineDiagnostics,
-    ...observationDiagnostics,
-  ].map(normalizeDiagnostic);
-  const inlineProgress = inlineExecution
-    ? {
-        completed:
-          typeof inlineExecution.completed === "number"
-            ? inlineExecution.completed
-            : null,
-        total: typeof inlineExecution.total === "number" ? inlineExecution.total : 0,
-        status: normalizeText(inlineExecution.status, "unknown"),
-        explicit: inlineExecution.explicit === true,
-        tasks: Object.entries(inlineExecution.statuses ?? {}).map(([id, item]) => ({
-          id,
-          status: normalizeText(item.status, "unknown"),
-          inferred: item.inferred === true,
-        })),
-      }
-    : null;
-  const hero = createHero(snapshot, inlineProgress);
+  const snapshot = isRecord(value) ? (value as SnapshotV3) : {};
+  const supported = snapshot.snapshot_schema_version === 3;
+  const root = snapshot.task_tree?.root ?? {};
+  const counts = snapshot.task_tree?.counts ?? {};
+  const rollup = snapshot.rollup ?? {};
   const staleReason = normalizeText(options.staleReason, "");
   const sourceIdentity = validateSnapshotSource(
     snapshot,
     normalizeText(options.expectedTaskPath, "")
   );
-  const hasObservedSource = Boolean(snapshot.observation?.source_task_id?.trim());
+  const observationHealth = normalizeObservationHealth(
+    snapshot.observation?.health
+  );
+  const sourceIdentityMatch =
+    typeof snapshot.observation?.source_identity_match === "boolean"
+      ? snapshot.observation.source_identity_match
+      : "unknown";
+  const isTrustworthy =
+    supported &&
+    observationHealth === "healthy" &&
+    snapshot.observation?.parent === "observed" &&
+    snapshot.observation?.children === "observed" &&
+    snapshot.observation?.tasknotes_api === "ok" &&
+    sourceIdentityMatch === true &&
+    sourceIdentity === true &&
+    !staleReason;
+  const rootId = normalizeText(root.id, normalizeText(snapshot.source_task_id, ""));
+  const children = (snapshot.task_tree?.children ?? []).map((child) =>
+    createChildViewModel(child, snapshot.evidence?.children)
+  );
+  const diagnostics = (snapshot.diagnostics ?? []).map((diagnostic) =>
+    normalizeDiagnostic(diagnostic, rootId)
+  );
+  const total = finiteNumber(counts.total);
+  const trustedDone = finiteNumber(counts.trusted_done);
+  const blockedCount = finiteNumber(counts.blocked);
 
   return {
-    schemaLabel: schemaVersion === 2 ? "snapshot v2" : "旧版 snapshot",
-    state: normalizeText(snapshot.state?.value, "unknown"),
-    hero,
-    compatibility,
+    errorCode: supported ? null : "unsupported_snapshot_schema",
+    schemaLabel: supported ? "snapshot v3" : "不支持的 snapshot schema",
+    hero: {
+      title: normalizeText(root.title, "未提供任务标题"),
+      status: normalizeText(root.status, "unknown"),
+      priority: normalizeText(root.priority, "未提供"),
+      rollupLabel: formatRollupState(rollup.state),
+      workProgressLabel: `${trustedDone}/${total} 子任务可信完成`,
+      trustedDone,
+      total,
+      blockedCount,
+    },
+    root: {
+      id: rootId,
+      title: normalizeText(root.title, "未提供任务标题"),
+      status: normalizeText(root.status, "unknown"),
+      priority: normalizeText(root.priority, "未提供"),
+      evidenceHealth: normalizeEvidenceHealth(snapshot.evidence?.root),
+    },
+    children,
+    rollup: {
+      state: normalizeText(rollup.state, "unknown"),
+      childrenComplete: rollup.children_complete === true,
+      trustedChildrenComplete: rollup.trusted_children_complete === true,
+      blockedChildren: rollup.blocked_children ?? [],
+      incompleteChildren: rollup.incomplete_children ?? [],
+      contradictions: rollup.contradictions ?? [],
+    },
+    contract: {
+      version: normalizeText(snapshot.contract?.version, "未提供"),
+      role: normalizeText(snapshot.contract?.role, "未提供"),
+      semanticStatus: normalizeText(snapshot.contract?.semantic_status, "unknown"),
+      requirements: snapshot.contract?.requirements ?? [],
+      scenarios: snapshot.contract?.scenarios ?? [],
+      overallAcceptance: snapshot.contract?.overall_acceptance ?? [],
+    },
     observation: {
-      health,
-      generatedAt: normalizeText(snapshot.observation?.generated_at, "未提供"),
-      sourceTaskId: normalizeText(snapshot.observation?.source_task_id, ""),
-      coverage: Object.entries(snapshot.observation?.coverage ?? {}).map(
-        ([key, value]) => ({ key, value: normalizeText(value, "unknown") })
-      ),
-      isTrustworthy:
-        schemaVersion === 2 &&
-        health === "healthy" &&
-        hasObservedSource &&
-        sourceIdentity !== false &&
-        !staleReason,
+      health: observationHealth,
+      parent: normalizeText(snapshot.observation?.parent, "unknown"),
+      children: normalizeText(snapshot.observation?.children, "unknown"),
+      tasknotesApi: normalizeText(snapshot.observation?.tasknotes_api, "unknown"),
+      sourceIdentityMatch,
+      sourceTaskId: normalizeText(snapshot.source_task_id, ""),
+      generatedAt: normalizeText(snapshot.generated_at, "未提供"),
+      isTrustworthy,
+      trustMessage: isTrustworthy
+        ? "观测可信"
+        : "观测不可信，无法判断任务是否正常",
       isStale: Boolean(staleReason),
       staleReason,
       loadedAt: normalizeText(options.loadedAt, "未提供"),
       sourceIdentity,
     },
-    inlineProgress,
     primaryDiagnostic: diagnostics[0] ?? null,
     diagnostics,
     nextAction: formatNextAction(snapshot.next_actions?.[0]),
@@ -290,10 +305,11 @@ export function createDashboardViewModel(
 }
 
 export function validateSnapshotSource(
-  snapshot: ExecutionSnapshot,
+  value: unknown,
   expectedTaskPath: string
 ): true | false | "unknown" {
-  const actual = normalizeText(snapshot.observation?.source_task_id, "");
+  const snapshot = isRecord(value) ? (value as SnapshotV3) : {};
+  const actual = normalizeText(snapshot.source_task_id, "");
   const expected = normalizeText(expectedTaskPath, "");
   if (!actual || !expected) {
     return "unknown";
@@ -301,98 +317,63 @@ export function validateSnapshotSource(
   return actual === expected;
 }
 
-function createHero(
-  snapshot: ExecutionSnapshot,
-  inlineProgress: DashboardViewModel["inlineProgress"]
-): DashboardViewModel["hero"] {
-  const nodes = snapshot.flow_graph?.nodes ?? [];
-  const completedStages = nodes.filter((node) => node.status === "done").length;
-  const progressLabel = nodes.length
-    ? `${completedStages}/${nodes.length} 阶段`
-    : "阶段未知";
-  const parent = snapshot.task_graph?.parent;
-  const counts = snapshot.task_graph?.counts ?? {};
-  const childTotal = finiteNumber(counts.total);
-  const childDone = finiteNumber(counts.done);
-
-  if (inlineProgress) {
-    const completed = inlineProgress.completed ?? "?";
-    const inlineLabel = `${completed}/${inlineProgress.total} TASK`;
-    return {
-      title: normalizeText(parent?.title, "未提供任务标题"),
-      status: normalizeText(parent?.status, normalizeText(snapshot.state?.value, "unknown")),
-      currentStage: normalizeText(snapshot.flow_graph?.current, "未提供"),
-      progressLabel,
-      workProgressKind: "inline",
-      workProgressLabel: inlineLabel,
-      inlineLabel,
-    };
-  }
-
-  const materializationMode = normalizeText(
-    snapshot.task_materialization?.mode,
-    normalizeText(snapshot.task_graph?.task_materialization?.mode, "")
-  );
-  if (materializationMode === "children" || childTotal > 0) {
-    return {
-      title: normalizeText(parent?.title, "未提供任务标题"),
-      status: normalizeText(parent?.status, normalizeText(snapshot.state?.value, "unknown")),
-      currentStage: normalizeText(snapshot.flow_graph?.current, "未提供"),
-      progressLabel,
-      workProgressKind: "children",
-      workProgressLabel: `${childDone}/${childTotal} 子任务`,
-      inlineLabel: null,
-    };
-  }
-
-  return {
-    title: normalizeText(parent?.title, "未提供任务标题"),
-    status: normalizeText(parent?.status, normalizeText(snapshot.state?.value, "unknown")),
-    currentStage: normalizeText(snapshot.flow_graph?.current, "未提供"),
-    progressLabel,
-    workProgressKind: "unknown",
-    workProgressLabel: "任务进度未知",
-    inlineLabel: null,
+export function formatRollupState(value: unknown): string {
+  const state = normalizeText(value, "unknown");
+  const labels: Record<string, string> = {
+    running: "子任务进行中",
+    blocked: "存在阻塞子任务",
+    awaiting_parent_verification: "等待父任务整体验证",
+    inconsistent: "父子状态矛盾",
+    contract_invalid: "任务合同无效",
+    done: "整体完成",
+    unknown: "汇总状态未知",
   };
+  return labels[state] ?? state;
 }
 
-export function formatNextAction(
-  action?: Record<string, unknown>
-): string | null {
+export function formatChildEvidenceHealth(value: unknown): string {
+  const labels: Record<EvidenceHealth, string> = {
+    missing: "缺失",
+    invalid: "无效",
+    valid: "有效",
+  };
+  if (isRecord(value)) {
+    return [
+      `执行${labels[normalizeEvidenceValue(value.execution)]}`,
+      `验证${labels[normalizeEvidenceValue(value.verification)]}`,
+      `交付${labels[normalizeEvidenceValue(value.delivery)]}`,
+    ].join(" · ");
+  }
+  return labels[normalizeEvidenceValue(value)];
+}
+
+export function formatNextAction(action?: Record<string, unknown>): string | null {
   if (!action) {
     return null;
   }
-
+  const summary = normalizeText(action.summary, "");
+  if (summary) {
+    return summary;
+  }
   const kind = normalizeText(action.kind, "unknown");
   const labels: Record<string, string> = {
-    complete_parent_task: "完成父任务",
-    continue_inline_implementation: "继续 inline 实施",
-    create_task_breakdown: "补充任务拆分",
-    dispatch_ready_task: "派发就绪任务",
-    materialize_missing_tasks: "物化缺失任务",
-    reconcile_plan_revision: "对齐计划版本",
-    record_delivery: "记录交付结果",
-    refine_spec_contract: "完善 Spec Contract",
-    refine_task_granularity: "调整任务粒度",
-    resolve_blockers: "处理阻塞项",
-    resolve_inline_execution_conflict: "处理 inline 执行冲突",
-    resolve_materialization_conflict: "处理任务物化冲突",
-    start_implementation: "开始实施",
-    start_inline_implementation: "开始 inline 实施",
-    verify_scenarios: "验证验收场景",
-    wait_for_running_task: "等待运行中的任务",
+    continue_child_work: "继续当前子任务",
+    resolve_child_blockers: "处理子任务阻塞",
+    complete_parent_verification: "完成父任务整体验证",
+    resolve_contradictions: "处理父子状态矛盾",
+    repair_contract: "修复任务合同",
   };
-  const ids = Array.isArray(action.task_ids)
+  const taskIds = Array.isArray(action.task_ids)
     ? action.task_ids.map(String).filter(Boolean)
     : [];
   const label = labels[kind] ?? kind;
-  return ids.length ? `${label}：${ids.join("、")}` : label;
+  return taskIds.length ? `${label}：${taskIds.join("、")}` : label;
 }
 
 export function resolveDiagnosticTarget(
   taskPath: string,
   source?: SnapshotSource
-): { linkText: string; line: number | null } {
+): { linkText: string; line: number | null; editorLine: number | null } {
   const line =
     typeof source?.line_start === "number" && source.line_start > 0
       ? source.line_start
@@ -401,96 +382,94 @@ export function resolveDiagnosticTarget(
     line === null
       ? normalizeText(source?.after_section, normalizeText(source?.section, ""))
       : normalizeText(source?.section, "");
-
   return {
     linkText: heading ? `${taskPath}#${heading}` : taskPath,
     line,
+    editorLine: line === null ? null : line - 1,
   };
 }
 
-export function formatDiagnosticReason(value: unknown): string {
-  const diagnostic = isRecord(value) ? value : {};
-  const hasWrapper = "reason" in diagnostic || "message" in diagnostic;
-  const reason = hasWrapper ? diagnostic.reason : value;
-  const message = hasWrapper ? diagnostic.message : undefined;
-  if (isRecord(reason)) {
-    return normalizeText(
-      reason.actual,
-      normalizeText(reason.expected, normalizeText(message, "producer 未提供"))
-    );
-  }
-  return normalizeText(reason, normalizeText(message, "producer 未提供"));
-}
-
-export function formatDiagnosticRemediation(value: unknown): string {
-  const diagnostic = isRecord(value) ? value : {};
-  const remediation = "remediation" in diagnostic ? diagnostic.remediation : value;
-  if (isRecord(remediation)) {
-    return normalizeText(
-      remediation.summary,
-      normalizeText(remediation.example, "producer 未提供")
-    );
-  }
-  return normalizeText(remediation, "producer 未提供");
-}
-
-function createCompatibility(snapshot: ExecutionSnapshot): {
-  label: string;
-  profile: string;
-} {
-  const profile = normalizeText(
-    snapshot.compatibility?.profile,
-    normalizeText(
-      snapshot.spec_contract?.execution_mode,
-      normalizeText(snapshot.task_materialization?.mode, "unknown")
-    )
-  );
-  const producerLabel = normalizeText(snapshot.compatibility?.label, "");
-  if (producerLabel) {
-    return { label: producerLabel, profile };
-  }
-
-  const contractVersion = normalizeText(
-    snapshot.compatibility?.contract_version,
-    normalizeText(snapshot.spec_contract?.version, "")
-  );
-  if (contractVersion) {
-    return {
-      label: `SDD ${contractVersion}${profile !== "unknown" ? ` · ${profile}` : ""}`,
-      profile,
-    };
-  }
-
-  return { label: "旧版 snapshot · 能力未知", profile: "unknown" };
-}
-
-function normalizeDiagnostic(value: unknown): SnapshotDiagnostic {
-  if (typeof value === "string") {
-    return {
-      code: value,
-      message: value,
-      reason: value,
-      remediation: "producer 未提供",
-    };
-  }
-
-  const diagnostic: RawDiagnostic = isRecord(value) ? value : {};
-  const code = normalizeText(diagnostic.code, "unknown_diagnostic");
+function createChildViewModel(
+  child: TaskTreeChild,
+  evidenceByChild?: Record<string, SnapshotEvidenceHealth>
+): DashboardChildViewModel {
+  const id = normalizeText(child.id, "");
+  const childEvidence = child.evidence_health ?? evidenceByChild?.[id];
   return {
-    code,
-    message: normalizeText(diagnostic.message, code),
-    reason: formatDiagnosticReason(diagnostic),
-    remediation: formatDiagnosticRemediation(diagnostic),
+    id,
+    title: normalizeText(child.title, id || "未命名子任务"),
+    status: normalizeText(child.status, "unknown"),
+    priority: normalizeText(child.priority, "未提供"),
+    isBlocked: child.is_blocked === true,
+    blockedBy: (child.blocked_by ?? []).map(normalizeBlockedBy).filter(Boolean),
+    goal: normalizeText(child.goal, "未提供"),
+    covers: (child.covers ?? []).map(String),
+    acceptance: (child.acceptance ?? []).map((item) => ({
+      text: normalizeText(item.text, "未提供"),
+      checked: item.checked === true,
+      source: item.source,
+    })),
+    semanticStatus: normalizeText(child.semantic_status, "unknown"),
+    evidenceHealth: normalizeEvidenceHealth(childEvidence),
+    trustedDone: child.trusted_done === true,
+  };
+}
+
+function normalizeDiagnostic(value: unknown, fallbackTaskId: string): SnapshotDiagnostic {
+  const diagnostic = isRecord(value) ? value : {};
+  const reason = isRecord(diagnostic.reason) ? diagnostic.reason : {};
+  const remediation = isRecord(diagnostic.remediation)
+    ? diagnostic.remediation
+    : {};
+  return {
+    code: normalizeText(diagnostic.code, "unknown_diagnostic"),
+    severity: normalizeText(diagnostic.severity, "error"),
+    taskId: normalizeText(diagnostic.task_id, fallbackTaskId),
+    path: normalizeText(diagnostic.path, "未提供"),
     source: isRecord(diagnostic.source)
       ? (diagnostic.source as SnapshotSource)
       : undefined,
-    severity: normalizeOptionalText(diagnostic.severity),
-    path: normalizeOptionalText(diagnostic.path),
+    reason: normalizeText(
+      reason.actual,
+      normalizeText(diagnostic.reason, "producer 未提供")
+    ),
+    expected: normalizeText(reason.expected, "producer 未提供"),
+    remediation: normalizeText(
+      remediation.summary,
+      normalizeText(diagnostic.remediation, "producer 未提供")
+    ),
   };
 }
 
+function normalizeBlockedBy(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (isRecord(value)) {
+    return normalizeText(value.uid, normalizeText(value.id, ""));
+  }
+  return "";
+}
+
+function normalizeEvidenceHealth(
+  value?: SnapshotEvidenceHealth
+): Required<SnapshotEvidenceHealth> {
+  return {
+    execution: normalizeEvidenceValue(value?.execution),
+    verification: normalizeEvidenceValue(value?.verification),
+    delivery: normalizeEvidenceValue(value?.delivery),
+  };
+}
+
+function normalizeEvidenceValue(value: unknown): EvidenceHealth {
+  return value === "valid" || value === "invalid" ? value : "missing";
+}
+
 function normalizeObservationHealth(value: unknown): ObservationHealth {
-  return value === "healthy" || value === "degraded" || value === "error"
+  return value === "healthy" ||
+    value === "degraded" ||
+    value === "failed" ||
+    value === "error"
     ? value
     : "unknown";
 }
@@ -503,11 +482,6 @@ function normalizeText(value: unknown, fallback: string): string {
     return String(value);
   }
   return fallback;
-}
-
-function normalizeOptionalText(value: unknown): string | undefined {
-  const normalized = normalizeText(value, "");
-  return normalized || undefined;
 }
 
 function finiteNumber(value: unknown): number {
