@@ -13,6 +13,11 @@ import { existsSync } from "fs";
 import { homedir } from "os";
 import * as path from "path";
 import { promisify } from "util";
+import type {
+  ChildTask,
+  EvidenceItem,
+  ExecutionSnapshot,
+} from "./snapshot-model";
 
 export const FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
 
@@ -32,78 +37,6 @@ const DEFAULT_SETTINGS: FlowDeskDashboardSettings = {
   schema: "sdd-poc",
   apiUrl: "",
 };
-
-interface ExecutionSnapshot {
-  state?: {
-    value?: string;
-    blocked_reason?: string;
-    read_only?: boolean;
-  };
-  flow_graph?: {
-    mode?: string;
-    current?: string;
-    nodes?: FlowNode[];
-  };
-  task_graph?: {
-    parent?: {
-      id?: string;
-      title?: string;
-      status?: string;
-    };
-    counts?: Record<string, number>;
-    tasks?: ChildTask[];
-  };
-  spec_contract?: {
-    requirements?: IdList;
-    scenarios?: IdList;
-    tasks?: IdList;
-    checklist?: {
-      total?: number;
-      checked?: number;
-      unchecked?: number;
-    };
-    open_questions?: {
-      count?: number;
-      items?: string[];
-    };
-    evidence?: Record<string, EvidenceItem>;
-  };
-  notepad?: {
-    exists?: boolean;
-    priority?: string;
-    authoritative?: boolean;
-  };
-  next_actions?: Record<string, unknown>[];
-}
-
-interface FlowNode {
-  id?: string;
-  label?: string;
-  status?: string;
-  missing_deps?: string[];
-  evidence?: unknown[];
-}
-
-interface ChildTask {
-  id?: string;
-  title?: string;
-  status?: string;
-  state?: string;
-  covers?: string[];
-  blocked_by?: unknown[];
-  limitation?: string;
-  covers_unresolved?: boolean;
-}
-
-interface IdList {
-  count?: number;
-  ids?: string[];
-}
-
-interface EvidenceItem {
-  exists?: boolean;
-  items?: string[];
-}
 
 interface ExecFileFailure extends Error {
   code?: number | string;
