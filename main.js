@@ -66,6 +66,15 @@ function buildSnapshotInvocation(input, format) {
     cwd: input.flowdeskRoot
   };
 }
+function formatShellCommand(invocation) {
+  return [invocation.executable, ...invocation.args].map(shellQuote).join(" ");
+}
+function shellQuote(value) {
+  if (/^[A-Za-z0-9_@%+=:,./-]+$/.test(value)) {
+    return value;
+  }
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
 
 // src/snapshot-model.ts
 function createDashboardViewModel(snapshot, options = {}) {
@@ -206,6 +215,7 @@ function formatNextAction(action) {
     resolve_inline_execution_conflict: "\u5904\u7406 inline \u6267\u884C\u51B2\u7A81",
     resolve_materialization_conflict: "\u5904\u7406\u4EFB\u52A1\u7269\u5316\u51B2\u7A81",
     start_implementation: "\u5F00\u59CB\u5B9E\u65BD",
+    start_inline_implementation: "\u5F00\u59CB inline \u5B9E\u65BD",
     verify_scenarios: "\u9A8C\u8BC1\u9A8C\u6536\u573A\u666F",
     wait_for_running_task: "\u7B49\u5F85\u8FD0\u884C\u4E2D\u7684\u4EFB\u52A1"
   };
@@ -447,6 +457,10 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
       format
     );
   }
+  async copyDashboardCommand(taskPath) {
+    const invocation = this.createSnapshotInvocation(taskPath, "dashboard");
+    await navigator.clipboard.writeText(formatShellCommand(invocation));
+  }
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
   }
@@ -655,6 +669,30 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       text: ((_a = this.displayState) == null ? void 0 : _a.loadedAt) ? `\u672C\u5730\u8BFB\u53D6 ${this.displayState.loadedAt}` : "\u7B49\u5F85\u5237\u65B0"
     });
     const toolbar = header.createDiv({ cls: "flowdesk-dashboard-toolbar" });
+    const copy = toolbar.createEl("button", {
+      cls: "flowdesk-copy-button",
+      text: "\u590D\u5236 CLI"
+    });
+    copy.disabled = !this.taskPath || this.isPinnedToPreviousTask();
+    copy.title = copy.disabled ? "\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1" : "\u590D\u5236\u5F53\u524D\u4EFB\u52A1\u7684 terminal dashboard \u547D\u4EE4";
+    copy.addEventListener("click", async () => {
+      copy.disabled = true;
+      try {
+        await this.plugin.copyDashboardCommand(this.taskPath);
+        copy.setText("\u5DF2\u590D\u5236");
+        new import_obsidian.Notice("CLI \u547D\u4EE4\u5DF2\u590D\u5236");
+        window.setTimeout(() => {
+          if (copy.isConnected) {
+            copy.setText("\u590D\u5236 CLI");
+            copy.disabled = false;
+          }
+        }, 1500);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        new import_obsidian.Notice(`\u65E0\u6CD5\u590D\u5236 CLI \u547D\u4EE4\uFF1A${message}`);
+        copy.disabled = false;
+      }
+    });
     const refresh = toolbar.createEl("button", {
       cls: "flowdesk-refresh-button",
       text: this.loading ? "\u5237\u65B0\u4E2D" : "\u5237\u65B0"
@@ -1092,7 +1130,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     }
   }
   renderNextActions(container, snapshot) {
-    var _a;
+    var _a, _b;
     const section = createSection(container, "Next Actions");
     const list = section.createDiv({ cls: "flowdesk-next-list" });
     const actions = (_a = snapshot.next_actions) != null ? _a : [];
@@ -1101,9 +1139,10 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       return;
     }
     for (const action of actions) {
+      const label = (_b = formatNextAction(action)) != null ? _b : "\u672A\u77E5\u52A8\u4F5C";
       list.createDiv({
         cls: "flowdesk-next-action",
-        text: `\u2192 ${formatAction(action)}`
+        text: `\u2192 ${label}`
       });
     }
   }
@@ -1226,12 +1265,6 @@ function formatId(value) {
     return String((_b = (_a = record.uid) != null ? _a : record.id) != null ? _b : JSON.stringify(record));
   }
   return String(value);
-}
-function formatAction(action) {
-  var _a;
-  const kind = String((_a = action.kind) != null ? _a : "unknown");
-  const fields = Object.entries(action).filter(([key]) => key !== "kind").map(([key, value]) => `${key}=${formatIds(value)}`);
-  return fields.length ? `${kind} (${fields.join("; ")})` : kind;
 }
 function numberValue(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;

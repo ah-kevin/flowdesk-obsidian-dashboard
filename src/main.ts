@@ -16,11 +16,13 @@ import * as path from "path";
 import { promisify } from "util";
 import {
   buildSnapshotInvocation,
+  formatShellCommand,
   type SnapshotFormat,
   type SnapshotInvocation,
 } from "./snapshot-invocation";
 import {
   createDashboardViewModel,
+  formatNextAction,
   isSnapshotRequestCurrent,
   resolveDiagnosticTarget,
   shouldResetDisplayState,
@@ -210,6 +212,11 @@ export default class FlowDeskDashboardPlugin extends Plugin {
       },
       format
     );
+  }
+
+  async copyDashboardCommand(taskPath: string): Promise<void> {
+    const invocation = this.createSnapshotInvocation(taskPath, "dashboard");
+    await navigator.clipboard.writeText(formatShellCommand(invocation));
   }
 
   async loadSettings() {
@@ -456,6 +463,33 @@ class FlowDeskDashboardView extends ItemView {
     });
 
     const toolbar = header.createDiv({ cls: "flowdesk-dashboard-toolbar" });
+    const copy = toolbar.createEl("button", {
+      cls: "flowdesk-copy-button",
+      text: "复制 CLI",
+    });
+    copy.disabled = !this.taskPath || this.isPinnedToPreviousTask();
+    copy.title = copy.disabled
+      ? "请先打开一个 TaskNotes 任务"
+      : "复制当前任务的 terminal dashboard 命令";
+    copy.addEventListener("click", async () => {
+      copy.disabled = true;
+      try {
+        await this.plugin.copyDashboardCommand(this.taskPath);
+        copy.setText("已复制");
+        new Notice("CLI 命令已复制");
+        window.setTimeout(() => {
+          if (copy.isConnected) {
+            copy.setText("复制 CLI");
+            copy.disabled = false;
+          }
+        }, 1500);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        new Notice(`无法复制 CLI 命令：${message}`);
+        copy.disabled = false;
+      }
+    });
+
     const refresh = toolbar.createEl("button", {
       cls: "flowdesk-refresh-button",
       text: this.loading ? "刷新中" : "刷新",
@@ -973,9 +1007,10 @@ class FlowDeskDashboardView extends ItemView {
     }
 
     for (const action of actions) {
+      const label = formatNextAction(action) ?? "未知动作";
       list.createDiv({
         cls: "flowdesk-next-action",
-        text: `→ ${formatAction(action)}`,
+        text: `→ ${label}`,
       });
     }
   }
@@ -1134,14 +1169,6 @@ function formatId(value: unknown): string {
     return String(record.uid ?? record.id ?? JSON.stringify(record));
   }
   return String(value);
-}
-
-function formatAction(action: Record<string, unknown>): string {
-  const kind = String(action.kind ?? "unknown");
-  const fields = Object.entries(action)
-    .filter(([key]) => key !== "kind")
-    .map(([key, value]) => `${key}=${formatIds(value)}`);
-  return fields.length ? `${kind} (${fields.join("; ")})` : kind;
 }
 
 function numberValue(value: unknown): number {

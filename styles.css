@@ -58,6 +58,7 @@
   justify-content: flex-end;
 }
 
+.flowdesk-copy-button,
 .flowdesk-refresh-button {
   min-width: 58px;
   white-space: nowrap;
