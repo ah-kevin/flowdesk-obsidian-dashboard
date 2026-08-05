@@ -337,6 +337,13 @@ export function formatChildEvidenceHealth(value: unknown): string {
     invalid: "无效",
     valid: "有效",
   };
+  if (isRecord(value)) {
+    return [
+      `执行${labels[normalizeEvidenceValue(value.execution)]}`,
+      `验证${labels[normalizeEvidenceValue(value.verification)]}`,
+      `交付${labels[normalizeEvidenceValue(value.delivery)]}`,
+    ].join(" · ");
+  }
   return labels[normalizeEvidenceValue(value)];
 }
 

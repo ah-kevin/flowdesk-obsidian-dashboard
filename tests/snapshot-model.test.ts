@@ -5,7 +5,9 @@ import test from "node:test";
 
 import {
   createDashboardViewModel,
+  formatChildEvidenceHealth,
   formatNextAction,
+  formatRollupState,
   resolveDiagnosticTarget,
   validateSnapshotSource,
 } from "../src/snapshot-model.ts";
@@ -187,6 +189,24 @@ test("next action 使用 producer v3 summary", () => {
   assert.equal(
     formatNextAction({ kind: "continue_child_work", summary: "继续当前 child" }),
     "继续当前 child"
+  );
+});
+
+test("UI helper 清晰格式化 rollup、child evidence 与无 summary 的下一动作", () => {
+  assert.equal(formatRollupState("blocked"), "存在阻塞子任务");
+  assert.equal(formatRollupState("awaiting_parent_verification"), "等待父任务整体验证");
+  assert.equal(formatRollupState("inconsistent"), "父子状态矛盾");
+  assert.equal(
+    formatChildEvidenceHealth({
+      execution: "missing",
+      verification: "invalid",
+      delivery: "valid",
+    }),
+    "执行缺失 · 验证无效 · 交付有效"
+  );
+  assert.equal(
+    formatNextAction({ kind: "resolve_child_blockers", task_ids: ["Tasks/Child B.md"] }),
+    "处理子任务阻塞：Tasks/Child B.md"
   );
 });
 

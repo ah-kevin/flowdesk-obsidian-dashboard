@@ -6,7 +6,6 @@ export interface SnapshotInvocationInput {
   flowdeskRoot: string;
   taskPath: string;
   workingDirectory: string;
-  schema: string;
   apiUrl: string;
 }
 
@@ -31,8 +30,6 @@ export function buildSnapshotInvocation(
   args.push(
     "--working-directory",
     workingDirectory,
-    "--schema",
-    input.schema,
     "--format",
     format
   );
