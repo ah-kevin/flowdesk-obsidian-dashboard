@@ -81,6 +81,25 @@ function resolveDetailsOpen(previousOpen, taskChanged, diagnosticCount, hasChild
   }
   return diagnosticCount > 0 || !hasChildren;
 }
+function validateSnapshotEnvelope(value, requestedTaskPath) {
+  const snapshot = typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
+  if (snapshot.snapshot_schema_version !== 3) {
+    return `Snapshot schema \u4E0D\u53D7\u652F\u6301\uFF1A\u9700\u8981 3\uFF1B\u8BF7\u6C42 ${requestedTaskPath}\uFF0C\u5B9E\u9645 schema ${formatEnvelopeValue(snapshot.snapshot_schema_version)}\u3002`;
+  }
+  if (snapshot.snapshot_model !== "task-centric") {
+    return `Snapshot model \u4E0D\u53D7\u652F\u6301\uFF1A\u9700\u8981 task-centric\uFF1B\u8BF7\u6C42 ${requestedTaskPath}\uFF0C\u5B9E\u9645 model ${formatEnvelopeValue(snapshot.snapshot_model)}\u3002`;
+  }
+  if (snapshot.source_task_id !== requestedTaskPath) {
+    return `Snapshot source identity \u4E0D\u5339\u914D\uFF1A\u8BF7\u6C42 ${requestedTaskPath}\uFF0C\u8FD4\u56DE ${formatEnvelopeValue(snapshot.source_task_id)}\u3002`;
+  }
+  return null;
+}
+function resolveRefreshFailureDisplay(displayState, requestedTaskPath, staleReason) {
+  return (displayState == null ? void 0 : displayState.taskPath) === requestedTaskPath ? { ...displayState, staleReason } : null;
+}
+function formatEnvelopeValue(value) {
+  return typeof value === "string" || typeof value === "number" ? String(value) : "\u672A\u63D0\u4F9B";
+}
 var TrailingRefreshScheduler = class {
   constructor(callback, delayMs = 500, scheduleTimer = (callback2, delayMs2) => globalThis.setTimeout(callback2, delayMs2), cancelTimer = (handle) => globalThis.clearTimeout(handle)) {
     this.callback = callback;
@@ -677,21 +696,15 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     }
   }
   async loadTaskNow(request) {
-    var _a, _b;
     this.loading = true;
     this.error = "";
     this.render();
     try {
       const snapshot = await this.plugin.loadSnapshot(request.taskPath);
       if (!isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) return;
-      if (snapshot.snapshot_schema_version !== 3) {
-        throw new Error("unsupported_snapshot_schema\uFF1ADashboard \u53EA\u652F\u6301 snapshot schema 3\u3002");
-      }
-      const sourceIdentity = validateSnapshotSource(snapshot, request.taskPath);
-      if (sourceIdentity !== true) {
-        throw new Error(
-          `Snapshot source identity \u4E0D\u5339\u914D\uFF1A\u8BF7\u6C42 ${request.taskPath}\uFF0C\u8FD4\u56DE ${(_a = snapshot.source_task_id) != null ? _a : "\u672A\u63D0\u4F9B"}\u3002`
-        );
+      const envelopeError = validateSnapshotEnvelope(snapshot, request.taskPath);
+      if (envelopeError) {
+        throw new Error(envelopeError);
       }
       this.displayState = {
         taskPath: request.taskPath,
@@ -702,7 +715,11 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     } catch (error) {
       if (!isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) return;
       this.error = error instanceof Error ? error.message : String(error);
-      this.displayState = ((_b = this.displayState) == null ? void 0 : _b.taskPath) === request.taskPath ? { ...this.displayState, staleReason: this.error } : null;
+      this.displayState = resolveRefreshFailureDisplay(
+        this.displayState,
+        request.taskPath,
+        this.error
+      );
     } finally {
       if (isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) {
         this.loading = false;
@@ -745,7 +762,10 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       staleReason: displayState == null ? void 0 : displayState.staleReason
     });
     if (model.errorCode) {
-      container.createDiv({ cls: "flowdesk-error", text: "Dashboard \u53EA\u652F\u6301 snapshot schema 3\u3002" });
+      container.createDiv({
+        cls: "flowdesk-error",
+        text: model.errorCode === "unsupported_snapshot_model" ? "Snapshot model \u4E0D\u53D7\u652F\u6301\uFF1A\u9700\u8981 task-centric\u3002" : "Snapshot schema \u4E0D\u53D7\u652F\u6301\uFF1A\u9700\u8981 3\u3002"
+      });
       return;
     }
     this.renderBreadcrumb(container, model);
