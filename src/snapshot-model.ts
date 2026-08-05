@@ -365,31 +365,30 @@ export function resolveDiagnosticTarget(
   };
 }
 
-export function formatDiagnosticReason(diagnostic: {
-  reason?: unknown;
-  message?: unknown;
-}): string {
-  const reason = diagnostic.reason;
+export function formatDiagnosticReason(value: unknown): string {
+  const diagnostic = isRecord(value) ? value : {};
+  const hasWrapper = "reason" in diagnostic || "message" in diagnostic;
+  const reason = hasWrapper ? diagnostic.reason : value;
+  const message = hasWrapper ? diagnostic.message : undefined;
   if (isRecord(reason)) {
     return normalizeText(
       reason.actual,
-      normalizeText(reason.expected, normalizeText(diagnostic.message, "原因未提供"))
+      normalizeText(reason.expected, normalizeText(message, "producer 未提供"))
     );
   }
-  return normalizeText(reason, normalizeText(diagnostic.message, "原因未提供"));
+  return normalizeText(reason, normalizeText(message, "producer 未提供"));
 }
 
-export function formatDiagnosticRemediation(diagnostic: {
-  remediation?: unknown;
-}): string {
-  const remediation = diagnostic.remediation;
+export function formatDiagnosticRemediation(value: unknown): string {
+  const diagnostic = isRecord(value) ? value : {};
+  const remediation = "remediation" in diagnostic ? diagnostic.remediation : value;
   if (isRecord(remediation)) {
     return normalizeText(
       remediation.summary,
-      normalizeText(remediation.example, "修法未提供")
+      normalizeText(remediation.example, "producer 未提供")
     );
   }
-  return normalizeText(remediation, "修法未提供");
+  return normalizeText(remediation, "producer 未提供");
 }
 
 function createCompatibility(snapshot: ExecutionSnapshot): {
@@ -428,7 +427,7 @@ function normalizeDiagnostic(value: unknown): SnapshotDiagnostic {
       code: value,
       message: value,
       reason: value,
-      remediation: "修法未提供",
+      remediation: "producer 未提供",
     };
   }
 

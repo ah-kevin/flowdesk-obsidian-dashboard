@@ -1,6 +1,7 @@
 import {
   App,
   ItemView,
+  MarkdownView,
   Notice,
   Plugin,
   PluginSettingTab,
@@ -13,7 +14,10 @@ import { existsSync } from "fs";
 import { homedir } from "os";
 import * as path from "path";
 import { promisify } from "util";
-import { createDashboardViewModel } from "./snapshot-model";
+import {
+  createDashboardViewModel,
+  resolveDiagnosticTarget,
+} from "./snapshot-model";
 import type {
   ChildTask,
   DashboardViewModel,
@@ -518,9 +522,69 @@ class FlowDeskDashboardView extends ItemView {
           text: source.excerpt,
         });
       }
+    } else {
+      container.createDiv({
+        cls: "flowdesk-diagnostic-location",
+        text: "位置：producer 未提供",
+      });
     }
     diagnosticRow(container, "原因", diagnostic.reason);
     diagnosticRow(container, "建议修法", diagnostic.remediation);
+
+    const canLocate = Boolean(
+      source?.line_start || source?.section || source?.after_section
+    );
+    if (canLocate) {
+      const actions = container.createDiv({ cls: "flowdesk-diagnostic-actions" });
+      const locate = actions.createEl("button", {
+        cls: "flowdesk-diagnostic-locate",
+        text: "定位",
+      });
+      locate.title = "只读打开诊断所在的 TaskNotes 位置";
+      locate.addEventListener("click", () => {
+        void this.openDiagnosticLocation(diagnostic);
+      });
+    }
+  }
+
+  private async openDiagnosticLocation(diagnostic: SnapshotDiagnostic) {
+    const file = this.app.vault.getAbstractFileByPath(this.taskPath);
+    if (!(file instanceof TFile)) {
+      new Notice(`未找到任务文件：${this.taskPath}`);
+      return;
+    }
+
+    const target = resolveDiagnosticTarget(this.taskPath, diagnostic.source);
+    if (target.linkText === this.taskPath && target.line === null) {
+      new Notice("producer 未提供可定位的 section 或行号。");
+      return;
+    }
+
+    try {
+      await this.app.workspace.openLinkText(target.linkText, this.taskPath, false);
+      if (target.line === null) {
+        return;
+      }
+
+      const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+      if (!view || view.file?.path !== this.taskPath) {
+        new Notice("任务已打开，但当前视图无法定位到具体行。");
+        return;
+      }
+
+      const line = target.line - 1;
+      if (line < 0 || line >= view.editor.lineCount()) {
+        new Notice(`诊断行号已超出当前文件范围：${target.line}`);
+        return;
+      }
+      const position = { line, ch: 0 };
+      view.editor.setCursor(position);
+      view.editor.scrollIntoView({ from: position, to: position }, true);
+      view.editor.focus();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(`无法定位诊断位置：${message}`);
+    }
   }
 
   private renderPrimaryNextAction(

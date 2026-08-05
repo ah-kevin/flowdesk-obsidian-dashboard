@@ -162,25 +162,37 @@ function formatNextAction(action) {
   const label = (_a = labels[kind]) != null ? _a : kind;
   return ids.length ? `${label}\uFF1A${ids.join("\u3001")}` : label;
 }
-function formatDiagnosticReason(diagnostic) {
-  const reason = diagnostic.reason;
+function resolveDiagnosticTarget(taskPath, source) {
+  const line = typeof (source == null ? void 0 : source.line_start) === "number" && source.line_start > 0 ? source.line_start : null;
+  const heading = line === null ? normalizeText(source == null ? void 0 : source.after_section, normalizeText(source == null ? void 0 : source.section, "")) : normalizeText(source == null ? void 0 : source.section, "");
+  return {
+    linkText: heading ? `${taskPath}#${heading}` : taskPath,
+    line
+  };
+}
+function formatDiagnosticReason(value) {
+  const diagnostic = isRecord(value) ? value : {};
+  const hasWrapper = "reason" in diagnostic || "message" in diagnostic;
+  const reason = hasWrapper ? diagnostic.reason : value;
+  const message = hasWrapper ? diagnostic.message : void 0;
   if (isRecord(reason)) {
     return normalizeText(
       reason.actual,
-      normalizeText(reason.expected, normalizeText(diagnostic.message, "\u539F\u56E0\u672A\u63D0\u4F9B"))
+      normalizeText(reason.expected, normalizeText(message, "producer \u672A\u63D0\u4F9B"))
     );
   }
-  return normalizeText(reason, normalizeText(diagnostic.message, "\u539F\u56E0\u672A\u63D0\u4F9B"));
+  return normalizeText(reason, normalizeText(message, "producer \u672A\u63D0\u4F9B"));
 }
-function formatDiagnosticRemediation(diagnostic) {
-  const remediation = diagnostic.remediation;
+function formatDiagnosticRemediation(value) {
+  const diagnostic = isRecord(value) ? value : {};
+  const remediation = "remediation" in diagnostic ? diagnostic.remediation : value;
   if (isRecord(remediation)) {
     return normalizeText(
       remediation.summary,
-      normalizeText(remediation.example, "\u4FEE\u6CD5\u672A\u63D0\u4F9B")
+      normalizeText(remediation.example, "producer \u672A\u63D0\u4F9B")
     );
   }
-  return normalizeText(remediation, "\u4FEE\u6CD5\u672A\u63D0\u4F9B");
+  return normalizeText(remediation, "producer \u672A\u63D0\u4F9B");
 }
 function createCompatibility(snapshot) {
   var _a, _b, _c, _d, _e, _f;
@@ -213,7 +225,7 @@ function normalizeDiagnostic(value) {
       code: value,
       message: value,
       reason: value,
-      remediation: "\u4FEE\u6CD5\u672A\u63D0\u4F9B"
+      remediation: "producer \u672A\u63D0\u4F9B"
     };
   }
   const diagnostic = isRecord(value) ? value : {};
@@ -658,9 +670,64 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
           text: source.excerpt
         });
       }
+    } else {
+      container.createDiv({
+        cls: "flowdesk-diagnostic-location",
+        text: "\u4F4D\u7F6E\uFF1Aproducer \u672A\u63D0\u4F9B"
+      });
     }
     diagnosticRow(container, "\u539F\u56E0", diagnostic.reason);
     diagnosticRow(container, "\u5EFA\u8BAE\u4FEE\u6CD5", diagnostic.remediation);
+    const canLocate = Boolean(
+      (source == null ? void 0 : source.line_start) || (source == null ? void 0 : source.section) || (source == null ? void 0 : source.after_section)
+    );
+    if (canLocate) {
+      const actions = container.createDiv({ cls: "flowdesk-diagnostic-actions" });
+      const locate = actions.createEl("button", {
+        cls: "flowdesk-diagnostic-locate",
+        text: "\u5B9A\u4F4D"
+      });
+      locate.title = "\u53EA\u8BFB\u6253\u5F00\u8BCA\u65AD\u6240\u5728\u7684 TaskNotes \u4F4D\u7F6E";
+      locate.addEventListener("click", () => {
+        void this.openDiagnosticLocation(diagnostic);
+      });
+    }
+  }
+  async openDiagnosticLocation(diagnostic) {
+    var _a;
+    const file = this.app.vault.getAbstractFileByPath(this.taskPath);
+    if (!(file instanceof import_obsidian.TFile)) {
+      new import_obsidian.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${this.taskPath}`);
+      return;
+    }
+    const target = resolveDiagnosticTarget(this.taskPath, diagnostic.source);
+    if (target.linkText === this.taskPath && target.line === null) {
+      new import_obsidian.Notice("producer \u672A\u63D0\u4F9B\u53EF\u5B9A\u4F4D\u7684 section \u6216\u884C\u53F7\u3002");
+      return;
+    }
+    try {
+      await this.app.workspace.openLinkText(target.linkText, this.taskPath, false);
+      if (target.line === null) {
+        return;
+      }
+      const view = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+      if (!view || ((_a = view.file) == null ? void 0 : _a.path) !== this.taskPath) {
+        new import_obsidian.Notice("\u4EFB\u52A1\u5DF2\u6253\u5F00\uFF0C\u4F46\u5F53\u524D\u89C6\u56FE\u65E0\u6CD5\u5B9A\u4F4D\u5230\u5177\u4F53\u884C\u3002");
+        return;
+      }
+      const line = target.line - 1;
+      if (line < 0 || line >= view.editor.lineCount()) {
+        new import_obsidian.Notice(`\u8BCA\u65AD\u884C\u53F7\u5DF2\u8D85\u51FA\u5F53\u524D\u6587\u4EF6\u8303\u56F4\uFF1A${target.line}`);
+        return;
+      }
+      const position = { line, ch: 0 };
+      view.editor.setCursor(position);
+      view.editor.scrollIntoView({ from: position, to: position }, true);
+      view.editor.focus();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new import_obsidian.Notice(`\u65E0\u6CD5\u5B9A\u4F4D\u8BCA\u65AD\u4F4D\u7F6E\uFF1A${message}`);
+    }
   }
   renderPrimaryNextAction(container, model) {
     var _a;

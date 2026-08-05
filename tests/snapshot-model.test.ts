@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   createDashboardViewModel,
+  formatDiagnosticReason,
+  formatDiagnosticRemediation,
   resolveDiagnosticTarget,
 } from "../src/snapshot-model.ts";
 
@@ -135,4 +137,35 @@ test("children 卡优先显示子任务计数，不展示 binding 百分比", ()
   assert.equal(model.hero.workProgressLabel, "3/5 子任务");
   assert.equal(model.hero.inlineLabel, null);
   assert.doesNotMatch(model.hero.workProgressLabel, /bound/i);
+});
+
+test("无行号诊断定位到 after_section，并格式化结构化修复信息", () => {
+  assert.deepEqual(
+    resolveDiagnosticTarget("Tasks/A.md", {
+      section: "Why",
+      line_start: null,
+      after_section: "Contract Phase",
+    }),
+    { linkText: "Tasks/A.md#Contract Phase", line: null }
+  );
+  assert.equal(
+    formatDiagnosticReason({ actual: "检测到占位词", expected: "真实动机" }),
+    "检测到占位词"
+  );
+  assert.equal(formatDiagnosticRemediation({ summary: "改写 Why" }), "改写 Why");
+});
+
+test("旧 producer 只有 code/message 时保留消息并明确缺少修法", () => {
+  const model = createDashboardViewModel({
+    spec_contract: {
+      semantic_validation: {
+        errors: [{ code: "why_missing", message: "缺少有效 Why" }],
+      },
+    },
+  });
+
+  assert.equal(model.primaryDiagnostic?.message, "缺少有效 Why");
+  assert.equal(model.primaryDiagnostic?.reason, "缺少有效 Why");
+  assert.equal(model.primaryDiagnostic?.remediation, "producer 未提供");
+  assert.equal(model.primaryDiagnostic?.source, undefined);
 });

@@ -252,6 +252,19 @@
   font-weight: 600;
 }
 
+.flowdesk-diagnostic-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.flowdesk-diagnostic-locate {
+  font-size: 11px;
+  min-height: 26px;
+  padding: 2px 10px;
+  user-select: none;
+}
+
 .flowdesk-stage-rail {
   display: grid;
   gap: 5px;
