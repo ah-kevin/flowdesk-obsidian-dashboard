@@ -1,3 +1,5 @@
+import * as path from "path";
+
 export type SnapshotFormat = "json" | "dashboard";
 
 export interface SnapshotInvocationInput {
@@ -18,13 +20,17 @@ export function buildSnapshotInvocation(
   input: SnapshotInvocationInput,
   format: SnapshotFormat
 ): SnapshotInvocation {
+  const flowdeskRoot = path.resolve(input.flowdeskRoot);
+  const workingDirectory = path.isAbsolute(input.workingDirectory)
+    ? input.workingDirectory
+    : path.resolve(flowdeskRoot, input.workingDirectory);
   const args = [input.taskPath];
   if (input.apiUrl) {
     args.push("--api-url", input.apiUrl);
   }
   args.push(
     "--working-directory",
-    input.workingDirectory,
+    workingDirectory,
     "--schema",
     input.schema,
     "--format",
@@ -32,12 +38,12 @@ export function buildSnapshotInvocation(
   );
   return {
     executable: path.join(
-      input.flowdeskRoot,
+      flowdeskRoot,
       "bin",
       "flowdesk-execution-snapshot"
     ),
     args,
-    cwd: input.flowdeskRoot,
+    cwd: flowdeskRoot,
   };
 }
 
@@ -51,4 +57,3 @@ function shellQuote(value: string): string {
   }
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
-import * as path from "path";

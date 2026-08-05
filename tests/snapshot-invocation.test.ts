@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -60,4 +61,28 @@ test("显式 API URL 保留在 task path 后并安全转义", () => {
     formatShellCommand(invocation),
     /--api-url 'http:\/\/127\.0\.0\.1:18090\/api value'/
   );
+});
+
+test("相对仓库和工作目录会转换为不依赖当前终端目录的绝对路径", () => {
+  const invocation = buildSnapshotInvocation(
+    {
+      flowdeskRoot: "flowdesk-plugin",
+      taskPath: "Tasks/A.md",
+      workingDirectory: "projects/demo",
+      schema: "sdd-poc",
+      apiUrl: "",
+    },
+    "dashboard"
+  );
+
+  const expectedRoot = path.resolve("flowdesk-plugin");
+  assert.equal(
+    invocation.executable,
+    path.join(expectedRoot, "bin", "flowdesk-execution-snapshot")
+  );
+  assert.equal(invocation.cwd, expectedRoot);
+  assert.deepEqual(invocation.args.slice(1, 3), [
+    "--working-directory",
+    path.join(expectedRoot, "projects/demo"),
+  ]);
 });

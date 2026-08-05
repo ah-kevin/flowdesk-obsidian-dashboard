@@ -104,13 +104,15 @@ var TrailingRefreshScheduler = class {
 // src/snapshot-invocation.ts
 var path = __toESM(require("path"));
 function buildSnapshotInvocation(input, format) {
+  const flowdeskRoot = path.resolve(input.flowdeskRoot);
+  const workingDirectory = path.isAbsolute(input.workingDirectory) ? input.workingDirectory : path.resolve(flowdeskRoot, input.workingDirectory);
   const args = [input.taskPath];
   if (input.apiUrl) {
     args.push("--api-url", input.apiUrl);
   }
   args.push(
     "--working-directory",
-    input.workingDirectory,
+    workingDirectory,
     "--schema",
     input.schema,
     "--format",
@@ -118,12 +120,12 @@ function buildSnapshotInvocation(input, format) {
   );
   return {
     executable: path.join(
-      input.flowdeskRoot,
+      flowdeskRoot,
       "bin",
       "flowdesk-execution-snapshot"
     ),
     args,
-    cwd: input.flowdeskRoot
+    cwd: flowdeskRoot
   };
 }
 function formatShellCommand(invocation) {
@@ -400,7 +402,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     });
     this.addCommand({
       id: "show-current-task-dashboard",
-      name: "Show dashboard for current TaskNotes task",
+      name: "\u663E\u793A\u5F53\u524D TaskNotes \u4EFB\u52A1",
       checkCallback: (checking) => {
         const file = this.app.workspace.getActiveFile();
         const canRun = this.isTaskFile(file);
@@ -822,7 +824,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       cls: "flowdesk-copy-button",
       text: "\u590D\u5236 CLI"
     });
-    copy.title = "\u590D\u5236\u5F53\u524D\u4EFB\u52A1\u7684 terminal dashboard \u547D\u4EE4";
+    copy.title = "\u590D\u5236\u5F53\u524D\u4EFB\u52A1\u7684\u7EC8\u7AEF Dashboard \u547D\u4EE4";
     copy.addEventListener("click", async () => {
       copy.disabled = true;
       try {
@@ -846,7 +848,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       text: this.loading ? "\u5237\u65B0\u4E2D" : "\u5237\u65B0"
     });
     refresh.disabled = this.loading;
-    refresh.title = "\u91CD\u65B0\u8BFB\u53D6\u5F53\u524D TaskNotes task \u7684 FlowDesk snapshot";
+    refresh.title = "\u91CD\u65B0\u8BFB\u53D6\u5F53\u524D TaskNotes \u4EFB\u52A1\u7684 FlowDesk snapshot";
     refresh.addEventListener("click", () => {
       void this.refreshCurrentTask();
     });
@@ -873,7 +875,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     });
     strip.createSpan({
       cls: "flowdesk-trust-generated",
-      text: `producer ${model.observation.generatedAt} \xB7 \u672C\u5730 ${model.observation.loadedAt}`
+      text: `\u751F\u6210\u65F6\u95F4 ${model.observation.generatedAt} \xB7 \u672C\u5730\u8BFB\u53D6 ${model.observation.loadedAt}`
     });
     if (model.observation.isStale) {
       strip.createDiv({
@@ -889,7 +891,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     titleRow.createDiv({ cls: "flowdesk-hero-title", text: model.hero.title });
     titleRow.createSpan({
       cls: `flowdesk-state-pill flowdesk-state-${normalizeStatus(model.hero.status)}`,
-      text: model.hero.status
+      text: formatStatusLabel(model.hero.status)
     });
     const metrics = hero.createDiv({ cls: "flowdesk-hero-metrics" });
     metricCard(metrics, "\u5F53\u524D\u9636\u6BB5", formatFlowNodeId(model.hero.currentStage));
@@ -1075,13 +1077,15 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     this.renderNextActions(body, snapshot);
   }
   renderObservationDetails(container, model) {
-    const section = createSection(container, "Observation\uFF08\u89C2\u6D4B\uFF09");
+    const section = createSection(container, "\u89C2\u6D4B\u4FE1\u606F");
     const list = section.createDiv({ cls: "flowdesk-contract-list" });
-    contractRow(list, "Source task", [model.observation.sourceTaskId || "\u672A\u63D0\u4F9B"]);
-    contractRow(list, "Source identity", [String(model.observation.sourceIdentity)]);
-    contractRow(list, "Profile", [model.compatibility.profile]);
+    contractRow(list, "\u6765\u6E90\u4EFB\u52A1", [model.observation.sourceTaskId || "\u672A\u63D0\u4F9B"]);
+    contractRow(list, "\u6765\u6E90\u4E00\u81F4", [
+      model.observation.sourceIdentity ? "\u4E00\u81F4" : "\u4E0D\u4E00\u81F4\u6216\u672A\u63D0\u4F9B"
+    ]);
+    contractRow(list, "\u6267\u884C\u6A21\u5F0F", [model.compatibility.profile]);
     if (!model.observation.coverage.length) {
-      list.createDiv({ cls: "flowdesk-muted", text: "Coverage\uFF1A\u672A\u63D0\u4F9B" });
+      list.createDiv({ cls: "flowdesk-muted", text: "\u89C2\u6D4B\u8986\u76D6\uFF1A\u672A\u63D0\u4F9B" });
       return;
     }
     for (const item of model.observation.coverage) {
@@ -1094,10 +1098,10 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     if (!inline) {
       return;
     }
-    const section = createSection(container, "Inline Execution");
+    const section = createSection(container, "\u884C\u5185\u6267\u884C");
     section.createDiv({
       cls: "flowdesk-main-text",
-      text: `${(_a = inline.completed) != null ? _a : "?"}/${inline.total} TASK \xB7 ${inline.status} \xB7 ${inline.explicit ? "\u663E\u5F0F\u8BB0\u5F55" : "\u63A8\u65AD\u72B6\u6001"}`
+      text: `${(_a = inline.completed) != null ? _a : "?"}/${inline.total} TASK \xB7 ${formatStatusLabel(inline.status)} \xB7 ${inline.explicit ? "\u663E\u5F0F\u8BB0\u5F55" : "\u63A8\u65AD\u72B6\u6001"}`
     });
     const list = section.createDiv({ cls: "flowdesk-inline-task-list" });
     for (const task of inline.tasks) {
@@ -1106,26 +1110,26 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         cls: `flowdesk-status-dot flowdesk-status-${normalizeStatus(task.status)}`,
         text: statusSymbol(normalizeStatus(task.status))
       });
-      row.createSpan({ text: `${task.id} \xB7 ${task.status}` });
+      row.createSpan({ text: `${task.id} \xB7 ${formatStatusLabel(task.status)}` });
       if (task.inferred) {
         row.createSpan({ cls: "flowdesk-inferred-label", text: "\u63A8\u65AD" });
       }
     }
   }
   renderMaterialization(container, snapshot) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c;
     const materialization = (_b = snapshot.task_materialization) != null ? _b : (_a = snapshot.task_graph) == null ? void 0 : _a.task_materialization;
     if (!materialization) {
       return;
     }
-    const section = createSection(container, "Materialization\uFF08\u7269\u5316\uFF09");
+    const section = createSection(container, "\u4EFB\u52A1\u7269\u5316");
     const list = section.createDiv({ cls: "flowdesk-contract-list" });
-    contractRow(list, "Mode", [(_c = materialization.mode) != null ? _c : "\u672A\u63D0\u4F9B"]);
-    contractRow(list, "Status", [(_d = materialization.status) != null ? _d : "\u672A\u63D0\u4F9B"]);
-    contractRow(list, "Declared", materialization.declared);
-    contractRow(list, "Materialized", materialization.materialized);
-    contractRow(list, "Missing", materialization.missing);
-    contractRow(list, "Conflicts", materialization.conflicts);
+    contractRow(list, "\u6A21\u5F0F", [(_c = materialization.mode) != null ? _c : "\u672A\u63D0\u4F9B"]);
+    contractRow(list, "\u72B6\u6001", [formatStatusLabel(materialization.status)]);
+    contractRow(list, "\u5DF2\u58F0\u660E", materialization.declared);
+    contractRow(list, "\u5DF2\u7269\u5316", materialization.materialized);
+    contractRow(list, "\u7F3A\u5931", materialization.missing);
+    contractRow(list, "\u51B2\u7A81", materialization.conflicts);
   }
   renderAllDiagnostics(container, diagnostics) {
     const section = createSection(container, `\u5168\u90E8\u8BCA\u65AD\uFF08${diagnostics.length}\uFF09`);
@@ -1138,11 +1142,11 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   }
   renderFlowGraph(container, snapshot) {
     var _a, _b, _c, _d, _e;
-    const section = createSection(container, "Graph\uFF08\u6D41\u7A0B\uFF09");
+    const section = createSection(container, "\u6267\u884C\u6D41\u7A0B");
     const list = section.createDiv({ cls: "flowdesk-flow-list" });
     const nodes = (_b = (_a = snapshot.flow_graph) == null ? void 0 : _a.nodes) != null ? _b : [];
     if (!nodes.length) {
-      list.createDiv({ cls: "flowdesk-muted", text: "No flow nodes." });
+      list.createDiv({ cls: "flowdesk-muted", text: "\u672A\u63D0\u4F9B\u6D41\u7A0B\u8282\u70B9\u3002" });
       return;
     }
     for (const node of nodes) {
@@ -1154,28 +1158,28 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       const body = row.createDiv({ cls: "flowdesk-row-body" });
       body.createDiv({
         cls: "flowdesk-main-text",
-        text: `[${status.toUpperCase()}] ${(_d = (_c = node.label) != null ? _c : node.id) != null ? _d : ""} (${formatFlowNodeId(node.id)})`
+        text: `[${formatStatusLabel(status)}] ${(_d = (_c = node.label) != null ? _c : node.id) != null ? _d : ""} (${formatFlowNodeId(node.id)})`
       });
       if ((_e = node.missing_deps) == null ? void 0 : _e.length) {
         body.createDiv({
           cls: "flowdesk-subline",
-          text: `blocked by: ${formatIds(node.missing_deps)}`
+          text: `\u88AB\u4EE5\u4E0B\u8282\u70B9\u963B\u585E\uFF1A${formatIds(node.missing_deps)}`
         });
       }
     }
   }
   renderContract(container, snapshot) {
     var _a, _b, _c, _d, _e, _f;
-    const section = createSection(container, "Contract\uFF08\u5951\u7EA6\uFF09");
+    const section = createSection(container, "\u89C4\u683C\u5951\u7EA6");
     const list = section.createDiv({ cls: "flowdesk-contract-list" });
     const contract = (_a = snapshot.spec_contract) != null ? _a : {};
-    contractRow(list, "Requirements", (_b = contract.requirements) == null ? void 0 : _b.ids);
-    contractRow(list, "Scenarios", (_c = contract.scenarios) == null ? void 0 : _c.ids);
-    contractRow(list, "Tasks", (_d = contract.tasks) == null ? void 0 : _d.ids);
+    contractRow(list, "\u9700\u6C42", (_b = contract.requirements) == null ? void 0 : _b.ids);
+    contractRow(list, "\u573A\u666F", (_c = contract.scenarios) == null ? void 0 : _c.ids);
+    contractRow(list, "\u5B9E\u65BD\u4EFB\u52A1", (_d = contract.tasks) == null ? void 0 : _d.ids);
     const questions = (_f = (_e = contract.open_questions) == null ? void 0 : _e.items) != null ? _f : [];
     if (questions.length) {
       const row = list.createDiv();
-      row.createDiv({ cls: "flowdesk-main-text", text: "Open Questions" });
+      row.createDiv({ cls: "flowdesk-main-text", text: "\u5F85\u786E\u8BA4\u95EE\u9898" });
       for (const question of questions) {
         row.createDiv({ cls: "flowdesk-subline", text: `- ${question}` });
       }
@@ -1192,7 +1196,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   }
   renderChildTasks(container, tasks) {
     var _a, _b, _c, _d;
-    const section = createSection(container, "Task Evidence");
+    const section = createSection(container, "\u5B50\u4EFB\u52A1\u8BC1\u636E");
     const list = section.createDiv({ cls: "flowdesk-task-list" });
     for (const task of tasks) {
       const state = normalizeStatus(task.state);
@@ -1202,22 +1206,22 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${state}`, text: statusSymbol(state) });
       const body = row.createDiv({ cls: "flowdesk-row-body" });
       const title = body.createDiv({ cls: "flowdesk-task-title-row" });
-      title.createSpan({ cls: "flowdesk-task-badge", text: "Task" });
+      title.createSpan({ cls: "flowdesk-task-badge", text: "\u4EFB\u52A1" });
       title.createSpan({
         cls: "flowdesk-main-text",
-        text: `[${state.toUpperCase()}] ${(_a = task.title) != null ? _a : ""}`
+        text: `[${formatStatusLabel(state)}] ${(_a = task.title) != null ? _a : ""}`
       });
       if (task.id) {
-        body.createDiv({ cls: "flowdesk-subline", text: `id: ${task.id}` });
+        body.createDiv({ cls: "flowdesk-subline", text: `\u4EFB\u52A1\u8DEF\u5F84\uFF1A${task.id}` });
       }
       if ((_b = task.covers) == null ? void 0 : _b.length) {
-        body.createDiv({ cls: "flowdesk-subline", text: `Covers: ${formatIds(task.covers)}` });
+        body.createDiv({ cls: "flowdesk-subline", text: `\u8986\u76D6\uFF1A${formatIds(task.covers)}` });
       }
       if ((_c = task.blocked_by) == null ? void 0 : _c.length) {
-        body.createDiv({ cls: "flowdesk-subline", text: `Blocked by: ${formatIds(task.blocked_by)}` });
+        body.createDiv({ cls: "flowdesk-subline", text: `\u88AB\u4EE5\u4E0B\u4EFB\u52A1\u963B\u585E\uFF1A${formatIds(task.blocked_by)}` });
       }
       if (task.covers_unresolved) {
-        body.createDiv({ cls: "flowdesk-warning", text: (_d = task.limitation) != null ? _d : "Task covers unresolved." });
+        body.createDiv({ cls: "flowdesk-warning", text: (_d = task.limitation) != null ? _d : "\u4EFB\u52A1\u8986\u76D6\u5173\u7CFB\u5C1A\u672A\u89E3\u6790\u3002" });
       }
       if (task.id) {
         const openButton = row.createEl("button", {
@@ -1244,12 +1248,12 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   }
   renderTaskEvidence(container, snapshot) {
     var _a, _b, _c;
-    const section = createSection(container, "Task Evidence");
+    const section = createSection(container, "\u6267\u884C\u8BC1\u636E");
     const list = section.createDiv({ cls: "flowdesk-evidence-list" });
     const evidence = (_b = (_a = snapshot.spec_contract) == null ? void 0 : _a.evidence) != null ? _b : {};
-    evidenceRow(list, "Execution Result", evidence.execution_result);
-    evidenceRow(list, "Verification Result", evidence.verification_result);
-    evidenceRow(list, "Delivery Record", evidence.delivery_record);
+    evidenceRow(list, "\u6267\u884C\u7ED3\u679C", evidence.execution_result);
+    evidenceRow(list, "\u9A8C\u8BC1\u7ED3\u679C", evidence.verification_result);
+    evidenceRow(list, "\u4EA4\u4ED8\u8BB0\u5F55", evidence.delivery_record);
     const checklist = (_c = snapshot.spec_contract) == null ? void 0 : _c.checklist;
     if (checklist == null ? void 0 : checklist.total) {
       const unchecked = numberValue(checklist.unchecked);
@@ -1261,27 +1265,27 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       const body = row.createDiv({ cls: "flowdesk-row-body" });
       body.createDiv({
         cls: "flowdesk-main-text",
-        text: `Checklist: ${numberValue(checklist.checked)}/${numberValue(checklist.total)} checked`
+        text: `\u9A8C\u6536\u6E05\u5355\uFF1A\u5DF2\u52FE\u9009 ${numberValue(checklist.checked)}/${numberValue(checklist.total)}`
       });
       if (unchecked) {
         body.createDiv({
           cls: "flowdesk-warning",
-          text: "\u63D0\u9192\uFF1A\u4ECD\u6709\u672A\u52FE\u9009 checklist \u9879\u3002"
+          text: "\u63D0\u9192\uFF1A\u4ECD\u6709\u672A\u52FE\u9009\u7684\u9A8C\u6536\u9879\u3002"
         });
       }
     }
   }
   renderNotepad(container, snapshot) {
     var _a, _b;
-    const section = createSection(container, "Notepad");
+    const section = createSection(container, "\u5DE5\u4F5C\u533A\u8BB0\u4E8B\u677F");
     const notepad = (_a = snapshot.notepad) != null ? _a : {};
     if (!notepad.exists) {
-      section.createDiv({ cls: "flowdesk-muted", text: "Notepad: missing" });
+      section.createDiv({ cls: "flowdesk-muted", text: "\u672A\u63D0\u4F9B\u8BB0\u4E8B\u677F\u3002" });
       return;
     }
     section.createDiv({
       cls: "flowdesk-main-text",
-      text: "Notepad: present, non-authoritative"
+      text: "\u5DF2\u8BFB\u53D6\u8BB0\u4E8B\u677F\uFF08\u4EC5\u4F9B\u53C2\u8003\uFF0C\u4E0D\u4F5C\u4E3A\u72B6\u6001\u4E8B\u5B9E\u6E90\uFF09"
     });
     const priority = ((_b = notepad.priority) != null ? _b : "").trim();
     if (priority) {
@@ -1292,11 +1296,11 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   }
   renderNextActions(container, snapshot) {
     var _a, _b;
-    const section = createSection(container, "Next Actions");
+    const section = createSection(container, "\u540E\u7EED\u52A8\u4F5C");
     const list = section.createDiv({ cls: "flowdesk-next-list" });
     const actions = (_a = snapshot.next_actions) != null ? _a : [];
     if (!actions.length) {
-      list.createDiv({ cls: "flowdesk-muted", text: "No next actions." });
+      list.createDiv({ cls: "flowdesk-muted", text: "\u6CA1\u6709\u540E\u7EED\u52A8\u4F5C\u3002" });
       return;
     }
     for (const action of actions) {
@@ -1317,25 +1321,25 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian.PluginSettingTab
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "FlowDesk Dashboard" });
-    new import_obsidian.Setting(containerEl).setName("FlowDesk repo path").setDesc("\u672C\u5730 FlowDesk-Plugin \u4ED3\u5E93\u8DEF\u5F84\uFF1Bsymlink \u5B89\u88C5\u65F6\u901A\u5E38\u53EF\u4EE5\u7559\u7A7A\u3002").addText(
+    new import_obsidian.Setting(containerEl).setName("FlowDesk \u4ED3\u5E93\u8DEF\u5F84").setDesc("\u672C\u5730 FlowDesk-Plugin \u4ED3\u5E93\u8DEF\u5F84\uFF1B\u7B26\u53F7\u94FE\u63A5\u5B89\u88C5\u65F6\u901A\u5E38\u53EF\u4EE5\u7559\u7A7A\u3002").addText(
       (text) => text.setPlaceholder("/Users/bjke/workspaces/flowdesk-plugin").setValue(this.plugin.settings.flowdeskRoot).onChange(async (value) => {
         this.plugin.settings.flowdeskRoot = value.trim();
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Working directory").setDesc("\u4F20\u7ED9 --working-directory\uFF0C\u7528\u4E8E\u8BFB\u53D6 .flowdesk/notepad.md\uFF1B\u7559\u7A7A\u65F6\u4F7F\u7528 FlowDesk repo path\u3002").addText(
+    new import_obsidian.Setting(containerEl).setName("\u5DE5\u4F5C\u76EE\u5F55").setDesc("\u4F20\u7ED9 --working-directory\uFF0C\u7528\u4E8E\u8BFB\u53D6 .flowdesk/notepad.md\uFF1B\u7559\u7A7A\u65F6\u4F7F\u7528 FlowDesk \u4ED3\u5E93\u8DEF\u5F84\u3002").addText(
       (text) => text.setPlaceholder("/Users/bjke/workspaces/flowdesk-plugin").setValue(this.plugin.settings.workingDirectory).onChange(async (value) => {
         this.plugin.settings.workingDirectory = value.trim();
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Schema").setDesc("\u4F20\u7ED9 --schema\uFF0C\u9ED8\u8BA4 sdd-poc\u3002").addText(
+    new import_obsidian.Setting(containerEl).setName("Schema \u540D\u79F0").setDesc("\u4F20\u7ED9 --schema\uFF0C\u9ED8\u8BA4 sdd-poc\u3002").addText(
       (text) => text.setPlaceholder("sdd-poc").setValue(this.plugin.settings.schema).onChange(async (value) => {
         this.plugin.settings.schema = value.trim() || DEFAULT_SETTINGS.schema;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("TaskNotes API URL").setDesc("\u53EF\u9009\uFF1B\u7559\u7A7A\u65F6\u4F7F\u7528 FlowDesk CLI \u9ED8\u8BA4\u503C\u3002").addText(
+    new import_obsidian.Setting(containerEl).setName("TaskNotes API \u5730\u5740").setDesc("\u53EF\u9009\uFF1B\u7559\u7A7A\u65F6\u4F7F\u7528 FlowDesk CLI \u9ED8\u8BA4\u503C\u3002").addText(
       (text) => text.setPlaceholder("http://127.0.0.1:18090").setValue(this.plugin.settings.apiUrl).onChange(async (value) => {
         this.plugin.settings.apiUrl = value.trim();
         await this.plugin.saveSettings();
@@ -1361,7 +1365,7 @@ function diagnosticRow(container, label, value) {
 }
 function contractRow(container, label, ids) {
   const row = container.createDiv();
-  row.createSpan({ cls: "flowdesk-summary-label", text: `${label}: ` });
+  row.createSpan({ cls: "flowdesk-summary-label", text: `${label}\uFF1A` });
   row.createSpan({ text: formatIds(ids) });
 }
 function evidenceRow(container, label, item) {
@@ -1374,7 +1378,7 @@ function evidenceRow(container, label, item) {
   const items = (_a = item == null ? void 0 : item.items) != null ? _a : [];
   body.createDiv({
     cls: "flowdesk-main-text",
-    text: `${label}: ${exists ? `present (${items.length} items)` : "missing"}`
+    text: `${label}\uFF1A${exists ? `\u5DF2\u63D0\u4F9B\uFF08${items.length} \u9879\uFF09` : "\u7F3A\u5931"}`
   });
   for (const detail of items.slice(0, 2)) {
     body.createDiv({ cls: "flowdesk-subline", text: `- ${detail}` });
@@ -1400,6 +1404,19 @@ function normalizeStatus(status) {
   }
   return "unknown";
 }
+function formatStatusLabel(status) {
+  var _a;
+  const value = normalizeStatus(status);
+  const labels = {
+    done: "\u5DF2\u5B8C\u6210",
+    running: "\u8FDB\u884C\u4E2D",
+    ready: "\u53EF\u5F00\u59CB",
+    blocked: "\u5DF2\u963B\u585E",
+    error: "\u5F02\u5E38",
+    unknown: "\u672A\u77E5"
+  };
+  return (_a = labels[value]) != null ? _a : String(status || "\u672A\u77E5");
+}
 function statusSymbol(status) {
   if (status === "done") return "\u2713";
   if (status === "running") return "\u25C9";
@@ -1409,11 +1426,11 @@ function statusSymbol(status) {
 }
 function formatIds(value) {
   if (!value) {
-    return "none";
+    return "\u65E0";
   }
   if (Array.isArray(value)) {
     if (!value.length) {
-      return "none";
+      return "\u65E0";
     }
     return value.map((item) => formatId(item)).join(", ");
   }

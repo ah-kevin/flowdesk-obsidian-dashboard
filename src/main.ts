@@ -93,7 +93,7 @@ export default class FlowDeskDashboardPlugin extends Plugin {
 
     this.addCommand({
       id: "show-current-task-dashboard",
-      name: "Show dashboard for current TaskNotes task",
+      name: "显示当前 TaskNotes 任务",
       checkCallback: (checking) => {
         const file = this.app.workspace.getActiveFile();
         const canRun = this.isTaskFile(file);
@@ -593,7 +593,7 @@ class FlowDeskDashboardView extends ItemView {
       cls: "flowdesk-copy-button",
       text: "复制 CLI",
     });
-    copy.title = "复制当前任务的 terminal dashboard 命令";
+    copy.title = "复制当前任务的终端 Dashboard 命令";
     copy.addEventListener("click", async () => {
       copy.disabled = true;
       try {
@@ -618,7 +618,7 @@ class FlowDeskDashboardView extends ItemView {
       text: this.loading ? "刷新中" : "刷新",
     });
     refresh.disabled = this.loading;
-    refresh.title = "重新读取当前 TaskNotes task 的 FlowDesk snapshot";
+    refresh.title = "重新读取当前 TaskNotes 任务的 FlowDesk snapshot";
     refresh.addEventListener("click", () => {
       void this.refreshCurrentTask();
     });
@@ -649,7 +649,7 @@ class FlowDeskDashboardView extends ItemView {
     });
     strip.createSpan({
       cls: "flowdesk-trust-generated",
-      text: `producer ${model.observation.generatedAt} · 本地 ${model.observation.loadedAt}`,
+      text: `生成时间 ${model.observation.generatedAt} · 本地读取 ${model.observation.loadedAt}`,
     });
     if (model.observation.isStale) {
       strip.createDiv({
@@ -669,7 +669,7 @@ class FlowDeskDashboardView extends ItemView {
     titleRow.createDiv({ cls: "flowdesk-hero-title", text: model.hero.title });
     titleRow.createSpan({
       cls: `flowdesk-state-pill flowdesk-state-${normalizeStatus(model.hero.status)}`,
-      text: model.hero.status,
+      text: formatStatusLabel(model.hero.status),
     });
 
     const metrics = hero.createDiv({ cls: "flowdesk-hero-metrics" });
@@ -894,13 +894,15 @@ class FlowDeskDashboardView extends ItemView {
     container: HTMLElement,
     model: DashboardViewModel
   ) {
-    const section = createSection(container, "Observation（观测）");
+    const section = createSection(container, "观测信息");
     const list = section.createDiv({ cls: "flowdesk-contract-list" });
-    contractRow(list, "Source task", [model.observation.sourceTaskId || "未提供"]);
-    contractRow(list, "Source identity", [String(model.observation.sourceIdentity)]);
-    contractRow(list, "Profile", [model.compatibility.profile]);
+    contractRow(list, "来源任务", [model.observation.sourceTaskId || "未提供"]);
+    contractRow(list, "来源一致", [
+      model.observation.sourceIdentity ? "一致" : "不一致或未提供",
+    ]);
+    contractRow(list, "执行模式", [model.compatibility.profile]);
     if (!model.observation.coverage.length) {
-      list.createDiv({ cls: "flowdesk-muted", text: "Coverage：未提供" });
+      list.createDiv({ cls: "flowdesk-muted", text: "观测覆盖：未提供" });
       return;
     }
     for (const item of model.observation.coverage) {
@@ -916,10 +918,10 @@ class FlowDeskDashboardView extends ItemView {
     if (!inline) {
       return;
     }
-    const section = createSection(container, "Inline Execution");
+    const section = createSection(container, "行内执行");
     section.createDiv({
       cls: "flowdesk-main-text",
-      text: `${inline.completed ?? "?"}/${inline.total} TASK · ${inline.status} · ${
+      text: `${inline.completed ?? "?"}/${inline.total} TASK · ${formatStatusLabel(inline.status)} · ${
         inline.explicit ? "显式记录" : "推断状态"
       }`,
     });
@@ -930,7 +932,7 @@ class FlowDeskDashboardView extends ItemView {
         cls: `flowdesk-status-dot flowdesk-status-${normalizeStatus(task.status)}`,
         text: statusSymbol(normalizeStatus(task.status)),
       });
-      row.createSpan({ text: `${task.id} · ${task.status}` });
+      row.createSpan({ text: `${task.id} · ${formatStatusLabel(task.status)}` });
       if (task.inferred) {
         row.createSpan({ cls: "flowdesk-inferred-label", text: "推断" });
       }
@@ -946,14 +948,14 @@ class FlowDeskDashboardView extends ItemView {
     if (!materialization) {
       return;
     }
-    const section = createSection(container, "Materialization（物化）");
+    const section = createSection(container, "任务物化");
     const list = section.createDiv({ cls: "flowdesk-contract-list" });
-    contractRow(list, "Mode", [materialization.mode ?? "未提供"]);
-    contractRow(list, "Status", [materialization.status ?? "未提供"]);
-    contractRow(list, "Declared", materialization.declared);
-    contractRow(list, "Materialized", materialization.materialized);
-    contractRow(list, "Missing", materialization.missing);
-    contractRow(list, "Conflicts", materialization.conflicts);
+    contractRow(list, "模式", [materialization.mode ?? "未提供"]);
+    contractRow(list, "状态", [formatStatusLabel(materialization.status)]);
+    contractRow(list, "已声明", materialization.declared);
+    contractRow(list, "已物化", materialization.materialized);
+    contractRow(list, "缺失", materialization.missing);
+    contractRow(list, "冲突", materialization.conflicts);
   }
 
   private renderAllDiagnostics(
@@ -970,11 +972,11 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   private renderFlowGraph(container: HTMLElement, snapshot: ExecutionSnapshot) {
-    const section = createSection(container, "Graph（流程）");
+    const section = createSection(container, "执行流程");
     const list = section.createDiv({ cls: "flowdesk-flow-list" });
     const nodes = snapshot.flow_graph?.nodes ?? [];
     if (!nodes.length) {
-      list.createDiv({ cls: "flowdesk-muted", text: "No flow nodes." });
+      list.createDiv({ cls: "flowdesk-muted", text: "未提供流程节点。" });
       return;
     }
 
@@ -987,29 +989,29 @@ class FlowDeskDashboardView extends ItemView {
       const body = row.createDiv({ cls: "flowdesk-row-body" });
       body.createDiv({
         cls: "flowdesk-main-text",
-        text: `[${status.toUpperCase()}] ${node.label ?? node.id ?? ""} (${formatFlowNodeId(node.id)})`,
+        text: `[${formatStatusLabel(status)}] ${node.label ?? node.id ?? ""} (${formatFlowNodeId(node.id)})`,
       });
       if (node.missing_deps?.length) {
         body.createDiv({
           cls: "flowdesk-subline",
-          text: `blocked by: ${formatIds(node.missing_deps)}`,
+          text: `被以下节点阻塞：${formatIds(node.missing_deps)}`,
         });
       }
     }
   }
 
   private renderContract(container: HTMLElement, snapshot: ExecutionSnapshot) {
-    const section = createSection(container, "Contract（契约）");
+    const section = createSection(container, "规格契约");
     const list = section.createDiv({ cls: "flowdesk-contract-list" });
     const contract = snapshot.spec_contract ?? {};
-    contractRow(list, "Requirements", contract.requirements?.ids);
-    contractRow(list, "Scenarios", contract.scenarios?.ids);
-    contractRow(list, "Tasks", contract.tasks?.ids);
+    contractRow(list, "需求", contract.requirements?.ids);
+    contractRow(list, "场景", contract.scenarios?.ids);
+    contractRow(list, "实施任务", contract.tasks?.ids);
 
     const questions = contract.open_questions?.items ?? [];
     if (questions.length) {
       const row = list.createDiv();
-      row.createDiv({ cls: "flowdesk-main-text", text: "Open Questions" });
+      row.createDiv({ cls: "flowdesk-main-text", text: "待确认问题" });
       for (const question of questions) {
         row.createDiv({ cls: "flowdesk-subline", text: `- ${question}` });
       }
@@ -1026,7 +1028,7 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   private renderChildTasks(container: HTMLElement, tasks: ChildTask[]) {
-    const section = createSection(container, "Task Evidence");
+    const section = createSection(container, "子任务证据");
     const list = section.createDiv({ cls: "flowdesk-task-list" });
 
     for (const task of tasks) {
@@ -1037,22 +1039,22 @@ class FlowDeskDashboardView extends ItemView {
       row.createSpan({ cls: `flowdesk-status-dot flowdesk-status-${state}`, text: statusSymbol(state) });
       const body = row.createDiv({ cls: "flowdesk-row-body" });
       const title = body.createDiv({ cls: "flowdesk-task-title-row" });
-      title.createSpan({ cls: "flowdesk-task-badge", text: "Task" });
+      title.createSpan({ cls: "flowdesk-task-badge", text: "任务" });
       title.createSpan({
         cls: "flowdesk-main-text",
-        text: `[${state.toUpperCase()}] ${task.title ?? ""}`,
+        text: `[${formatStatusLabel(state)}] ${task.title ?? ""}`,
       });
       if (task.id) {
-        body.createDiv({ cls: "flowdesk-subline", text: `id: ${task.id}` });
+        body.createDiv({ cls: "flowdesk-subline", text: `任务路径：${task.id}` });
       }
       if (task.covers?.length) {
-        body.createDiv({ cls: "flowdesk-subline", text: `Covers: ${formatIds(task.covers)}` });
+        body.createDiv({ cls: "flowdesk-subline", text: `覆盖：${formatIds(task.covers)}` });
       }
       if (task.blocked_by?.length) {
-        body.createDiv({ cls: "flowdesk-subline", text: `Blocked by: ${formatIds(task.blocked_by)}` });
+        body.createDiv({ cls: "flowdesk-subline", text: `被以下任务阻塞：${formatIds(task.blocked_by)}` });
       }
       if (task.covers_unresolved) {
-        body.createDiv({ cls: "flowdesk-warning", text: task.limitation ?? "Task covers unresolved." });
+        body.createDiv({ cls: "flowdesk-warning", text: task.limitation ?? "任务覆盖关系尚未解析。" });
       }
       if (task.id) {
         const openButton = row.createEl("button", {
@@ -1082,13 +1084,13 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   private renderTaskEvidence(container: HTMLElement, snapshot: ExecutionSnapshot) {
-    const section = createSection(container, "Task Evidence");
+    const section = createSection(container, "执行证据");
     const list = section.createDiv({ cls: "flowdesk-evidence-list" });
     const evidence = snapshot.spec_contract?.evidence ?? {};
 
-    evidenceRow(list, "Execution Result", evidence.execution_result);
-    evidenceRow(list, "Verification Result", evidence.verification_result);
-    evidenceRow(list, "Delivery Record", evidence.delivery_record);
+    evidenceRow(list, "执行结果", evidence.execution_result);
+    evidenceRow(list, "验证结果", evidence.verification_result);
+    evidenceRow(list, "交付记录", evidence.delivery_record);
 
     const checklist = snapshot.spec_contract?.checklist;
     if (checklist?.total) {
@@ -1101,28 +1103,28 @@ class FlowDeskDashboardView extends ItemView {
       const body = row.createDiv({ cls: "flowdesk-row-body" });
       body.createDiv({
         cls: "flowdesk-main-text",
-        text: `Checklist: ${numberValue(checklist.checked)}/${numberValue(checklist.total)} checked`,
+        text: `验收清单：已勾选 ${numberValue(checklist.checked)}/${numberValue(checklist.total)}`,
       });
       if (unchecked) {
         body.createDiv({
           cls: "flowdesk-warning",
-          text: "提醒：仍有未勾选 checklist 项。",
+          text: "提醒：仍有未勾选的验收项。",
         });
       }
     }
   }
 
   private renderNotepad(container: HTMLElement, snapshot: ExecutionSnapshot) {
-    const section = createSection(container, "Notepad");
+    const section = createSection(container, "工作区记事板");
     const notepad = snapshot.notepad ?? {};
     if (!notepad.exists) {
-      section.createDiv({ cls: "flowdesk-muted", text: "Notepad: missing" });
+      section.createDiv({ cls: "flowdesk-muted", text: "未提供记事板。" });
       return;
     }
 
     section.createDiv({
       cls: "flowdesk-main-text",
-      text: "Notepad: present, non-authoritative",
+      text: "已读取记事板（仅供参考，不作为状态事实源）",
     });
     const priority = (notepad.priority ?? "").trim();
     if (priority) {
@@ -1133,11 +1135,11 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   private renderNextActions(container: HTMLElement, snapshot: ExecutionSnapshot) {
-    const section = createSection(container, "Next Actions");
+    const section = createSection(container, "后续动作");
     const list = section.createDiv({ cls: "flowdesk-next-list" });
     const actions = snapshot.next_actions ?? [];
     if (!actions.length) {
-      list.createDiv({ cls: "flowdesk-muted", text: "No next actions." });
+      list.createDiv({ cls: "flowdesk-muted", text: "没有后续动作。" });
       return;
     }
 
@@ -1162,8 +1164,8 @@ class FlowDeskDashboardSettingTab extends PluginSettingTab {
     containerEl.createEl("h2", { text: "FlowDesk Dashboard" });
 
     new Setting(containerEl)
-      .setName("FlowDesk repo path")
-      .setDesc("本地 FlowDesk-Plugin 仓库路径；symlink 安装时通常可以留空。")
+      .setName("FlowDesk 仓库路径")
+      .setDesc("本地 FlowDesk-Plugin 仓库路径；符号链接安装时通常可以留空。")
       .addText((text) =>
         text
           .setPlaceholder("/Users/bjke/workspaces/flowdesk-plugin")
@@ -1175,8 +1177,8 @@ class FlowDeskDashboardSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Working directory")
-      .setDesc("传给 --working-directory，用于读取 .flowdesk/notepad.md；留空时使用 FlowDesk repo path。")
+      .setName("工作目录")
+      .setDesc("传给 --working-directory，用于读取 .flowdesk/notepad.md；留空时使用 FlowDesk 仓库路径。")
       .addText((text) =>
         text
           .setPlaceholder("/Users/bjke/workspaces/flowdesk-plugin")
@@ -1188,7 +1190,7 @@ class FlowDeskDashboardSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Schema")
+      .setName("Schema 名称")
       .setDesc("传给 --schema，默认 sdd-poc。")
       .addText((text) =>
         text
@@ -1201,7 +1203,7 @@ class FlowDeskDashboardSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("TaskNotes API URL")
+      .setName("TaskNotes API 地址")
       .setDesc("可选；留空时使用 FlowDesk CLI 默认值。")
       .addText((text) =>
         text
@@ -1236,7 +1238,7 @@ function diagnosticRow(container: HTMLElement, label: string, value: string) {
 
 function contractRow(container: HTMLElement, label: string, ids?: string[]) {
   const row = container.createDiv();
-  row.createSpan({ cls: "flowdesk-summary-label", text: `${label}: ` });
+  row.createSpan({ cls: "flowdesk-summary-label", text: `${label}：` });
   row.createSpan({ text: formatIds(ids) });
 }
 
@@ -1249,7 +1251,7 @@ function evidenceRow(container: HTMLElement, label: string, item?: EvidenceItem)
   const items = item?.items ?? [];
   body.createDiv({
     cls: "flowdesk-main-text",
-    text: `${label}: ${exists ? `present (${items.length} items)` : "missing"}`,
+    text: `${label}：${exists ? `已提供（${items.length} 项）` : "缺失"}`,
   });
   for (const detail of items.slice(0, 2)) {
     body.createDiv({ cls: "flowdesk-subline", text: `- ${detail}` });
@@ -1277,6 +1279,19 @@ function normalizeStatus(status: unknown): string {
   return "unknown";
 }
 
+function formatStatusLabel(status: unknown): string {
+  const value = normalizeStatus(status);
+  const labels: Record<string, string> = {
+    done: "已完成",
+    running: "进行中",
+    ready: "可开始",
+    blocked: "已阻塞",
+    error: "异常",
+    unknown: "未知",
+  };
+  return labels[value] ?? String(status || "未知");
+}
+
 function statusSymbol(status: string): string {
   if (status === "done") return "✓";
   if (status === "running") return "◉";
@@ -1287,11 +1302,11 @@ function statusSymbol(status: string): string {
 
 function formatIds(value: unknown): string {
   if (!value) {
-    return "none";
+    return "无";
   }
   if (Array.isArray(value)) {
     if (!value.length) {
-      return "none";
+      return "无";
     }
     return value.map((item) => formatId(item)).join(", ");
   }

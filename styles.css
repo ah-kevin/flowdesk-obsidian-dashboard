@@ -551,15 +551,6 @@
   margin-top: 6px;
 }
 
-.flowdesk-refreshing {
-  background: var(--flowdesk-warning-bg);
-  border: 1px solid var(--flowdesk-panel-border);
-  border-radius: 6px;
-  color: var(--text-muted);
-  margin-bottom: 12px;
-  padding: 8px;
-}
-
 .flowdesk-context-pause {
   background: var(--background-secondary);
   border: 1px solid var(--flowdesk-running);
