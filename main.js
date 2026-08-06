@@ -547,7 +547,7 @@ function createChildRow(child) {
   var _a, _b;
   const meta = [];
   if (child.blockedBy.length) {
-    meta.push(`\u963B\u585E\u4E8E ${child.blockedBy.join("\u3001")}`);
+    meta.push(`\u963B\u585E\u4E8E ${child.blockedBy.map(formatTaskReference).join("\u3001")}`);
   }
   meta.push(formatChildEvidenceIssues(child.evidenceHealth));
   return {
@@ -558,6 +558,10 @@ function createChildRow(child) {
     summary: (_b = (_a = child.primaryDiagnostic) == null ? void 0 : _a.reason) != null ? _b : formatRollupState(child.rollupState),
     meta: meta.join(" \xB7 ")
   };
+}
+function formatTaskReference(taskId) {
+  const filename = taskId.split("/").pop() || taskId;
+  return filename.endsWith(".md") ? filename.slice(0, -3) : filename;
 }
 function createContractSummary(model) {
   const checked = model.contract.acceptance.filter(

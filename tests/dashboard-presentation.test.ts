@@ -181,7 +181,7 @@ test("child 只有真实阻塞关系存在时才在紧凑行显示", () => {
 
   const child = createDashboardPresentation(model).children[0];
 
-  assert.equal(child.meta, "阻塞于 Tasks/Dependency.md · 验证无效");
+  assert.equal(child.meta, "阻塞于 Dependency · 验证无效");
 });
 
 test("合同摘要默认展开，完整详情默认关闭，同 task 刷新保持选择", () => {

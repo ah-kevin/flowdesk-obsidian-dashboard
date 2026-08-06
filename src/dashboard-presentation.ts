@@ -242,7 +242,7 @@ function createChildRow(
 ): DashboardChildRowPresentation {
   const meta = [];
   if (child.blockedBy.length) {
-    meta.push(`阻塞于 ${child.blockedBy.join("、")}`);
+    meta.push(`阻塞于 ${child.blockedBy.map(formatTaskReference).join("、")}`);
   }
   meta.push(formatChildEvidenceIssues(child.evidenceHealth));
   return {
@@ -253,6 +253,11 @@ function createChildRow(
     summary: child.primaryDiagnostic?.reason ?? formatRollupState(child.rollupState),
     meta: meta.join(" · "),
   };
+}
+
+function formatTaskReference(taskId: string): string {
+  const filename = taskId.split("/").pop() || taskId;
+  return filename.endsWith(".md") ? filename.slice(0, -3) : filename;
 }
 
 function createContractSummary(
