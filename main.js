@@ -1127,9 +1127,9 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     const toolbar = container.createDiv({ cls: "flowdesk-dashboard-toolbar" });
     const copy = toolbar.createEl("button", {
       cls: "flowdesk-toolbar-button",
+      text: "\u590D\u5236 CLI",
       attr: { "aria-label": "\u590D\u5236 CLI", title: "\u590D\u5236 CLI" }
     });
-    (0, import_obsidian.setIcon)(copy, "copy");
     copy.addEventListener("click", async () => {
       try {
         await this.plugin.copyDashboardCommand(taskPath);
@@ -1140,12 +1140,12 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     });
     const refresh = toolbar.createEl("button", {
       cls: "flowdesk-toolbar-button",
+      text: this.loading ? "\u5237\u65B0\u4E2D" : "\u5237\u65B0",
       attr: {
         "aria-label": this.loading ? "\u5237\u65B0\u4E2D" : "\u5237\u65B0",
         title: this.loading ? "\u5237\u65B0\u4E2D" : "\u5237\u65B0"
       }
     });
-    (0, import_obsidian.setIcon)(refresh, "refresh-cw");
     refresh.disabled = this.loading;
     refresh.addEventListener("click", () => void this.refreshCurrentTask());
   }
