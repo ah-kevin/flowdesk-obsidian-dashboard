@@ -34,6 +34,7 @@ import {
 } from "./snapshot-invocation";
 import {
   createDashboardPresentation,
+  formatTaskShellStatus,
   isActivationKey,
   resolveDisclosureState,
   type DashboardChildRowPresentation,
@@ -407,7 +408,11 @@ class FlowDeskDashboardView extends ItemView {
     const displayState = this.displayState?.taskPath === taskPath ? this.displayState : null;
     const snapshot = displayState?.snapshot;
     if (!snapshot) {
-      this.renderLoadingHeader(container, taskPath);
+      this.renderLoadingHeader(
+        container,
+        taskPath,
+        formatTaskShellStatus(this.loading, this.error)
+      );
     }
     if (this.loading && !snapshot) {
       container.createDiv({ cls: "flowdesk-empty", text: "正在读取当前任务 snapshot..." });
@@ -427,7 +432,7 @@ class FlowDeskDashboardView extends ItemView {
       staleReason: displayState?.staleReason,
     });
     if (model.errorCode) {
-      this.renderLoadingHeader(container, taskPath);
+      this.renderLoadingHeader(container, taskPath, "snapshot 不兼容");
       container.createDiv({
         cls: "flowdesk-error",
         text:
@@ -447,11 +452,15 @@ class FlowDeskDashboardView extends ItemView {
     this.renderDetails(container, model, presentation.contract);
   }
 
-  private renderLoadingHeader(container: HTMLElement, taskPath: string) {
+  private renderLoadingHeader(
+    container: HTMLElement,
+    taskPath: string,
+    status: string
+  ) {
     const header = container.createDiv({ cls: "flowdesk-task-header" });
     const title = header.createDiv({ cls: "flowdesk-task-heading" });
     title.createDiv({ cls: "flowdesk-task-title", text: taskTitleFromPath(taskPath) });
-    title.createDiv({ cls: "flowdesk-task-loading", text: "正在建立可信观察…" });
+    title.createDiv({ cls: "flowdesk-task-loading", text: status });
     this.renderToolbar(header, taskPath);
   }
 

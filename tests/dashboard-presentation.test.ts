@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   createDashboardPresentation,
+  formatTaskShellStatus,
   isActivationKey,
   resolveDisclosureState,
 } from "../src/dashboard-presentation.ts";
@@ -238,4 +239,10 @@ test("整行导航只响应 Enter 与 Space 键", () => {
   assert.equal(isActivationKey("Spacebar"), true);
   assert.equal(isActivationKey("Tab"), false);
   assert.equal(isActivationKey("Escape"), false);
+});
+
+test("任务壳层标题区分加载、失败和待读取", () => {
+  assert.equal(formatTaskShellStatus(true, ""), "正在建立可信观察…");
+  assert.equal(formatTaskShellStatus(false, "API 不可用"), "读取失败");
+  assert.equal(formatTaskShellStatus(false, ""), "尚未读取 snapshot");
 });

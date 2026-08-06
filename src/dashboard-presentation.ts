@@ -84,6 +84,14 @@ export function isActivationKey(key: string): boolean {
   return key === "Enter" || key === " " || key === "Spacebar";
 }
 
+export function formatTaskShellStatus(
+  loading: boolean,
+  error: string
+): string {
+  if (error) return "读取失败";
+  return loading ? "正在建立可信观察…" : "尚未读取 snapshot";
+}
+
 export function createDashboardPresentation(
   model: DashboardViewModel
 ): DashboardPresentation {

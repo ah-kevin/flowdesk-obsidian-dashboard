@@ -417,6 +417,10 @@ function resolveDisclosureState(previous, taskChanged) {
 function isActivationKey(key) {
   return key === "Enter" || key === " " || key === "Spacebar";
 }
+function formatTaskShellStatus(loading, error) {
+  if (error) return "\u8BFB\u53D6\u5931\u8D25";
+  return loading ? "\u6B63\u5728\u5EFA\u7ACB\u53EF\u4FE1\u89C2\u5BDF\u2026" : "\u5C1A\u672A\u8BFB\u53D6 snapshot";
+}
 function createDashboardPresentation(model) {
   const kind = model.currentTask.hasChildren ? "parent" : "leaf";
   return {
@@ -939,7 +943,11 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     const displayState = ((_a = this.displayState) == null ? void 0 : _a.taskPath) === taskPath ? this.displayState : null;
     const snapshot = displayState == null ? void 0 : displayState.snapshot;
     if (!snapshot) {
-      this.renderLoadingHeader(container, taskPath);
+      this.renderLoadingHeader(
+        container,
+        taskPath,
+        formatTaskShellStatus(this.loading, this.error)
+      );
     }
     if (this.loading && !snapshot) {
       container.createDiv({ cls: "flowdesk-empty", text: "\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u4EFB\u52A1 snapshot..." });
@@ -959,7 +967,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       staleReason: displayState == null ? void 0 : displayState.staleReason
     });
     if (model.errorCode) {
-      this.renderLoadingHeader(container, taskPath);
+      this.renderLoadingHeader(container, taskPath, "snapshot \u4E0D\u517C\u5BB9");
       container.createDiv({
         cls: "flowdesk-error",
         text: model.errorCode === "unsupported_snapshot_model" ? "Snapshot model \u4E0D\u53D7\u652F\u6301\uFF1A\u9700\u8981 task-centric\u3002" : "Snapshot schema \u4E0D\u53D7\u652F\u6301\uFF1A\u9700\u8981 3\u3002"
@@ -975,11 +983,11 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     }
     this.renderDetails(container, model, presentation.contract);
   }
-  renderLoadingHeader(container, taskPath) {
+  renderLoadingHeader(container, taskPath, status) {
     const header = container.createDiv({ cls: "flowdesk-task-header" });
     const title = header.createDiv({ cls: "flowdesk-task-heading" });
     title.createDiv({ cls: "flowdesk-task-title", text: taskTitleFromPath(taskPath) });
-    title.createDiv({ cls: "flowdesk-task-loading", text: "\u6B63\u5728\u5EFA\u7ACB\u53EF\u4FE1\u89C2\u5BDF\u2026" });
+    title.createDiv({ cls: "flowdesk-task-loading", text: status });
     this.renderToolbar(header, taskPath);
   }
   renderHeader(container, model, presentation) {
