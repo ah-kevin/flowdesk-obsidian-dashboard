@@ -31,6 +31,9 @@ export interface DashboardTrustPresentation {
   tone: PresentationTone;
   label: string;
   contractLabel: string;
+  contractTone: PresentationTone;
+  sourceLabel: string;
+  tooltip: string;
   meta: string;
   detail: string;
 }
@@ -53,12 +56,28 @@ export interface DashboardChildRowPresentation {
   meta: string;
 }
 
+export interface DashboardDiagnosticPresentation {
+  title: string;
+  sourceLabel: string;
+  actual: string;
+  expected: string;
+  remediation: string;
+  machine: {
+    code: string;
+    taskId: string;
+    path: string;
+    location: string;
+  };
+  diagnostic: SnapshotDiagnostic;
+}
+
 export interface DashboardContractPresentation {
   goal: string;
   coverage: string;
   acceptance: string;
   evidence: string;
   diagnostics: string;
+  metrics: Array<{ label: string; value: string }>;
 }
 
 export interface DashboardPresentation {
@@ -68,6 +87,7 @@ export interface DashboardPresentation {
   primaryStatus: DashboardPrimaryStatusPresentation;
   children: DashboardChildRowPresentation[];
   contract: DashboardContractPresentation;
+  diagnostics: DashboardDiagnosticPresentation[];
 }
 
 export function resolveDisclosureState(
@@ -112,6 +132,9 @@ export function createDashboardPresentation(
     primaryStatus: createPrimaryStatus(model),
     children: kind === "parent" ? model.children.map(createChildRow) : [],
     contract: createContractSummary(model),
+    diagnostics: model.diagnostics.map((diagnostic) =>
+      createDiagnosticPresentation(diagnostic, model.currentTask.id)
+    ),
   };
 }
 
@@ -151,30 +174,48 @@ function createTrustSummary(
       : model.contract.semanticStatus === "invalid"
         ? "合同存在问题"
         : "合同状态未知";
+  const contractTone: PresentationTone =
+    model.contract.semanticStatus === "valid"
+      ? "healthy"
+      : model.contract.semanticStatus === "invalid"
+        ? "error"
+        : "muted";
   if (model.observation.isStale) {
+    const detail = model.observation.staleReason || "snapshot 已标记为旧数据";
     return {
       tone: "warning",
       label: "显示上次成功结果",
       contractLabel,
+      contractTone,
+      sourceLabel: model.schemaLabel,
+      tooltip: `读取于 ${model.observation.loadedAt} · ${detail}`,
       meta: `${model.schemaLabel} · 读取于 ${model.observation.loadedAt}`,
-      detail: model.observation.staleReason || "snapshot 已标记为旧数据",
+      detail,
     };
   }
   if (!model.observation.isTrustworthy) {
+    const detail = "无法确认 snapshot 是否完整对应当前任务";
     return {
       tone: "error",
       label: "观察不可信",
       contractLabel,
+      contractTone,
+      sourceLabel: model.schemaLabel,
+      tooltip: `${model.observation.generatedAt} · ${detail}`,
       meta: `${model.schemaLabel} · ${model.observation.generatedAt}`,
-      detail: "无法确认 snapshot 是否完整对应当前任务",
+      detail,
     };
   }
+  const detail = "来源匹配，已读取当前任务、父任务与直接子任务";
   return {
     tone: "healthy",
     label: "观察可信",
     contractLabel,
+    contractTone,
+    sourceLabel: model.schemaLabel,
+    tooltip: `${model.observation.generatedAt} · ${detail}`,
     meta: `${model.schemaLabel} · ${model.observation.generatedAt}`,
-    detail: "来源匹配，已读取当前任务、父任务与直接子任务",
+    detail,
   };
 }
 
@@ -229,10 +270,35 @@ function createDiagnosticStatus(
 ): DashboardPrimaryStatusPresentation {
   return {
     tone: diagnostic.severity === "warning" ? "warning" : "error",
-    title: diagnosticTitle(diagnostic.path),
+    title: diagnosticActionTitle(diagnostic),
     reason: diagnostic.reason,
     remediation: diagnostic.remediation,
     location: diagnosticLocation(diagnostic),
+    diagnostic,
+  };
+}
+
+export function createDiagnosticPresentation(
+  diagnostic: SnapshotDiagnostic,
+  currentTaskId: string
+): DashboardDiagnosticPresentation {
+  const location = diagnosticLocation(diagnostic);
+  const belongsToCurrentTask = diagnostic.taskId === currentTaskId;
+  const taskPrefix = belongsToCurrentTask
+    ? ""
+    : `${formatTaskReference(diagnostic.taskId)} · `;
+  return {
+    title: diagnosticActionTitle(diagnostic),
+    sourceLabel: `${taskPrefix}${location}`,
+    actual: diagnostic.reason,
+    expected: diagnostic.expected,
+    remediation: diagnostic.remediation,
+    machine: {
+      code: diagnostic.code,
+      taskId: diagnostic.taskId,
+      path: diagnostic.path,
+      location,
+    },
     diagnostic,
   };
 }
@@ -266,26 +332,46 @@ function createContractSummary(
   const checked = model.contract.acceptance.filter(
     (item) => item.checked === true
   ).length;
+  const validEvidence = Object.values(model.evidence).filter(
+    (health) => health === "valid"
+  ).length;
   return {
     goal: model.contract.goal,
     coverage: `REQ ${model.contract.requirements.length} · SCN ${model.contract.scenarios.length}`,
     acceptance: `验收 ${checked}/${model.contract.acceptance.length}`,
     evidence: formatEvidence(model.evidence),
     diagnostics: `${model.diagnostics.length} 个诊断`,
+    metrics: [
+      {
+        label: "REQ / SCN",
+        value: `${model.contract.requirements.length} / ${model.contract.scenarios.length}`,
+      },
+      {
+        label: "验收",
+        value: `${checked} / ${model.contract.acceptance.length}`,
+      },
+      { label: "证据有效", value: `${validEvidence} / 3` },
+      { label: "诊断", value: String(model.diagnostics.length) },
+    ],
   };
 }
 
-function diagnosticTitle(path: string): string {
+function diagnosticActionTitle(diagnostic: SnapshotDiagnostic): string {
+  if (diagnostic.code === "task_contract_count_invalid") {
+    return /找到\s*0\s*个/.test(diagnostic.reason)
+      ? "缺少 Task Contract v3"
+      : "Task Contract v3 数量不正确";
+  }
   const labels: Record<string, string> = {
     "contract.goal": "任务目标需要修复",
     "evidence.execution": "执行结果需要修复",
     "evidence.verification": "验证结果需要修复",
     "evidence.delivery": "交付记录需要修复",
   };
-  if (labels[path]) return labels[path];
-  if (path.startsWith("contract.")) return "任务合同需要修复";
-  if (path.startsWith("evidence.")) return "执行证据需要修复";
-  return "当前任务需要处理一项诊断";
+  if (labels[diagnostic.path]) return labels[diagnostic.path];
+  if (diagnostic.path.startsWith("contract.")) return "任务合同需要修复";
+  if (diagnostic.path.startsWith("evidence.")) return "执行证据需要修复";
+  return "当前任务存在结构化诊断";
 }
 
 function diagnosticLocation(diagnostic: SnapshotDiagnostic): string {

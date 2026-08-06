@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createDiagnosticPresentation,
   createDashboardPresentation,
   formatTaskShellStatus,
   isActivationKey,
@@ -140,6 +141,59 @@ test("诊断默认摘要只给出可行动信息，机器字段留给技术详�
   assert.equal(presentation.primaryStatus.diagnostic?.code, "task_goal_invalid");
 });
 
+test("合同块缺失诊断直接说明问题并生成紧凑来源", () => {
+  const snapshot = createSnapshot();
+  snapshot.contract.semantic_status = "invalid";
+  snapshot.diagnostics = [
+    {
+      code: "task_contract_count_invalid",
+      severity: "error",
+      task_id: taskId,
+      path: "contract",
+      source: { section: "Task Contract v3", line_start: 1 },
+      reason: { actual: "找到 0 个 ## Task Contract v3", expected: "唯一合同块" },
+      remediation: { summary: "补充唯一的 v3 task 合同块" },
+    },
+  ];
+
+  const presentation = createDashboardPresentation(
+    createDashboardViewModel(snapshot, { expectedTaskPath: taskId })
+  );
+
+  assert.equal(presentation.primaryStatus.title, "缺少 Task Contract v3");
+  assert.equal(
+    presentation.diagnostics[0].sourceLabel,
+    "Task Contract v3 · 第 1 行"
+  );
+  assert.equal(
+    presentation.diagnostics[0].actual,
+    "找到 0 个 ## Task Contract v3"
+  );
+  assert.equal(presentation.diagnostics[0].expected, "唯一合同块");
+  assert.equal(
+    presentation.diagnostics[0].remediation,
+    "补充唯一的 v3 task 合同块"
+  );
+});
+
+test("跨 task 诊断在来源标题中加入任务名", () => {
+  const diagnostic = {
+    code: "verification_missing",
+    severity: "error",
+    taskId: "Tasks/Child Review.md",
+    path: "evidence.verification",
+    source: { section: "Verification Result", line_start: 41 },
+    reason: "缺少验证证据",
+    expected: "至少一条验证结果",
+    remediation: "补充验证命令与结果",
+  };
+
+  assert.equal(
+    createDiagnosticPresentation(diagnostic, taskId).sourceLabel,
+    "Child Review · Verification Result · 第 41 行"
+  );
+});
+
 test("Parent 只生成 direct child 紧凑行，Leaf 不生成空 child 区域", () => {
   const parent = createDashboardPresentation(createModel());
 
@@ -209,13 +263,14 @@ test("健康摘要同时证明观察、来源和检查范围", () => {
     "已读取当前任务，未发现结构化诊断"
   );
   assert.equal(presentation.primaryStatus.reason, "已检查任务合同与执行证据");
-  assert.deepEqual(presentation.contract, {
-    goal: "交付可验证的 Dashboard",
-    coverage: "REQ 2 · SCN 1",
-    acceptance: "验收 1/2",
-    evidence: "执行有效 · 验证缺失 · 交付有效",
-    diagnostics: "0 个诊断",
-  });
+  assert.equal(presentation.contract.goal, "交付可验证的 Dashboard");
+  assert.deepEqual(presentation.contract.metrics, [
+    { label: "REQ / SCN", value: "2 / 1" },
+    { label: "验收", value: "1 / 2" },
+    { label: "证据有效", value: "2 / 3" },
+    { label: "诊断", value: "0" },
+  ]);
+  assert.equal(presentation.trust.sourceLabel, "snapshot v3 · task-centric");
 });
 
 test("合同异常但 diagnostics 为空时不显示健康", () => {
@@ -231,6 +286,8 @@ test("合同异常但 diagnostics 为空时不显示健康", () => {
     presentation.primaryStatus.reason,
     "producer 将合同标记为 invalid，但没有返回结构化诊断"
   );
+  assert.equal(presentation.trust.tone, "healthy");
+  assert.equal(presentation.trust.contractTone, "error");
 });
 
 test("整行导航只响应 Enter 与 Space 键", () => {
