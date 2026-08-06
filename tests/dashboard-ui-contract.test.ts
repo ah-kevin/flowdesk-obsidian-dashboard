@@ -8,6 +8,8 @@ const styles = readFileSync(path.join(process.cwd(), "styles.css"), "utf8");
 
 test("任务标题独占一行，元信息与工具栏使用独立容器", () => {
   assert.match(source, /flowdesk-task-title/);
+  assert.match(source, /flowdesk-task-path/);
+  assert.match(source, /flowdesk-task-read-meta/);
   assert.match(source, /flowdesk-task-meta-row/);
   assert.match(source, /flowdesk-task-meta-actions/);
 });
@@ -59,4 +61,23 @@ test("极窄侧栏允许工具组换行但不改变标题宽度", () => {
 test("合同摘要在扁平布局中仍保留明确展开指示", () => {
   assert.match(styles, /\.flowdesk-contract-summary > summary::before/);
   assert.match(styles, /\.flowdesk-contract-summary\[open\] > summary::before/);
+});
+
+test("恢复 0.1.2 的可读字号、任务卡片与可信度条边界", () => {
+  assert.match(
+    styles,
+    /\.flowdesk-dashboard\s*\{[^}]*font-size:\s*13px;[^}]*line-height:\s*1\.45;/s
+  );
+  assert.match(
+    styles,
+    /\.flowdesk-task-header\s*\{[^}]*border:\s*1px solid[^}]*border-radius:\s*8px;/s
+  );
+  assert.match(
+    styles,
+    /\.flowdesk-trust-summary\s*\{[^}]*border:\s*1px solid[^}]*border-radius:\s*7px;/s
+  );
+  assert.match(
+    styles,
+    /\.flowdesk-diagnostic-row,[\s\S]*?font-size:\s*12px;/
+  );
 });

@@ -477,8 +477,9 @@ class FlowDeskDashboardView extends ItemView {
       text: taskTitleFromPath(taskPath),
     });
     title.addEventListener("click", () => void this.openTask(taskPath));
+    heading.createDiv({ cls: "flowdesk-task-path", text: taskPath });
     const metaRow = header.createDiv({ cls: "flowdesk-task-meta-row" });
-    metaRow.createDiv({ cls: "flowdesk-task-loading", text: status });
+    metaRow.createDiv({ cls: "flowdesk-task-read-meta", text: status });
     const actions = metaRow.createDiv({ cls: "flowdesk-task-meta-actions" });
     this.renderToolbar(actions, taskPath);
   }
@@ -504,6 +505,7 @@ class FlowDeskDashboardView extends ItemView {
       text: presentation.header.title,
     });
     title.addEventListener("click", () => void this.openTask(model.currentTask.id));
+    heading.createDiv({ cls: "flowdesk-task-path", text: model.currentTask.id });
     const metaRow = header.createDiv({ cls: "flowdesk-task-meta-row" });
     const badges = metaRow.createDiv({ cls: "flowdesk-task-badges" });
     badges.createSpan({
@@ -515,6 +517,12 @@ class FlowDeskDashboardView extends ItemView {
     if (model.currentTask.isBlocked) {
       badges.createSpan({ cls: "flowdesk-state-pill is-error", text: "存在阻塞" });
     }
+    metaRow.createDiv({
+      cls: "flowdesk-task-read-meta",
+      text: this.loading
+        ? `正在刷新 · 上次读取 ${model.observation.loadedAt}`
+        : `本地读取 ${model.observation.loadedAt}`,
+    });
     const actions = metaRow.createDiv({ cls: "flowdesk-task-meta-actions" });
     this.renderToolbar(actions, model.currentTask.id);
   }

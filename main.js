@@ -1080,8 +1080,9 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       text: taskTitleFromPath(taskPath)
     });
     title.addEventListener("click", () => void this.openTask(taskPath));
+    heading.createDiv({ cls: "flowdesk-task-path", text: taskPath });
     const metaRow = header.createDiv({ cls: "flowdesk-task-meta-row" });
-    metaRow.createDiv({ cls: "flowdesk-task-loading", text: status });
+    metaRow.createDiv({ cls: "flowdesk-task-read-meta", text: status });
     const actions = metaRow.createDiv({ cls: "flowdesk-task-meta-actions" });
     this.renderToolbar(actions, taskPath);
   }
@@ -1103,6 +1104,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       text: presentation.header.title
     });
     title.addEventListener("click", () => void this.openTask(model.currentTask.id));
+    heading.createDiv({ cls: "flowdesk-task-path", text: model.currentTask.id });
     const metaRow = header.createDiv({ cls: "flowdesk-task-meta-row" });
     const badges = metaRow.createDiv({ cls: "flowdesk-task-badges" });
     badges.createSpan({
@@ -1114,6 +1116,10 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     if (model.currentTask.isBlocked) {
       badges.createSpan({ cls: "flowdesk-state-pill is-error", text: "\u5B58\u5728\u963B\u585E" });
     }
+    metaRow.createDiv({
+      cls: "flowdesk-task-read-meta",
+      text: this.loading ? `\u6B63\u5728\u5237\u65B0 \xB7 \u4E0A\u6B21\u8BFB\u53D6 ${model.observation.loadedAt}` : `\u672C\u5730\u8BFB\u53D6 ${model.observation.loadedAt}`
+    });
     const actions = metaRow.createDiv({ cls: "flowdesk-task-meta-actions" });
     this.renderToolbar(actions, model.currentTask.id);
   }
