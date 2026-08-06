@@ -18,6 +18,7 @@ import {
   collectObservedTaskPaths,
   isCurrentSnapshotRequest,
   isTaskPath,
+  registerInitialDashboardSync,
   resolveRefreshFailureDisplay,
   resolveDetailsOpen,
   resolveDashboardContext,
@@ -111,9 +112,6 @@ export default class FlowDeskDashboardPlugin extends Plugin {
         void this.getDashboardView()?.syncToActiveFile(file);
       })
     );
-    this.app.workspace.onLayoutReady(() => {
-      void this.getDashboardView()?.syncToActiveFile();
-    });
     this.registerEvent(
       this.app.vault.on("modify", (file) => {
         const view = this.getDashboardView();
@@ -238,6 +236,7 @@ class FlowDeskDashboardView extends ItemView {
   private queuedRequest: SnapshotRequestIdentity | null = null;
   private refreshPromise: Promise<void> | null = null;
   private refreshScheduler: TrailingRefreshScheduler;
+  private cancelInitialSync: (() => void) | null = null;
   private detailsOpen = false;
   private detailsOpenInitialized = false;
 
@@ -261,10 +260,17 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   async onOpen() {
-    await this.syncToActiveFile();
+    this.cancelInitialSync = registerInitialDashboardSync(
+      (callback) => this.app.workspace.onLayoutReady(callback),
+      () => {
+        void this.syncToActiveFile();
+      }
+    );
   }
 
   async onClose() {
+    this.cancelInitialSync?.();
+    this.cancelInitialSync = null;
     this.refreshScheduler.cancel();
   }
 

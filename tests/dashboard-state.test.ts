@@ -4,12 +4,34 @@ import test from "node:test";
 import {
   collectObservedTaskPaths,
   isCurrentSnapshotRequest,
+  registerInitialDashboardSync,
   resolveRefreshFailureDisplay,
   resolveDetailsOpen,
   resolveDashboardContext,
   TrailingRefreshScheduler,
   validateSnapshotEnvelope,
 } from "../src/dashboard-state.ts";
+
+test("视图在 layout ready 后执行首次同步，关闭后不再执行", () => {
+  let ready: (() => void) | null = null;
+  let syncCount = 0;
+  const cancel = registerInitialDashboardSync(
+    (callback) => {
+      ready = callback;
+    },
+    () => {
+      syncCount += 1;
+    }
+  );
+
+  assert.equal(syncCount, 0);
+  assert.ok(ready);
+  (ready as () => void)();
+  assert.equal(syncCount, 1);
+  cancel();
+  (ready as () => void)();
+  assert.equal(syncCount, 1);
+});
 
 test("活动文件解析为任务、非任务或空上下文", () => {
   assert.deepEqual(resolveDashboardContext("Tasks/A.md", ""), {

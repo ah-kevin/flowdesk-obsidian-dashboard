@@ -30,6 +30,21 @@ interface ObservedTaskSnapshot {
 type ScheduleTimer = (callback: () => void, delayMs: number) => unknown;
 type CancelTimer = (handle: unknown) => void;
 
+export function registerInitialDashboardSync(
+  registerLayoutReady: (callback: () => void) => void,
+  sync: () => void
+): () => void {
+  let active = true;
+  registerLayoutReady(() => {
+    if (active) {
+      sync();
+    }
+  });
+  return () => {
+    active = false;
+  };
+}
+
 export function isTaskPath(filePath: string): boolean {
   return (
     filePath.endsWith(".md") &&
