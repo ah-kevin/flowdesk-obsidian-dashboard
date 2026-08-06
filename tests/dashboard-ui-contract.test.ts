@@ -78,14 +78,22 @@ test("侧栏工具按钮与元信息标签使用协调尺寸", () => {
   );
 });
 
-test("标题全宽且 child 使用分隔线列表", () => {
+test("标题全宽且 child 使用统一背景容器与内部行分隔", () => {
   assert.match(
     styles,
     /\.flowdesk-task-header\s*\{[^}]*display:\s*block;/s
   );
   assert.match(
     styles,
+    /\.flowdesk-child-section\s*\{[^}]*border:\s*1px solid var\(--fd-border\);[^}]*border-radius:\s*8px;[^}]*background:\s*var\(--background-primary-alt\);/s
+  );
+  assert.match(
+    styles,
     /\.flowdesk-child-row\s*\{[^}]*border-bottom:/s
+  );
+  assert.match(
+    styles,
+    /\.flowdesk-child-row:last-child\s*\{[^}]*border-bottom:\s*0;/s
   );
 });
 

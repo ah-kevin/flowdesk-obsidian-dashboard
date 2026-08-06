@@ -386,7 +386,11 @@
 }
 
 .flowdesk-child-section {
-  padding-top: 2px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--fd-border);
+  border-radius: 8px;
+  background: var(--background-primary-alt);
 }
 
 .flowdesk-section-heading {
@@ -394,11 +398,10 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  padding: 0 1px;
+  padding: 9px 10px;
 }
 
 .flowdesk-child-list {
-  margin-top: 7px;
   border-top: 1px solid var(--fd-border);
 }
 
@@ -408,8 +411,13 @@
   gap: 8px;
   align-items: start;
   border-bottom: 1px solid var(--fd-border);
-  padding: 9px 2px;
+  background: transparent;
+  padding: 10px;
   cursor: pointer;
+}
+
+.flowdesk-child-row:last-child {
+  border-bottom: 0;
 }
 
 .flowdesk-child-row:hover {

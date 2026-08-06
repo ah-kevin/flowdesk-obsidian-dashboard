@@ -759,6 +759,11 @@ function createDiagnosticPresentation(diagnostic, currentTaskId) {
 function createChildRow(child) {
   var _a, _b;
   const meta = [];
+  const rawStatus = formatTaskStatus(child.status);
+  const status = childStatusPresentation(child);
+  if (!child.trustedDone && ["done", "complete", "completed"].includes(normalizeToken(child.status))) {
+    meta.push(`TaskNotes ${rawStatus}`);
+  }
   if (child.blockedBy.length) {
     meta.push(`\u963B\u585E\u4E8E ${child.blockedBy.map(formatTaskReference).join("\u3001")}`);
   }
@@ -766,10 +771,27 @@ function createChildRow(child) {
   return {
     id: child.id,
     title: child.title,
-    status: formatTaskStatus(child.status),
-    tone: taskStatusTone(child.status, child.isBlocked),
+    status: status.label,
+    tone: status.tone,
     summary: (_b = (_a = child.primaryDiagnostic) == null ? void 0 : _a.reason) != null ? _b : formatRollupState(child.rollupState),
     meta: meta.join(" \xB7 ")
+  };
+}
+function childStatusPresentation(child) {
+  if (child.isBlocked) return { label: "\u5DF2\u963B\u585E", tone: "error" };
+  if (child.trustedDone) return { label: "\u53EF\u4FE1\u5B8C\u6210", tone: "healthy" };
+  if (child.primaryDiagnostic) {
+    return {
+      label: "\u9700\u5904\u7406",
+      tone: child.primaryDiagnostic.severity === "warning" ? "warning" : "error"
+    };
+  }
+  if (["done", "complete", "completed"].includes(normalizeToken(child.status))) {
+    return { label: "\u5F85\u9A8C\u6536", tone: "warning" };
+  }
+  return {
+    label: formatTaskStatus(child.status),
+    tone: taskStatusTone(child.status)
   };
 }
 function formatTaskReference(taskId) {
