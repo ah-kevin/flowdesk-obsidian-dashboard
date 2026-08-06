@@ -450,6 +450,19 @@ export function resolveDiagnosticTarget(
   };
 }
 
+export function resolveDiagnosticNavigation(
+  taskPath: string,
+  source?: SnapshotSource
+): {
+  canOpen: boolean;
+  target: ReturnType<typeof resolveDiagnosticTarget>;
+} {
+  return {
+    canOpen: Boolean(taskPath.trim()),
+    target: resolveDiagnosticTarget(taskPath, source),
+  };
+}
+
 function createChildViewModel(
   child: SnapshotTaskSummary
 ): DashboardChildViewModel {

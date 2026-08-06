@@ -15,6 +15,8 @@ export interface RefreshDisplayState<TSnapshot> {
   staleReason: string;
 }
 
+export type RefreshFailureKind = "recoverable" | "invalid-envelope";
+
 interface SnapshotEnvelope {
   snapshot_schema_version?: unknown;
   snapshot_model?: unknown;
@@ -121,11 +123,37 @@ export function validateSnapshotEnvelope(
 export function resolveRefreshFailureDisplay<TSnapshot>(
   displayState: RefreshDisplayState<TSnapshot> | null,
   requestedTaskPath: string,
-  staleReason: string
+  staleReason: string,
+  failureKind: RefreshFailureKind = "recoverable"
 ): RefreshDisplayState<TSnapshot> | null {
+  if (failureKind === "invalid-envelope") {
+    return null;
+  }
   return displayState?.taskPath === requestedTaskPath
     ? { ...displayState, staleReason }
     : null;
+}
+
+export function resolveSnapshotEnvelopeFailure<TSnapshot>(
+  displayState: RefreshDisplayState<TSnapshot> | null,
+  requestedTaskPath: string,
+  snapshot: unknown
+): {
+  error: string | null;
+  displayState: RefreshDisplayState<TSnapshot> | null;
+} {
+  const error = validateSnapshotEnvelope(snapshot, requestedTaskPath);
+  return {
+    error,
+    displayState: error
+      ? resolveRefreshFailureDisplay(
+          displayState,
+          requestedTaskPath,
+          error,
+          "invalid-envelope"
+        )
+      : displayState,
+  };
 }
 
 function formatEnvelopeValue(value: unknown): string {

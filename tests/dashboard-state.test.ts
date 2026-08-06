@@ -5,6 +5,7 @@ import {
   collectObservedTaskPaths,
   isCurrentSnapshotRequest,
   registerInitialDashboardSync,
+  resolveSnapshotEnvelopeFailure,
   resolveRefreshFailureDisplay,
   resolveDashboardContext,
   TrailingRefreshScheduler,
@@ -217,4 +218,40 @@ test("stale 只复用同一 task，跨 task 刷新失败清空旧 snapshot", () 
     resolveRefreshFailureDisplay(taskA, "Tasks/A.md", "A 刷新失败"),
     { ...taskA, staleReason: "A 刷新失败" }
   );
+});
+
+test("同一 task 的 schema、model 或 source mismatch 必须清空旧 snapshot", () => {
+  const taskA = {
+    taskPath: "Tasks/A.md",
+    snapshot: { source_task_id: "Tasks/A.md" },
+    loadedAt: "12:00:00",
+    staleReason: "",
+  };
+  const invalidSnapshots = [
+    {
+      snapshot_schema_version: 2,
+      snapshot_model: "task-centric",
+      source_task_id: "Tasks/A.md",
+    },
+    {
+      snapshot_schema_version: 3,
+      snapshot_model: "root-centric",
+      source_task_id: "Tasks/A.md",
+    },
+    {
+      snapshot_schema_version: 3,
+      snapshot_model: "task-centric",
+      source_task_id: "Tasks/B.md",
+    },
+  ];
+
+  for (const snapshot of invalidSnapshots) {
+    const outcome = resolveSnapshotEnvelopeFailure(
+      taskA,
+      "Tasks/A.md",
+      snapshot
+    );
+    assert.ok(outcome.error);
+    assert.equal(outcome.displayState, null);
+  }
 });

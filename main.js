@@ -99,8 +99,23 @@ function validateSnapshotEnvelope(value, requestedTaskPath) {
   }
   return null;
 }
-function resolveRefreshFailureDisplay(displayState, requestedTaskPath, staleReason) {
+function resolveRefreshFailureDisplay(displayState, requestedTaskPath, staleReason, failureKind = "recoverable") {
+  if (failureKind === "invalid-envelope") {
+    return null;
+  }
   return (displayState == null ? void 0 : displayState.taskPath) === requestedTaskPath ? { ...displayState, staleReason } : null;
+}
+function resolveSnapshotEnvelopeFailure(displayState, requestedTaskPath, snapshot) {
+  const error = validateSnapshotEnvelope(snapshot, requestedTaskPath);
+  return {
+    error,
+    displayState: error ? resolveRefreshFailureDisplay(
+      displayState,
+      requestedTaskPath,
+      error,
+      "invalid-envelope"
+    ) : displayState
+  };
 }
 function formatEnvelopeValue(value) {
   return typeof value === "string" || typeof value === "number" ? String(value) : "\u672A\u63D0\u4F9B";
@@ -317,6 +332,12 @@ function resolveDiagnosticTarget(taskPath, source) {
     linkText: heading ? `${taskPath}#${heading}` : taskPath,
     line,
     editorLine: line === null ? null : line - 1
+  };
+}
+function resolveDiagnosticNavigation(taskPath, source) {
+  return {
+    canOpen: Boolean(taskPath.trim()),
+    target: resolveDiagnosticTarget(taskPath, source)
   };
 }
 function createChildViewModel(child) {
@@ -902,9 +923,15 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     try {
       const snapshot = await this.plugin.loadSnapshot(request.taskPath);
       if (!isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) return;
-      const envelopeError = validateSnapshotEnvelope(snapshot, request.taskPath);
-      if (envelopeError) {
-        throw new Error(envelopeError);
+      const envelopeFailure = resolveSnapshotEnvelopeFailure(
+        this.displayState,
+        request.taskPath,
+        snapshot
+      );
+      if (envelopeFailure.error) {
+        this.error = envelopeFailure.error;
+        this.displayState = envelopeFailure.displayState;
+        return;
       }
       this.displayState = {
         taskPath: request.taskPath,
@@ -1085,11 +1112,15 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   }
   async openDiagnosticLocation(diagnostic) {
     var _a;
-    const target = resolveDiagnosticTarget(diagnostic.taskId, diagnostic.source);
-    if (!diagnostic.taskId || target.linkText === diagnostic.taskId && target.line === null) {
-      new import_obsidian.Notice("producer \u672A\u63D0\u4F9B\u53EF\u5B9A\u4F4D\u7684 task\u3001section \u6216\u884C\u53F7\u3002");
+    const navigation = resolveDiagnosticNavigation(
+      diagnostic.taskId,
+      diagnostic.source
+    );
+    if (!navigation.canOpen) {
+      new import_obsidian.Notice("producer \u672A\u63D0\u4F9B\u53EF\u6253\u5F00\u7684 task ID\u3002");
       return;
     }
+    const { target } = navigation;
     try {
       await this.app.workspace.openLinkText(target.linkText, diagnostic.taskId, false);
       if (target.editorLine === null) return;

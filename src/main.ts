@@ -20,9 +20,9 @@ import {
   isTaskPath,
   registerInitialDashboardSync,
   resolveRefreshFailureDisplay,
+  resolveSnapshotEnvelopeFailure,
   resolveDashboardContext,
   TrailingRefreshScheduler,
-  validateSnapshotEnvelope,
   type DashboardContext,
   type SnapshotRequestIdentity,
 } from "./dashboard-state";
@@ -50,6 +50,7 @@ import {
 } from "./evidence-presentation";
 import {
   createDashboardViewModel,
+  resolveDiagnosticNavigation,
   resolveDiagnosticTarget,
   type DashboardViewModel,
   type EvidenceHealth,
@@ -363,9 +364,15 @@ class FlowDeskDashboardView extends ItemView {
     try {
       const snapshot = await this.plugin.loadSnapshot(request.taskPath);
       if (!isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) return;
-      const envelopeError = validateSnapshotEnvelope(snapshot, request.taskPath);
-      if (envelopeError) {
-        throw new Error(envelopeError);
+      const envelopeFailure = resolveSnapshotEnvelopeFailure(
+        this.displayState,
+        request.taskPath,
+        snapshot
+      );
+      if (envelopeFailure.error) {
+        this.error = envelopeFailure.error;
+        this.displayState = envelopeFailure.displayState;
+        return;
       }
       this.displayState = {
         taskPath: request.taskPath,
@@ -572,11 +579,15 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   private async openDiagnosticLocation(diagnostic: SnapshotDiagnostic) {
-    const target = resolveDiagnosticTarget(diagnostic.taskId, diagnostic.source);
-    if (!diagnostic.taskId || (target.linkText === diagnostic.taskId && target.line === null)) {
-      new Notice("producer 未提供可定位的 task、section 或行号。");
+    const navigation = resolveDiagnosticNavigation(
+      diagnostic.taskId,
+      diagnostic.source
+    );
+    if (!navigation.canOpen) {
+      new Notice("producer 未提供可打开的 task ID。");
       return;
     }
+    const { target } = navigation;
     try {
       await this.app.workspace.openLinkText(target.linkText, diagnostic.taskId, false);
       if (target.editorLine === null) return;

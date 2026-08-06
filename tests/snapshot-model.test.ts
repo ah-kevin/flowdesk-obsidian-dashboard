@@ -9,6 +9,7 @@ import {
   formatCurrentTaskProgress,
   formatNextAction,
   formatRollupState,
+  resolveDiagnosticNavigation,
   resolveDiagnosticTarget,
   validateSnapshotSource,
 } from "../src/snapshot-model.ts";
@@ -267,6 +268,39 @@ test("诊断定位使用 producer task_id 和 source", () => {
     line: 41,
     editorLine: 40,
   });
+});
+
+test("诊断导航可退化到 task 文件，并支持 section 与精确行", () => {
+  assert.deepEqual(resolveDiagnosticNavigation("Tasks/A.md"), {
+    canOpen: true,
+    target: { linkText: "Tasks/A.md", line: null, editorLine: null },
+  });
+  assert.deepEqual(
+    resolveDiagnosticNavigation("Tasks/A.md", { section: "Goal" }),
+    {
+      canOpen: true,
+      target: {
+        linkText: "Tasks/A.md#Goal",
+        line: null,
+        editorLine: null,
+      },
+    }
+  );
+  assert.deepEqual(
+    resolveDiagnosticNavigation("Tasks/A.md", {
+      section: "Goal",
+      line_start: 7,
+    }),
+    {
+      canOpen: true,
+      target: {
+        linkText: "Tasks/A.md#Goal",
+        line: 7,
+        editorLine: 6,
+      },
+    }
+  );
+  assert.equal(resolveDiagnosticNavigation("").canOpen, false);
 });
 
 test("task-centric UI helper 格式化 rollup、child evidence 与下一动作", () => {
