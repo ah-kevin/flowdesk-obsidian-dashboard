@@ -497,6 +497,14 @@ function createChildRow(
   child: DashboardChildViewModel
 ): DashboardChildRowPresentation {
   const meta = [];
+  const rawStatus = formatTaskStatus(child.status);
+  const status = childStatusPresentation(child);
+  if (
+    !child.trustedDone &&
+    ["done", "complete", "completed"].includes(normalizeToken(child.status))
+  ) {
+    meta.push(`TaskNotes ${rawStatus}`);
+  }
   if (child.blockedBy.length) {
     meta.push(`阻塞于 ${child.blockedBy.map(formatTaskReference).join("、")}`);
   }
@@ -504,10 +512,30 @@ function createChildRow(
   return {
     id: child.id,
     title: child.title,
-    status: formatTaskStatus(child.status),
-    tone: taskStatusTone(child.status, child.isBlocked),
+    status: status.label,
+    tone: status.tone,
     summary: child.primaryDiagnostic?.reason ?? formatRollupState(child.rollupState),
     meta: meta.join(" · "),
+  };
+}
+
+function childStatusPresentation(
+  child: DashboardChildViewModel
+): { label: string; tone: PresentationTone } {
+  if (child.isBlocked) return { label: "已阻塞", tone: "error" };
+  if (child.trustedDone) return { label: "可信完成", tone: "healthy" };
+  if (child.primaryDiagnostic) {
+    return {
+      label: "需处理",
+      tone: child.primaryDiagnostic.severity === "warning" ? "warning" : "error",
+    };
+  }
+  if (["done", "complete", "completed"].includes(normalizeToken(child.status))) {
+    return { label: "待验收", tone: "warning" };
+  }
+  return {
+    label: formatTaskStatus(child.status),
+    tone: taskStatusTone(child.status),
   };
 }
 

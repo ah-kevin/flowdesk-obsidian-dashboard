@@ -270,6 +270,37 @@ test("Parent 只生成 direct child 紧凑行，Leaf 不生成空 child 区域",
   assert.equal(leaf.header.parent?.title, "Root");
 });
 
+test("子任务已完成但未可信时优先显示需处理而不是绿色完成", () => {
+  const snapshot = createSnapshot();
+  snapshot.children[0].status = "done";
+  snapshot.children[0].semantic_status = "invalid";
+  snapshot.children[0].evidence_health = {
+    execution: "invalid",
+    verification: "invalid",
+    delivery: "valid",
+  };
+  snapshot.children[0].trusted_done = false;
+  snapshot.children[0].primary_diagnostic = {
+    code: "task_contract_v3_missing",
+    severity: "error",
+    taskId: "Tasks/Child.md",
+    path: "Tasks/Child.md",
+    source: { section: "Task Contract v3", line_start: 1 },
+    reason: "找到 0 个 ## Task Contract v3",
+    expected: "恰好一个 ## Task Contract v3",
+    remediation: "保留唯一的 v3 task 合同块",
+  };
+
+  const child = createDashboardPresentation(
+    createDashboardViewModel(snapshot, { expectedTaskPath: taskId })
+  ).children[0];
+
+  assert.equal(child.status, "需处理");
+  assert.equal(child.tone, "error");
+  assert.equal(child.summary, "找到 0 个 ## Task Contract v3");
+  assert.equal(child.meta, "TaskNotes 已完成 · 执行无效 · 验证无效");
+});
+
 test("child 只有真实阻塞关系存在时才在紧凑行显示", () => {
   const snapshot = createSnapshot();
   snapshot.children[0].is_blocked = true;
