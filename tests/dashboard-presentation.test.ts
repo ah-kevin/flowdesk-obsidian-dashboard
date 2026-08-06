@@ -286,6 +286,8 @@ test("合同异常但 diagnostics 为空时不显示健康", () => {
     presentation.primaryStatus.reason,
     "producer 将合同标记为 invalid，但没有返回结构化诊断"
   );
+  assert.equal(presentation.trust.tone, "healthy");
+  assert.equal(presentation.trust.contractTone, "error");
 });
 
 test("整行导航只响应 Enter 与 Space 键", () => {

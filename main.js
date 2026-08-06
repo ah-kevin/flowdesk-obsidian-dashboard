@@ -488,12 +488,14 @@ function taskStatusTone(value, isBlocked = false) {
 }
 function createTrustSummary(model) {
   const contractLabel = model.contract.semanticStatus === "valid" ? "\u5408\u540C\u6709\u6548" : model.contract.semanticStatus === "invalid" ? "\u5408\u540C\u5B58\u5728\u95EE\u9898" : "\u5408\u540C\u72B6\u6001\u672A\u77E5";
+  const contractTone = model.contract.semanticStatus === "valid" ? "healthy" : model.contract.semanticStatus === "invalid" ? "error" : "muted";
   if (model.observation.isStale) {
     const detail2 = model.observation.staleReason || "snapshot \u5DF2\u6807\u8BB0\u4E3A\u65E7\u6570\u636E";
     return {
       tone: "warning",
       label: "\u663E\u793A\u4E0A\u6B21\u6210\u529F\u7ED3\u679C",
       contractLabel,
+      contractTone,
       sourceLabel: model.schemaLabel,
       tooltip: `\u8BFB\u53D6\u4E8E ${model.observation.loadedAt} \xB7 ${detail2}`,
       meta: `${model.schemaLabel} \xB7 \u8BFB\u53D6\u4E8E ${model.observation.loadedAt}`,
@@ -506,6 +508,7 @@ function createTrustSummary(model) {
       tone: "error",
       label: "\u89C2\u5BDF\u4E0D\u53EF\u4FE1",
       contractLabel,
+      contractTone,
       sourceLabel: model.schemaLabel,
       tooltip: `${model.observation.generatedAt} \xB7 ${detail2}`,
       meta: `${model.schemaLabel} \xB7 ${model.observation.generatedAt}`,
@@ -517,6 +520,7 @@ function createTrustSummary(model) {
     tone: "healthy",
     label: "\u89C2\u5BDF\u53EF\u4FE1",
     contractLabel,
+    contractTone,
     sourceLabel: model.schemaLabel,
     tooltip: `${model.observation.generatedAt} \xB7 ${detail}`,
     meta: `${model.schemaLabel} \xB7 ${model.observation.generatedAt}`,
@@ -1156,7 +1160,10 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     strip.createSpan({ cls: "flowdesk-trust-dot", attr: { "aria-hidden": "true" } });
     strip.createSpan({ cls: "flowdesk-trust-badge", text: trust.label });
     strip.createSpan({ cls: "flowdesk-trust-source", text: trust.sourceLabel });
-    strip.createSpan({ cls: "flowdesk-trust-contract", text: trust.contractLabel });
+    strip.createSpan({
+      cls: `flowdesk-trust-contract is-${trust.contractTone}`,
+      text: trust.contractLabel
+    });
   }
   renderPrimaryDiagnostic(container, status) {
     const card = container.createDiv({

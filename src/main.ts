@@ -570,7 +570,10 @@ class FlowDeskDashboardView extends ItemView {
     strip.createSpan({ cls: "flowdesk-trust-dot", attr: { "aria-hidden": "true" } });
     strip.createSpan({ cls: "flowdesk-trust-badge", text: trust.label });
     strip.createSpan({ cls: "flowdesk-trust-source", text: trust.sourceLabel });
-    strip.createSpan({ cls: "flowdesk-trust-contract", text: trust.contractLabel });
+    strip.createSpan({
+      cls: `flowdesk-trust-contract is-${trust.contractTone}`,
+      text: trust.contractLabel,
+    });
   }
 
   private renderPrimaryDiagnostic(

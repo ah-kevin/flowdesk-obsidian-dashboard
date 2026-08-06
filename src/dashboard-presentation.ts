@@ -31,6 +31,7 @@ export interface DashboardTrustPresentation {
   tone: PresentationTone;
   label: string;
   contractLabel: string;
+  contractTone: PresentationTone;
   sourceLabel: string;
   tooltip: string;
   meta: string;
@@ -173,12 +174,19 @@ function createTrustSummary(
       : model.contract.semanticStatus === "invalid"
         ? "合同存在问题"
         : "合同状态未知";
+  const contractTone: PresentationTone =
+    model.contract.semanticStatus === "valid"
+      ? "healthy"
+      : model.contract.semanticStatus === "invalid"
+        ? "error"
+        : "muted";
   if (model.observation.isStale) {
     const detail = model.observation.staleReason || "snapshot 已标记为旧数据";
     return {
       tone: "warning",
       label: "显示上次成功结果",
       contractLabel,
+      contractTone,
       sourceLabel: model.schemaLabel,
       tooltip: `读取于 ${model.observation.loadedAt} · ${detail}`,
       meta: `${model.schemaLabel} · 读取于 ${model.observation.loadedAt}`,
@@ -191,6 +199,7 @@ function createTrustSummary(
       tone: "error",
       label: "观察不可信",
       contractLabel,
+      contractTone,
       sourceLabel: model.schemaLabel,
       tooltip: `${model.observation.generatedAt} · ${detail}`,
       meta: `${model.schemaLabel} · ${model.observation.generatedAt}`,
@@ -202,6 +211,7 @@ function createTrustSummary(
     tone: "healthy",
     label: "观察可信",
     contractLabel,
+    contractTone,
     sourceLabel: model.schemaLabel,
     tooltip: `${model.observation.generatedAt} · ${detail}`,
     meta: `${model.schemaLabel} · ${model.observation.generatedAt}`,
