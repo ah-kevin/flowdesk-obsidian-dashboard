@@ -4,12 +4,34 @@ import test from "node:test";
 import {
   collectObservedTaskPaths,
   isCurrentSnapshotRequest,
+  registerInitialDashboardSync,
+  resolveSnapshotEnvelopeFailure,
   resolveRefreshFailureDisplay,
-  resolveDetailsOpen,
   resolveDashboardContext,
   TrailingRefreshScheduler,
   validateSnapshotEnvelope,
 } from "../src/dashboard-state.ts";
+
+test("视图在 layout ready 后执行首次同步，关闭后不再执行", () => {
+  let ready: (() => void) | null = null;
+  let syncCount = 0;
+  const cancel = registerInitialDashboardSync(
+    (callback) => {
+      ready = callback;
+    },
+    () => {
+      syncCount += 1;
+    }
+  );
+
+  assert.equal(syncCount, 0);
+  assert.ok(ready);
+  (ready as () => void)();
+  assert.equal(syncCount, 1);
+  cancel();
+  (ready as () => void)();
+  assert.equal(syncCount, 1);
+});
 
 test("活动文件解析为任务、非任务或空上下文", () => {
   assert.deepEqual(resolveDashboardContext("Tasks/A.md", ""), {
@@ -92,14 +114,6 @@ test("连续调度只执行最后一次刷新，手动 flush 立即执行", () =
   scheduler.flush();
   assert.equal(refreshCount, 2);
   assert.equal(pending, null);
-});
-
-test("同任务刷新保持详情选择，切换 task 时按 leaf 与诊断默认展开", () => {
-  assert.equal(resolveDetailsOpen(true, false, 0, true), true);
-  assert.equal(resolveDetailsOpen(false, false, 3, false), false);
-  assert.equal(resolveDetailsOpen(false, true, 0, true), false);
-  assert.equal(resolveDetailsOpen(false, true, 0, false), true);
-  assert.equal(resolveDetailsOpen(false, true, 1, true), true);
 });
 
 test("请求必须同时匹配任务路径与 selection revision", () => {
@@ -204,4 +218,40 @@ test("stale 只复用同一 task，跨 task 刷新失败清空旧 snapshot", () 
     resolveRefreshFailureDisplay(taskA, "Tasks/A.md", "A 刷新失败"),
     { ...taskA, staleReason: "A 刷新失败" }
   );
+});
+
+test("同一 task 的 schema、model 或 source mismatch 必须清空旧 snapshot", () => {
+  const taskA = {
+    taskPath: "Tasks/A.md",
+    snapshot: { source_task_id: "Tasks/A.md" },
+    loadedAt: "12:00:00",
+    staleReason: "",
+  };
+  const invalidSnapshots = [
+    {
+      snapshot_schema_version: 2,
+      snapshot_model: "task-centric",
+      source_task_id: "Tasks/A.md",
+    },
+    {
+      snapshot_schema_version: 3,
+      snapshot_model: "root-centric",
+      source_task_id: "Tasks/A.md",
+    },
+    {
+      snapshot_schema_version: 3,
+      snapshot_model: "task-centric",
+      source_task_id: "Tasks/B.md",
+    },
+  ];
+
+  for (const snapshot of invalidSnapshots) {
+    const outcome = resolveSnapshotEnvelopeFailure(
+      taskA,
+      "Tasks/A.md",
+      snapshot
+    );
+    assert.ok(outcome.error);
+    assert.equal(outcome.displayState, null);
+  }
 });
