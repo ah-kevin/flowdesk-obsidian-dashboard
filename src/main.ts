@@ -6,7 +6,6 @@ import {
   Plugin,
   PluginSettingTab,
   Setting,
-  setIcon,
   TFile,
   WorkspaceLeaf,
 } from "obsidian";
@@ -531,9 +530,9 @@ class FlowDeskDashboardView extends ItemView {
     const toolbar = container.createDiv({ cls: "flowdesk-dashboard-toolbar" });
     const copy = toolbar.createEl("button", {
       cls: "flowdesk-toolbar-button",
+      text: "复制 CLI",
       attr: { "aria-label": "复制 CLI", title: "复制 CLI" },
     });
-    setIcon(copy, "copy");
     copy.addEventListener("click", async () => {
       try {
         await this.plugin.copyDashboardCommand(taskPath);
@@ -544,12 +543,12 @@ class FlowDeskDashboardView extends ItemView {
     });
     const refresh = toolbar.createEl("button", {
       cls: "flowdesk-toolbar-button",
+      text: this.loading ? "刷新中" : "刷新",
       attr: {
         "aria-label": this.loading ? "刷新中" : "刷新",
         title: this.loading ? "刷新中" : "刷新",
       },
     });
-    setIcon(refresh, "refresh-cw");
     refresh.disabled = this.loading;
     refresh.addEventListener("click", () => void this.refreshCurrentTask());
   }
