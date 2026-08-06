@@ -32,6 +32,47 @@ interface ObservedTaskSnapshot {
 type ScheduleTimer = (callback: () => void, delayMs: number) => unknown;
 type CancelTimer = (handle: unknown) => void;
 
+const MAX_SNAPSHOT_BUFFER = 8 * 1024 * 1024;
+const SNAPSHOT_TIMEOUT_MS = 30_000;
+
+export function createSnapshotExecutionOptions(
+  cwd: string,
+  signal: AbortSignal
+): {
+  cwd: string;
+  maxBuffer: number;
+  timeout: number;
+  signal: AbortSignal;
+} {
+  return {
+    cwd,
+    maxBuffer: MAX_SNAPSHOT_BUFFER,
+    timeout: SNAPSHOT_TIMEOUT_MS,
+    signal,
+  };
+}
+
+export class SnapshotRequestAbortCoordinator {
+  private controller: AbortController | null = null;
+
+  begin(): AbortSignal {
+    this.cancel();
+    this.controller = new AbortController();
+    return this.controller.signal;
+  }
+
+  finish(signal: AbortSignal): void {
+    if (this.controller?.signal === signal) {
+      this.controller = null;
+    }
+  }
+
+  cancel(): void {
+    this.controller?.abort();
+    this.controller = null;
+  }
+}
+
 export function registerInitialDashboardSync(
   registerLayoutReady: (callback: () => void) => void,
   sync: () => void

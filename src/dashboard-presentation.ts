@@ -3,6 +3,7 @@ import {
   type DashboardChildViewModel,
   type DashboardViewModel,
   type EvidenceHealth,
+  type SnapshotContractItem,
   type SnapshotDiagnostic,
 } from "./snapshot-model";
 
@@ -16,6 +17,48 @@ export type PresentationTone =
 export interface DisclosureState {
   summaryOpen: boolean;
   fullOpen: boolean;
+  requirementsOpen: boolean;
+  scenariosOpen: boolean;
+  observationOpen: boolean;
+  technicalDiagnosticsOpen: boolean;
+  diagnosticOpen: Record<string, boolean>;
+  diagnosticSupportingOpen: Record<string, boolean>;
+}
+
+export type DetailSection =
+  | "diagnostics"
+  | "contract"
+  | "acceptance"
+  | "evidence"
+  | "observation";
+
+export class DisclosureStateCache {
+  private states = new Map<string, DisclosureState>();
+
+  constructor(private capacity = 20) {
+    this.capacity = Math.max(1, Math.floor(capacity));
+  }
+
+  forTask(taskPath: string): DisclosureState {
+    const existing = this.states.get(taskPath);
+    if (existing) {
+      this.states.delete(taskPath);
+      this.states.set(taskPath, existing);
+      return existing;
+    }
+
+    const state = resolveDisclosureState(undefined, true);
+    this.states.set(taskPath, state);
+    if (this.states.size > this.capacity) {
+      const oldest = this.states.keys().next().value;
+      if (typeof oldest === "string") this.states.delete(oldest);
+    }
+    return state;
+  }
+
+  clear(): void {
+    this.states.clear();
+  }
 }
 
 export interface DashboardHeaderPresentation {
@@ -80,6 +123,61 @@ export interface DashboardContractPresentation {
   metrics: Array<{ label: string; value: string }>;
 }
 
+export interface DashboardTechnicalDiagnosticGroup {
+  kind: "current" | "child";
+  taskId: string;
+  taskTitle: string;
+  status: string;
+  tone: PresentationTone;
+  diagnostics: DashboardDiagnosticPresentation[];
+}
+
+export interface ContractItemPresentation {
+  id: string;
+  text: string;
+  requirementIds: string[];
+  sourceLabel: string;
+  steps: { given: string; when: string; then: string } | null;
+}
+
+export function createContractItemPresentation(
+  item: SnapshotContractItem,
+  kind: "requirement" | "scenario"
+): ContractItemPresentation {
+  const text = String(item.text || "未提供").trim() || "未提供";
+  return {
+    id: String(item.id || "未编号").trim() || "未编号",
+    text,
+    requirementIds: Array.isArray(item.requirement_ids)
+      ? item.requirement_ids.map(String).filter(Boolean)
+      : [],
+    sourceLabel: formatContractSource(item),
+    steps: kind === "scenario" ? parseScenarioSteps(text) : null,
+  };
+}
+
+function formatContractSource(item: SnapshotContractItem): string {
+  const section = item.source?.section || item.source?.after_section || "任务文件";
+  const line = item.source?.line_start;
+  return typeof line === "number" && line > 0
+    ? `${section} · 第 ${line} 行`
+    : section;
+}
+
+function parseScenarioSteps(
+  text: string
+): { given: string; when: string; then: string } | null {
+  const match = text.match(
+    /^\s*Given\s+([\s\S]*?)[,，]\s*When\s+([\s\S]*?)[,，]\s*Then\s+([\s\S]+?)\s*$/i
+  );
+  if (!match) return null;
+  return {
+    given: match[1].trim(),
+    when: match[2].trim(),
+    then: match[3].trim(),
+  };
+}
+
 export interface DashboardPresentation {
   kind: "parent" | "leaf";
   header: DashboardHeaderPresentation;
@@ -88,6 +186,7 @@ export interface DashboardPresentation {
   children: DashboardChildRowPresentation[];
   contract: DashboardContractPresentation;
   diagnostics: DashboardDiagnosticPresentation[];
+  technicalDiagnostics: DashboardTechnicalDiagnosticGroup[];
 }
 
 export function resolveDisclosureState(
@@ -95,9 +194,65 @@ export function resolveDisclosureState(
   taskChanged: boolean
 ): DisclosureState {
   if (!previous || taskChanged) {
-    return { summaryOpen: true, fullOpen: false };
+    return {
+      summaryOpen: true,
+      fullOpen: false,
+      requirementsOpen: false,
+      scenariosOpen: false,
+      observationOpen: false,
+      technicalDiagnosticsOpen: false,
+      diagnosticOpen: {},
+      diagnosticSupportingOpen: {},
+    };
   }
   return previous;
+}
+
+export function createDiagnosticDisclosureKey(
+  taskPath: string,
+  diagnostic: Pick<SnapshotDiagnostic, "code" | "path" | "source">
+): string {
+  const section = diagnostic.source?.section || diagnostic.source?.after_section || "";
+  const line = diagnostic.source?.line_start ?? "";
+  return JSON.stringify([
+    taskPath,
+    diagnostic.code,
+    diagnostic.path,
+    section,
+    line,
+  ]);
+}
+
+export function reconcileDiagnosticDisclosureState(
+  state: DisclosureState,
+  activeKeys: Iterable<string>
+): void {
+  const active = new Set(activeKeys);
+  for (const key of Object.keys(state.diagnosticOpen)) {
+    if (!active.has(key)) delete state.diagnosticOpen[key];
+  }
+  for (const key of Object.keys(state.diagnosticSupportingOpen)) {
+    if (!active.has(key)) delete state.diagnosticSupportingOpen[key];
+  }
+}
+
+export function resolveDiagnosticDisclosureOpen(
+  state: DisclosureState,
+  key: string
+): boolean {
+  return state.diagnosticOpen[key] ?? false;
+}
+
+export function resolveDetailSectionOrder(
+  hasDiagnostics: boolean
+): DetailSection[] {
+  const reviewOrder: DetailSection[] = [
+    "contract",
+    "acceptance",
+    "evidence",
+    "observation",
+  ];
+  return hasDiagnostics ? ["diagnostics", ...reviewOrder] : reviewOrder;
 }
 
 export function isActivationKey(key: string): boolean {
@@ -116,6 +271,9 @@ export function createDashboardPresentation(
   model: DashboardViewModel
 ): DashboardPresentation {
   const kind = model.currentTask.hasChildren ? "parent" : "leaf";
+  const diagnostics = model.diagnostics.map((diagnostic) =>
+    createDiagnosticPresentation(diagnostic, model.currentTask.id)
+  );
   return {
     kind,
     header: {
@@ -132,10 +290,42 @@ export function createDashboardPresentation(
     primaryStatus: createPrimaryStatus(model),
     children: kind === "parent" ? model.children.map(createChildRow) : [],
     contract: createContractSummary(model),
-    diagnostics: model.diagnostics.map((diagnostic) =>
-      createDiagnosticPresentation(diagnostic, model.currentTask.id)
-    ),
+    diagnostics,
+    technicalDiagnostics: createTechnicalDiagnosticGroups(model, diagnostics),
   };
+}
+
+export function createTechnicalDiagnosticGroups(
+  model: DashboardViewModel,
+  currentDiagnostics = model.diagnostics.map((diagnostic) =>
+    createDiagnosticPresentation(diagnostic, model.currentTask.id)
+  )
+): DashboardTechnicalDiagnosticGroup[] {
+  const groups: DashboardTechnicalDiagnosticGroup[] = [];
+  if (currentDiagnostics.length) {
+    groups.push({
+      kind: "current",
+      taskId: model.currentTask.id,
+      taskTitle: model.currentTask.title,
+      status: formatTaskStatus(model.currentTask.status),
+      tone: taskStatusTone(model.currentTask.status, model.currentTask.isBlocked),
+      diagnostics: currentDiagnostics,
+    });
+  }
+  for (const child of model.children) {
+    if (!child.primaryDiagnostic) continue;
+    groups.push({
+      kind: "child",
+      taskId: child.id,
+      taskTitle: child.title,
+      status: formatTaskStatus(child.status),
+      tone: taskStatusTone(child.status, child.isBlocked),
+      diagnostics: [
+        createDiagnosticPresentation(child.primaryDiagnostic, child.id),
+      ],
+    });
+  }
+  return groups;
 }
 
 export function formatTaskStatus(value: unknown): string {
@@ -351,7 +541,6 @@ function createContractSummary(
         value: `${checked} / ${model.contract.acceptance.length}`,
       },
       { label: "证据有效", value: `${validEvidence} / 3` },
-      { label: "诊断", value: String(model.diagnostics.length) },
     ],
   };
 }

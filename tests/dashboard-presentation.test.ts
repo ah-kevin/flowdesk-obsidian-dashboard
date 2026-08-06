@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createContractItemPresentation,
   createDiagnosticPresentation,
   createDashboardPresentation,
   formatTaskShellStatus,
   isActivationKey,
   resolveDisclosureState,
 } from "../src/dashboard-presentation.ts";
+import * as dashboardPresentation from "../src/dashboard-presentation.ts";
 import { createDashboardViewModel } from "../src/snapshot-model.ts";
 
 const taskId = "Tasks/Parent.md";
@@ -105,6 +107,49 @@ function createModel() {
     loadedAt: "17:30:00",
   });
 }
+
+test("REQ 与 SCN 详情保留来源，并把场景拆为 Given When Then", () => {
+  assert.deepEqual(
+    createContractItemPresentation(
+      {
+        id: "REQ-001",
+        text: "Codex App 使用原生标题工具",
+        source: { section: "Requirements", line_start: 29 },
+      },
+      "requirement"
+    ),
+    {
+      id: "REQ-001",
+      text: "Codex App 使用原生标题工具",
+      requirementIds: [],
+      sourceLabel: "Requirements · 第 29 行",
+      steps: null,
+    }
+  );
+
+  assert.deepEqual(
+    createContractItemPresentation(
+      {
+        id: "SCN-001",
+        requirement_ids: ["REQ-001"],
+        text: "Given 当前宿主是 Codex App, When 激活 orchestrator, Then 调用原生 set_thread_title",
+        source: { section: "Scenarios", line_start: 36 },
+      },
+      "scenario"
+    ),
+    {
+      id: "SCN-001",
+      text: "Given 当前宿主是 Codex App, When 激活 orchestrator, Then 调用原生 set_thread_title",
+      requirementIds: ["REQ-001"],
+      sourceLabel: "Scenarios · 第 36 行",
+      steps: {
+        given: "当前宿主是 Codex App",
+        when: "激活 orchestrator",
+        then: "调用原生 set_thread_title",
+      },
+    }
+  );
+});
 
 test("诊断默认摘要只给出可行动信息，机器字段留给技术详情", () => {
   const snapshot = createSnapshot();
@@ -242,15 +287,150 @@ test("合同摘要默认展开，完整详情默认关闭，同 task 刷新保�
   assert.deepEqual(resolveDisclosureState(undefined, true), {
     summaryOpen: true,
     fullOpen: false,
+    requirementsOpen: false,
+    scenariosOpen: false,
+    observationOpen: false,
+    technicalDiagnosticsOpen: false,
+    diagnosticOpen: {},
+    diagnosticSupportingOpen: {},
   });
+  const previous = {
+    summaryOpen: false,
+    fullOpen: true,
+    requirementsOpen: true,
+    scenariosOpen: false,
+    observationOpen: true,
+    technicalDiagnosticsOpen: true,
+    diagnosticOpen: { "diagnostic-a": true },
+    diagnosticSupportingOpen: { "diagnostic-a": true },
+  };
   assert.deepEqual(
-    resolveDisclosureState({ summaryOpen: false, fullOpen: true }, false),
-    { summaryOpen: false, fullOpen: true }
+    resolveDisclosureState(previous, false),
+    previous
   );
+});
+
+test("切换任务后恢复各自展开状态，并按最近使用淘汰旧任务", () => {
+  const Cache = (
+    dashboardPresentation as typeof dashboardPresentation & {
+      DisclosureStateCache?: new (capacity: number) => {
+        forTask(taskPath: string): ReturnType<typeof resolveDisclosureState>;
+      };
+    }
+  ).DisclosureStateCache;
+
+  assert.equal(typeof Cache, "function");
+  if (!Cache) return;
+
+  const cache = new Cache(2);
+  const taskA = cache.forTask("Tasks/A.md");
+  taskA.summaryOpen = false;
+  taskA.requirementsOpen = true;
+  cache.forTask("Tasks/B.md");
+
   assert.deepEqual(
-    resolveDisclosureState({ summaryOpen: false, fullOpen: true }, true),
-    { summaryOpen: true, fullOpen: false }
+    cache.forTask("Tasks/A.md"),
+    taskA,
+    "A → B → A 应恢复 A 的展开状态"
   );
+
+  cache.forTask("Tasks/C.md");
+  assert.equal(
+    cache.forTask("Tasks/B.md").requirementsOpen,
+    false,
+    "A 被再次访问后，容量溢出应淘汰更久未使用的 B"
+  );
+});
+
+test("诊断展开状态只保留当前 snapshot 仍存在的稳定 key", () => {
+  const createKey = (
+    dashboardPresentation as typeof dashboardPresentation & {
+      createDiagnosticDisclosureKey?: (
+        taskPath: string,
+        diagnostic: {
+          code: string;
+          path: string;
+          source?: { section?: string; line_start?: number };
+        }
+      ) => string;
+    }
+  ).createDiagnosticDisclosureKey;
+  const reconcile = (
+    dashboardPresentation as typeof dashboardPresentation & {
+      reconcileDiagnosticDisclosureState?: (
+        state: ReturnType<typeof resolveDisclosureState>,
+        keys: Iterable<string>
+      ) => void;
+    }
+  ).reconcileDiagnosticDisclosureState;
+
+  assert.equal(typeof createKey, "function");
+  assert.equal(typeof reconcile, "function");
+  if (!createKey || !reconcile) return;
+
+  const diagnostic = {
+    code: "task_goal_invalid",
+    path: "contract.goal",
+    source: { section: "Goal", line_start: 12 },
+  };
+  const key = createKey("Tasks/A.md", diagnostic);
+  assert.equal(
+    key,
+    createKey("Tasks/A.md", { ...diagnostic, source: { ...diagnostic.source } })
+  );
+
+  const state = resolveDisclosureState(undefined, true);
+  state.diagnosticOpen[key] = true;
+  state.diagnosticOpen["obsolete"] = true;
+  state.diagnosticSupportingOpen[key] = true;
+  state.diagnosticSupportingOpen["obsolete"] = true;
+  reconcile(state, [key]);
+
+  assert.deepEqual(state.diagnosticOpen, { [key]: true });
+  assert.deepEqual(state.diagnosticSupportingOpen, { [key]: true });
+});
+
+test("技术诊断默认折叠，但保留用户主动展开的状态", () => {
+  const resolveOpen = (
+    dashboardPresentation as typeof dashboardPresentation & {
+      resolveDiagnosticDisclosureOpen?: (
+        state: ReturnType<typeof resolveDisclosureState>,
+        key: string
+      ) => boolean;
+    }
+  ).resolveDiagnosticDisclosureOpen;
+
+  assert.equal(typeof resolveOpen, "function");
+  if (!resolveOpen) return;
+
+  const state = resolveDisclosureState(undefined, true);
+  assert.equal(resolveOpen(state, "diagnostic-a"), false);
+  state.diagnosticOpen["diagnostic-a"] = true;
+  assert.equal(resolveOpen(state, "diagnostic-a"), true);
+});
+
+test("详情存在诊断时优先展示诊断，否则保持合同审阅顺序", () => {
+  const resolveOrder = (
+    dashboardPresentation as typeof dashboardPresentation & {
+      resolveDetailSectionOrder?: (hasDiagnostics: boolean) => string[];
+    }
+  ).resolveDetailSectionOrder;
+
+  assert.equal(typeof resolveOrder, "function");
+  if (!resolveOrder) return;
+  assert.deepEqual(resolveOrder(true), [
+    "diagnostics",
+    "contract",
+    "acceptance",
+    "evidence",
+    "observation",
+  ]);
+  assert.deepEqual(resolveOrder(false), [
+    "contract",
+    "acceptance",
+    "evidence",
+    "observation",
+  ]);
 });
 
 test("健康摘要同时证明观察、来源和检查范围", () => {
@@ -268,7 +448,6 @@ test("健康摘要同时证明观察、来源和检查范围", () => {
     { label: "REQ / SCN", value: "2 / 1" },
     { label: "验收", value: "1 / 2" },
     { label: "证据有效", value: "2 / 3" },
-    { label: "诊断", value: "0" },
   ]);
   assert.equal(presentation.trust.sourceLabel, "snapshot v3 · task-centric");
 });
@@ -302,4 +481,58 @@ test("任务壳层标题区分加载、失败和待读取", () => {
   assert.equal(formatTaskShellStatus(true, ""), "正在建立可信观察…");
   assert.equal(formatTaskShellStatus(false, "API 不可用"), "读取失败");
   assert.equal(formatTaskShellStatus(false, ""), "尚未读取 snapshot");
+});
+
+test("父任务技术诊断按当前任务与直接子任务分组", () => {
+  const snapshot = createSnapshot();
+  snapshot.diagnostics = [
+    {
+      code: "task_goal_invalid",
+      severity: "error",
+      task_id: taskId,
+      path: "contract.goal",
+      source: { section: "Goal", line_start: 21 },
+      reason: { actual: "Goal 为空", expected: "单一交付目标" },
+      remediation: { summary: "补写当前任务 Goal" },
+    },
+  ];
+  snapshot.children[0].primary_diagnostic = {
+    code: "verification_missing",
+    severity: "error",
+    task_id: "Tasks/Child.md",
+    path: "evidence.verification",
+    source: { section: "Verification Result", line_start: 41 },
+    reason: { actual: "验证证据缺失", expected: "至少一条验证结果" },
+    remediation: { summary: "补充验证命令与结果" },
+  };
+
+  const presentation = createDashboardPresentation(
+    createDashboardViewModel(snapshot, { expectedTaskPath: taskId })
+  ) as any;
+
+  assert.deepEqual(
+    presentation.technicalDiagnostics.map((group: any) => ({
+      kind: group.kind,
+      taskId: group.taskId,
+      taskTitle: group.taskTitle,
+      count: group.diagnostics.length,
+      sourceLabel: group.diagnostics[0].sourceLabel,
+    })),
+    [
+      {
+        kind: "current",
+        taskId,
+        taskTitle: "Parent",
+        count: 1,
+        sourceLabel: "Goal · 第 21 行",
+      },
+      {
+        kind: "child",
+        taskId: "Tasks/Child.md",
+        taskTitle: "Child",
+        count: 1,
+        sourceLabel: "Verification Result · 第 41 行",
+      },
+    ]
+  );
 });

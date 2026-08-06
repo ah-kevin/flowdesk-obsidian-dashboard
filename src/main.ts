@@ -6,6 +6,7 @@ import {
   Plugin,
   PluginSettingTab,
   Setting,
+  setIcon,
   TFile,
   WorkspaceLeaf,
 } from "obsidian";
@@ -16,12 +17,14 @@ import * as path from "path";
 import { promisify } from "util";
 import {
   collectObservedTaskPaths,
+  createSnapshotExecutionOptions,
   isCurrentSnapshotRequest,
   isTaskPath,
   registerInitialDashboardSync,
   resolveRefreshFailureDisplay,
   resolveSnapshotEnvelopeFailure,
   resolveDashboardContext,
+  SnapshotRequestAbortCoordinator,
   TrailingRefreshScheduler,
   type DashboardContext,
   type SnapshotRequestIdentity,
@@ -33,16 +36,23 @@ import {
   type SnapshotInvocation,
 } from "./snapshot-invocation";
 import {
+  createContractItemPresentation,
   createDashboardPresentation,
+  createDiagnosticDisclosureKey,
+  DisclosureStateCache,
   formatTaskShellStatus,
   isActivationKey,
+  reconcileDiagnosticDisclosureState,
+  resolveDiagnosticDisclosureOpen,
+  resolveDetailSectionOrder,
   resolveDisclosureState,
   type DashboardChildRowPresentation,
   type DashboardContractPresentation,
-  type DashboardDiagnosticPresentation,
   type DashboardPresentation,
   type DashboardPrimaryStatusPresentation,
+  type DashboardTechnicalDiagnosticGroup,
   type DashboardTrustPresentation,
+  type DetailSection,
   type DisclosureState,
 } from "./dashboard-presentation";
 import {
@@ -57,12 +67,16 @@ import {
   type ExecutionSnapshot,
   type SnapshotContractItem,
   type SnapshotDiagnostic,
+  type SnapshotSource,
 } from "./snapshot-model";
+import {
+  taskNavigationNewLeaf,
+  type TaskNavigationOrigin,
+} from "./task-navigation";
 
 export const FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
 
 const execFileAsync = promisify(execFile);
-const MAX_SNAPSHOT_BUFFER = 8 * 1024 * 1024;
 
 interface FlowDeskDashboardSettings {
   flowdeskRoot: string;
@@ -162,13 +176,15 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     workspace.revealLeaf(leaf);
   }
 
-  async loadSnapshot(taskPath: string): Promise<ExecutionSnapshot> {
+  async loadSnapshot(
+    taskPath: string,
+    signal: AbortSignal
+  ): Promise<ExecutionSnapshot> {
     const invocation = this.createSnapshotInvocation(taskPath, "json");
     let stdout: string;
     try {
       const result = await execFileAsync(invocation.executable, invocation.args, {
-        cwd: invocation.cwd,
-        maxBuffer: MAX_SNAPSHOT_BUFFER,
+        ...createSnapshotExecutionOptions(invocation.cwd, signal),
       });
       stdout = result.stdout;
     } catch (error) {
@@ -245,7 +261,9 @@ class FlowDeskDashboardView extends ItemView {
   private queuedRequest: SnapshotRequestIdentity | null = null;
   private refreshPromise: Promise<void> | null = null;
   private refreshScheduler: TrailingRefreshScheduler;
+  private snapshotAbortCoordinator = new SnapshotRequestAbortCoordinator();
   private cancelInitialSync: (() => void) | null = null;
+  private disclosureStateCache = new DisclosureStateCache(20);
   private disclosureState: DisclosureState = resolveDisclosureState(undefined, true);
 
   constructor(leaf: WorkspaceLeaf, private plugin: FlowDeskDashboardPlugin) {
@@ -280,6 +298,8 @@ class FlowDeskDashboardView extends ItemView {
     this.cancelInitialSync?.();
     this.cancelInitialSync = null;
     this.refreshScheduler.cancel();
+    this.snapshotAbortCoordinator.cancel();
+    this.disclosureStateCache.clear();
   }
 
   async syncToActiveFile(file: TFile | null = this.app.workspace.getActiveFile()) {
@@ -302,6 +322,7 @@ class FlowDeskDashboardView extends ItemView {
     this.displayState = null;
     this.queuedRequest = null;
     this.refreshScheduler.cancel();
+    this.snapshotAbortCoordinator.cancel();
     this.loading = false;
     this.error = "";
     this.render();
@@ -317,7 +338,8 @@ class FlowDeskDashboardView extends ItemView {
       this.error = "";
       this.loading = true;
       this.refreshScheduler.cancel();
-      this.disclosureState = resolveDisclosureState(this.disclosureState, true);
+      this.snapshotAbortCoordinator.cancel();
+      this.disclosureState = this.disclosureStateCache.forTask(taskPath);
       this.render();
     }
     this.queuedRequest = { taskPath, selectionRevision: this.selectionRevision };
@@ -358,11 +380,12 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   private async loadTaskNow(request: SnapshotRequestIdentity) {
+    const signal = this.snapshotAbortCoordinator.begin();
     this.loading = true;
     this.error = "";
     this.render();
     try {
-      const snapshot = await this.plugin.loadSnapshot(request.taskPath);
+      const snapshot = await this.plugin.loadSnapshot(request.taskPath, signal);
       if (!isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) return;
       const envelopeFailure = resolveSnapshotEnvelopeFailure(
         this.displayState,
@@ -389,6 +412,7 @@ class FlowDeskDashboardView extends ItemView {
         this.error
       );
     } finally {
+      this.snapshotAbortCoordinator.finish(signal);
       if (isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) {
         this.loading = false;
         this.render();
@@ -460,7 +484,7 @@ class FlowDeskDashboardView extends ItemView {
       container,
       model,
       presentation.contract,
-      presentation.diagnostics
+      presentation.technicalDiagnostics
     );
   }
 
@@ -470,17 +494,18 @@ class FlowDeskDashboardView extends ItemView {
     status: string
   ) {
     const header = container.createDiv({ cls: "flowdesk-task-header" });
+    const topRow = header.createDiv({ cls: "flowdesk-task-top-row" });
+    const actions = topRow.createDiv({ cls: "flowdesk-task-meta-actions" });
+    this.renderToolbar(actions, taskPath);
     const heading = header.createDiv({ cls: "flowdesk-task-heading" });
-    const title = heading.createEl("button", {
+    const title = heading.createDiv({
       cls: "flowdesk-task-title flowdesk-current-task-link",
       text: taskTitleFromPath(taskPath),
+      attr: { role: "link", tabindex: "0" },
     });
-    title.addEventListener("click", () => void this.openTask(taskPath));
-    heading.createDiv({ cls: "flowdesk-task-path", text: taskPath });
+    this.makeNavigable(title, () => this.openTask(taskPath));
     const metaRow = header.createDiv({ cls: "flowdesk-task-meta-row" });
     metaRow.createDiv({ cls: "flowdesk-task-read-meta", text: status });
-    const actions = metaRow.createDiv({ cls: "flowdesk-task-meta-actions" });
-    this.renderToolbar(actions, taskPath);
   }
 
   private renderHeader(
@@ -489,22 +514,36 @@ class FlowDeskDashboardView extends ItemView {
     presentation: DashboardPresentation
   ) {
     const header = container.createDiv({ cls: "flowdesk-task-header" });
-    const heading = header.createDiv({ cls: "flowdesk-task-heading" });
+    const topRow = header.createDiv({ cls: "flowdesk-task-top-row" });
     if (presentation.header.parent) {
-      const parent = heading.createEl("button", {
+      const parent = topRow.createDiv({
         cls: "flowdesk-parent-link",
-        text: `↑ ${presentation.header.parent.title}`,
+        text: "↑ 父任务",
+        attr: {
+          role: "link",
+          tabindex: "0",
+          title: presentation.header.parent.title,
+          "aria-label": `打开父任务：${presentation.header.parent.title}`,
+        },
       });
-      parent.addEventListener("click", () => {
-        void this.openTask(presentation.header.parent?.id ?? "");
+      this.makeNavigable(parent, () =>
+        this.openTask(presentation.header.parent?.id ?? "", "parent")
+      );
+    } else {
+      topRow.createDiv({
+        cls: "flowdesk-task-context-label",
+        text: presentation.kind === "parent" ? "当前父任务" : "当前任务",
       });
     }
-    const title = heading.createEl("button", {
+    const actions = topRow.createDiv({ cls: "flowdesk-task-meta-actions" });
+    this.renderToolbar(actions, model.currentTask.id);
+    const heading = header.createDiv({ cls: "flowdesk-task-heading" });
+    const title = heading.createDiv({
       cls: "flowdesk-task-title flowdesk-current-task-link",
       text: presentation.header.title,
+      attr: { role: "link", tabindex: "0" },
     });
-    title.addEventListener("click", () => void this.openTask(model.currentTask.id));
-    heading.createDiv({ cls: "flowdesk-task-path", text: model.currentTask.id });
+    this.makeNavigable(title, () => this.openTask(model.currentTask.id));
     const metaRow = header.createDiv({ cls: "flowdesk-task-meta-row" });
     const badges = metaRow.createDiv({ cls: "flowdesk-task-badges" });
     badges.createSpan({
@@ -522,17 +561,15 @@ class FlowDeskDashboardView extends ItemView {
         ? `正在刷新 · 上次读取 ${model.observation.loadedAt}`
         : `本地读取 ${model.observation.loadedAt}`,
     });
-    const actions = metaRow.createDiv({ cls: "flowdesk-task-meta-actions" });
-    this.renderToolbar(actions, model.currentTask.id);
   }
 
   private renderToolbar(container: HTMLElement, taskPath: string) {
     const toolbar = container.createDiv({ cls: "flowdesk-dashboard-toolbar" });
     const copy = toolbar.createEl("button", {
       cls: "flowdesk-toolbar-button",
-      text: "复制 CLI",
       attr: { "aria-label": "复制 CLI", title: "复制 CLI" },
     });
+    setIcon(copy, "copy");
     copy.addEventListener("click", async () => {
       try {
         await this.plugin.copyDashboardCommand(taskPath);
@@ -543,12 +580,12 @@ class FlowDeskDashboardView extends ItemView {
     });
     const refresh = toolbar.createEl("button", {
       cls: "flowdesk-toolbar-button",
-      text: this.loading ? "刷新中" : "刷新",
       attr: {
         "aria-label": this.loading ? "刷新中" : "刷新",
         title: this.loading ? "刷新中" : "刷新",
       },
     });
+    setIcon(refresh, "refresh-cw");
     refresh.disabled = this.loading;
     refresh.addEventListener("click", () => void this.refreshCurrentTask());
   }
@@ -610,9 +647,17 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   private async openDiagnosticLocation(diagnostic: SnapshotDiagnostic) {
+    await this.openSnapshotSource(diagnostic.taskId, diagnostic.source, "诊断");
+  }
+
+  private async openSnapshotSource(
+    taskPath: string,
+    source?: SnapshotSource,
+    sourceKind = "来源"
+  ) {
     const navigation = resolveDiagnosticNavigation(
-      diagnostic.taskId,
-      diagnostic.source
+      taskPath,
+      source
     );
     if (!navigation.canOpen) {
       new Notice("producer 未提供可打开的 task ID。");
@@ -620,15 +665,15 @@ class FlowDeskDashboardView extends ItemView {
     }
     const { target } = navigation;
     try {
-      await this.app.workspace.openLinkText(target.linkText, diagnostic.taskId, false);
+      await this.app.workspace.openLinkText(target.linkText, taskPath, false);
       if (target.editorLine === null) return;
       const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (!view || view.file?.path !== diagnostic.taskId) {
+      if (!view || view.file?.path !== taskPath) {
         new Notice("任务已打开，但当前视图无法定位到具体行。");
         return;
       }
       if (target.editorLine >= view.editor.lineCount()) {
-        new Notice(`诊断行号已超出当前文件范围：${target.line}`);
+        new Notice(`${sourceKind}行号已超出当前文件范围：${target.line}`);
         return;
       }
       const position = { line: target.editorLine, ch: 0 };
@@ -637,7 +682,7 @@ class FlowDeskDashboardView extends ItemView {
       view.editor.focus();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      new Notice(`无法定位诊断位置：${message}`);
+      new Notice(`无法定位${sourceKind}位置：${message}`);
     }
   }
 
@@ -674,7 +719,7 @@ class FlowDeskDashboardView extends ItemView {
         cls: `flowdesk-child-status is-${child.tone}`,
         text: child.status,
       });
-      this.makeNavigable(row, () => this.openTask(child.id));
+      this.makeNavigable(row, () => this.openTask(child.id, "child"));
     }
   }
 
@@ -682,8 +727,12 @@ class FlowDeskDashboardView extends ItemView {
     container: HTMLElement,
     model: DashboardViewModel,
     summary: DashboardContractPresentation,
-    diagnosticPresentations: DashboardDiagnosticPresentation[]
+    diagnosticGroups: DashboardTechnicalDiagnosticGroup[]
   ) {
+    const diagnosticCount = diagnosticGroups.reduce(
+      (total, group) => total + group.diagnostics.length,
+      0
+    );
     const details = container.createEl("details", {
       cls: "flowdesk-contract-summary",
     });
@@ -695,7 +744,7 @@ class FlowDeskDashboardView extends ItemView {
     summaryToggle.createSpan({ text: "当前任务合同与证据" });
     summaryToggle.createSpan({
       cls: "flowdesk-contract-diagnostic-count",
-      text: `${model.diagnostics.length} 项诊断`,
+      text: `${diagnosticCount} 项诊断`,
     });
     const overview = details.createDiv({ cls: "flowdesk-contract-overview" });
     const goal = overview.createDiv({ cls: "flowdesk-contract-goal" });
@@ -713,60 +762,290 @@ class FlowDeskDashboardView extends ItemView {
     full.addEventListener("toggle", () => {
       this.disclosureState.fullOpen = full.open;
     });
-    full.createEl("summary", { text: "展开全部合同、证据与诊断" });
+    full.createEl("summary", { text: "合同与交付详情" });
     const body = full.createDiv({ cls: "flowdesk-detail-body" });
-    const observation = createSection(body, "观察详情");
-    childMeta(observation, "健康状态", model.observation.health);
-    childMeta(observation, "当前任务", model.observation.currentTask);
-    childMeta(observation, "父任务", model.observation.parent);
-    childMeta(observation, "直接子任务", model.observation.children);
-    childMeta(observation, "TaskNotes API", model.observation.tasknotesApi);
-    childMeta(observation, "来源任务", model.observation.sourceTaskId || "未提供");
-    const contract = createSection(body, "任务合同 v3");
-    childMeta(contract, "版本", model.contract.version);
-    childMeta(contract, "语义状态", model.contract.semanticStatus);
-    childMeta(contract, "目标", model.contract.goal);
-    renderTextList(contract, "范围 · 包含", model.contract.scope.included);
-    renderTextList(contract, "范围 · 不包含", model.contract.scope.excluded);
-    renderContractItems(contract, "需求", model.contract.requirements);
-    renderContractItems(contract, "场景", model.contract.scenarios);
-    const acceptance = createSection(body, "验收标准");
+    const renderedSections = new Map<DetailSection, HTMLElement>();
+    const contract = createSection(
+      body,
+      "任务合同 v3",
+      formatSemanticStatus(model.contract.semanticStatus)
+    );
+    renderedSections.set("contract", contract);
+    scopeRow(contract, "包含", model.contract.scope.included);
+    scopeRow(contract, "不包含", model.contract.scope.excluded);
+    const contractMeta = contract.createDiv({ cls: "flowdesk-contract-chip-row" });
+    contractMeta.createSpan({
+      cls: "flowdesk-contract-chip",
+      text: `REQ ${model.contract.requirements.length}`,
+    });
+    contractMeta.createSpan({
+      cls: "flowdesk-contract-chip",
+      text: `SCN ${model.contract.scenarios.length}`,
+    });
+    contractMeta.createSpan({
+      cls: "flowdesk-contract-chip",
+      text: model.contract.scope.included.length && model.contract.scope.excluded.length
+        ? "Scope 完整"
+        : "Scope 待补充",
+    });
+    renderContractItems(
+      contract,
+      "需求详情",
+      "requirement",
+      model.contract.requirements,
+      (source) => {
+        void this.openSnapshotSource(model.currentTask.id, source, "需求");
+      },
+      this.disclosureState.requirementsOpen,
+      (open) => {
+        this.disclosureState.requirementsOpen = open;
+      }
+    );
+    renderContractItems(
+      contract,
+      "场景详情",
+      "scenario",
+      model.contract.scenarios,
+      (source) => {
+        void this.openSnapshotSource(model.currentTask.id, source, "场景");
+      },
+      this.disclosureState.scenariosOpen,
+      (open) => {
+        this.disclosureState.scenariosOpen = open;
+      }
+    );
+    const checkedAcceptance = model.contract.acceptance.filter(
+      (item) => item.checked === true
+    ).length;
+    const acceptance = createSection(
+      body,
+      "验收标准",
+      `${checkedAcceptance} / ${model.contract.acceptance.length} 已通过`
+    );
+    renderedSections.set("acceptance", acceptance);
     if (!model.contract.acceptance.length) {
       acceptance.createDiv({ cls: "flowdesk-muted", text: "producer 未提供验收项。" });
-    }
-    for (const item of model.contract.acceptance) {
-      acceptance.createDiv({ text: `${item.checked ? "☑" : "☐"} ${item.text ?? "未提供"}` });
-    }
-    const evidence = createSection(body, "当前任务证据");
-    evidenceRow(evidence, "执行结果", model.evidence.execution);
-    evidenceRow(evidence, "验证结果", model.evidence.verification);
-    evidenceRow(evidence, "交付记录", model.evidence.delivery);
-    if (diagnosticPresentations.length) {
-      const diagnostics = createSection(
-        body,
-        `技术诊断 · ${diagnosticPresentations.length}`
-      );
-      for (const diagnostic of diagnosticPresentations) {
-        const item = diagnostics.createDiv({ cls: "flowdesk-diagnostic-item" });
-        const diagnosticLink = item.createEl("button", {
-          cls: "flowdesk-diagnostic-source",
-          text: `${diagnostic.sourceLabel} →`,
+    } else {
+      const progress = acceptance.createDiv({ cls: "flowdesk-acceptance-progress" });
+      progress.createDiv({
+        cls: "flowdesk-acceptance-progress-value",
+        attr: {
+          style: `width: ${Math.round(
+            (checkedAcceptance / model.contract.acceptance.length) * 100
+          )}%`,
+        },
+      });
+      const acceptanceGrid = acceptance.createDiv({
+        cls: "flowdesk-acceptance-grid",
+      });
+      for (const item of model.contract.acceptance) {
+        const row = acceptanceGrid.createDiv({ cls: "flowdesk-acceptance-item" });
+        row.createSpan({
+          cls: item.checked
+            ? "flowdesk-acceptance-check is-checked"
+            : "flowdesk-acceptance-check",
+          text: item.checked ? "✓" : "○",
         });
-        diagnosticLink.addEventListener("click", () => {
-          void this.openDiagnosticLocation(diagnostic.diagnostic);
-        });
-        diagnosticRow(item, "实际", diagnostic.actual);
-        diagnosticRow(item, "预期", diagnostic.expected);
-        diagnosticRow(item, "修复", diagnostic.remediation);
-        const machine = item.createEl("details", {
-          cls: "flowdesk-machine-details",
-        });
-        machine.createEl("summary", { text: "机器详情" });
-        diagnosticRow(machine, "错误码", diagnostic.machine.code);
-        diagnosticRow(machine, "任务", diagnostic.machine.taskId);
-        diagnosticRow(machine, "字段", diagnostic.machine.path);
-        diagnosticRow(machine, "来源", diagnostic.machine.location);
+        row.createSpan({ text: item.text ?? "未提供" });
       }
+    }
+    const validEvidence = Object.values(model.evidence).filter(
+      (health) => health === "valid"
+    ).length;
+    const evidence = createSection(
+      body,
+      "执行证据",
+      validEvidence === 3 ? "全部有效" : `${validEvidence} / 3 有效`
+    );
+    renderedSections.set("evidence", evidence);
+    const evidenceGrid = evidence.createDiv({ cls: "flowdesk-evidence-grid" });
+    evidenceItem(evidenceGrid, "执行结果", model.evidence.execution);
+    evidenceItem(evidenceGrid, "验证结果", model.evidence.verification);
+    evidenceItem(evidenceGrid, "交付记录", model.evidence.delivery);
+
+    const observation = createSection(
+      body,
+      "观察与来源",
+      model.observation.isTrustworthy ? "健康" : "需检查",
+      `flowdesk-observation-summary ${model.observation.isTrustworthy ? "is-healthy" : "is-warning"}`
+    );
+    renderedSections.set("observation", observation);
+    observation.createDiv({
+      cls: "flowdesk-observation-copy",
+      text: model.observation.trustMessage,
+    });
+    const observationChips = observation.createDiv({
+      cls: "flowdesk-contract-chip-row",
+    });
+    observationChips.createSpan({
+      cls: "flowdesk-contract-chip",
+      text: model.observation.currentTask === "observed" ? "Task 已读取" : "Task 未确认",
+    });
+    observationChips.createSpan({
+      cls: "flowdesk-contract-chip",
+      text: model.observation.parent === "not_applicable"
+        ? "无父任务"
+        : model.observation.parent === "observed"
+          ? "父任务已读取"
+          : "父任务未确认",
+    });
+    observationChips.createSpan({
+      cls: "flowdesk-contract-chip",
+      text: model.observation.children === "observed"
+        ? model.currentTask.hasChildren
+          ? "子任务已读取"
+          : "无子任务"
+        : "子任务未确认",
+    });
+    observationChips.createSpan({
+      cls: "flowdesk-contract-chip",
+      text: model.observation.sourceIdentity === true ? "来源一致" : "来源待确认",
+    });
+    const observationDetails = observation.createEl("details", {
+      cls: "flowdesk-observation-details",
+    });
+    observationDetails.open = this.disclosureState.observationOpen;
+    observationDetails.addEventListener("toggle", () => {
+      this.disclosureState.observationOpen = observationDetails.open;
+    });
+    observationDetails.createEl("summary", { text: "查看 6 个技术字段" });
+    const observationGrid = observationDetails.createDiv({
+      cls: "flowdesk-observation-grid",
+    });
+    observationField(observationGrid, "当前任务", model.observation.currentTask);
+    observationField(observationGrid, "父任务", model.observation.parent);
+    observationField(observationGrid, "直接子任务", model.observation.children);
+    observationField(observationGrid, "TaskNotes API", model.observation.tasknotesApi);
+    observationField(
+      observationGrid,
+      "来源身份",
+      model.observation.sourceIdentity === true
+        ? "match"
+        : model.observation.sourceIdentity === false
+          ? "mismatch"
+          : "unknown"
+    );
+    observationField(
+      observationGrid,
+      "数据陈旧",
+      model.observation.isStale ? "true" : "false"
+    );
+    const activeDiagnosticKeys: string[] = [];
+    const diagnosticKeyOccurrences = new Map<string, number>();
+    if (diagnosticGroups.length) {
+      const diagnostics = body.createEl("details", {
+        cls: "flowdesk-dashboard-section flowdesk-diagnostics-section",
+      });
+      diagnostics.open = this.disclosureState.technicalDiagnosticsOpen;
+      diagnostics.addEventListener("toggle", () => {
+        this.disclosureState.technicalDiagnosticsOpen = diagnostics.open;
+      });
+      const diagnosticsSummary = diagnostics.createEl("summary", {
+        cls: "flowdesk-contract-section-head",
+      });
+      diagnosticsSummary.createSpan({
+        cls: "flowdesk-dashboard-section-title",
+        text: "技术诊断",
+      });
+      diagnosticsSummary.createSpan({
+        cls: "flowdesk-contract-section-meta",
+        text: `${diagnosticCount} 项`,
+      });
+      renderedSections.set("diagnostics", diagnostics);
+      for (const group of diagnosticGroups) {
+        const groupContainer = diagnostics.createDiv({
+          cls: `flowdesk-diagnostic-task-group is-${group.kind}`,
+        });
+        const groupHeader = groupContainer.createDiv({
+          cls: "flowdesk-diagnostic-task-head",
+        });
+        groupHeader.createSpan({
+          cls: "flowdesk-diagnostic-task-kind",
+          text: group.kind === "current" ? "当前任务" : "直接子任务",
+        });
+        if (group.kind === "child") {
+          const taskLink = groupHeader.createEl("button", {
+            cls: "flowdesk-diagnostic-task-link",
+            text: group.taskTitle,
+            attr: { title: `在新标签打开：${group.taskTitle}` },
+          });
+          taskLink.addEventListener("click", () => {
+            void this.openTask(group.taskId, "child");
+          });
+        } else {
+          groupHeader.createSpan({
+            cls: "flowdesk-diagnostic-task-title",
+            text: group.taskTitle,
+          });
+        }
+        groupHeader.createSpan({
+          cls: `flowdesk-diagnostic-task-status is-${group.tone}`,
+          text: `${group.status} · ${group.diagnostics.length} 项`,
+        });
+        group.diagnostics.forEach((diagnostic) => {
+          const baseKey = createDiagnosticDisclosureKey(
+            group.taskId,
+            diagnostic.diagnostic
+          );
+          const occurrence = diagnosticKeyOccurrences.get(baseKey) ?? 0;
+          diagnosticKeyOccurrences.set(baseKey, occurrence + 1);
+          const disclosureKey = occurrence ? `${baseKey}#${occurrence + 1}` : baseKey;
+          activeDiagnosticKeys.push(disclosureKey);
+          const item = groupContainer.createEl("details", {
+            cls: "flowdesk-diagnostic-issue",
+          });
+          item.open = resolveDiagnosticDisclosureOpen(
+            this.disclosureState,
+            disclosureKey
+          );
+          item.addEventListener("toggle", () => {
+            this.disclosureState.diagnosticOpen[disclosureKey] = item.open;
+          });
+          const itemHead = item.createEl("summary", {
+            cls: "flowdesk-diagnostic-issue-summary",
+          });
+          itemHead.createSpan({
+            cls: `flowdesk-diagnostic-severity is-${diagnostic.diagnostic.severity}`,
+            attr: { "aria-hidden": "true" },
+          });
+          itemHead.createSpan({
+            cls: "flowdesk-diagnostic-action",
+            text: diagnostic.title,
+          });
+          const diagnosticLink = itemHead.createEl("button", {
+            cls: "flowdesk-diagnostic-source",
+            text: `${diagnostic.sourceLabel} ↗`,
+          });
+          diagnosticLink.addEventListener("click", (event) => {
+            event.stopPropagation();
+            void this.openDiagnosticLocation(diagnostic.diagnostic);
+          });
+          const itemBody = item.createDiv({ cls: "flowdesk-diagnostic-item-body" });
+          diagnosticRow(itemBody, "实际", diagnostic.actual);
+          diagnosticRow(itemBody, "修复", diagnostic.remediation);
+          const supporting = itemBody.createEl("details", {
+            cls: "flowdesk-diagnostic-supporting-details flowdesk-machine-details",
+          });
+          supporting.open =
+            this.disclosureState.diagnosticSupportingOpen[disclosureKey] ?? false;
+          supporting.addEventListener("toggle", () => {
+            this.disclosureState.diagnosticSupportingOpen[disclosureKey] =
+              supporting.open;
+          });
+          supporting.createEl("summary", { text: "查看预期与机器字段" });
+          diagnosticRow(supporting, "预期", diagnostic.expected);
+          diagnosticRow(supporting, "错误码", diagnostic.machine.code);
+          diagnosticRow(supporting, "字段", diagnostic.machine.path);
+        });
+      }
+    }
+    reconcileDiagnosticDisclosureState(
+      this.disclosureState,
+      activeDiagnosticKeys
+    );
+    for (const sectionName of resolveDetailSectionOrder(diagnosticCount > 0)) {
+      const section = renderedSections.get(sectionName);
+      if (section) body.appendChild(section);
     }
   }
 
@@ -782,14 +1061,19 @@ class FlowDeskDashboardView extends ItemView {
     });
   }
 
-  private async openTask(taskPath: string) {
+  private async openTask(
+    taskPath: string,
+    origin: TaskNavigationOrigin = "current"
+  ) {
     if (!taskPath) return;
     const file = this.app.vault.getAbstractFileByPath(taskPath);
     if (!(file instanceof TFile)) {
       new Notice(`未找到任务文件：${taskPath}`);
       return;
     }
-    await this.app.workspace.getLeaf(false).openFile(file);
+    await this.app.workspace
+      .getLeaf(taskNavigationNewLeaf(origin))
+      .openFile(file);
   }
 }
 
@@ -832,49 +1116,91 @@ class FlowDeskDashboardSettingTab extends PluginSettingTab {
   }
 }
 
-function createSection(container: HTMLElement, title: string) {
-  const section = container.createDiv({ cls: "flowdesk-dashboard-section" });
-  section.createDiv({ cls: "flowdesk-dashboard-section-title", text: title });
+function createSection(
+  container: HTMLElement,
+  title: string,
+  meta = "",
+  className = ""
+) {
+  const section = container.createDiv({
+    cls: `flowdesk-dashboard-section ${className}`.trim(),
+  });
+  const heading = section.createDiv({ cls: "flowdesk-contract-section-head" });
+  heading.createDiv({ cls: "flowdesk-dashboard-section-title", text: title });
+  if (meta) {
+    heading.createDiv({ cls: "flowdesk-contract-section-meta", text: meta });
+  }
   return section;
 }
 
-function childMeta(container: HTMLElement, label: string, value: string) {
-  const row = container.createDiv({ cls: "flowdesk-meta-row" });
-  row.createSpan({ cls: "flowdesk-summary-label", text: `${label}：` });
-  row.createSpan({ text: value });
-}
-
-function renderTextList(container: HTMLElement, label: string, values: string[]) {
-  const section = container.createDiv({ cls: "flowdesk-contract-list" });
-  section.createDiv({ cls: "flowdesk-summary-label", text: label });
-  if (!values.length) {
-    section.createDiv({ cls: "flowdesk-muted", text: "无" });
-    return;
-  }
-  for (const value of values) {
-    section.createDiv({ text: `• ${value}` });
-  }
+function scopeRow(container: HTMLElement, label: string, values: string[]) {
+  const row = container.createDiv({ cls: "flowdesk-contract-scope-row" });
+  row.createSpan({ cls: "flowdesk-summary-label", text: label });
+  row.createSpan({ text: values.length ? values.join("、") : "无" });
 }
 
 function renderContractItems(
   container: HTMLElement,
   label: string,
-  items: SnapshotContractItem[]
+  kind: "requirement" | "scenario",
+  items: SnapshotContractItem[],
+  openSource: (source?: SnapshotSource) => void,
+  open: boolean,
+  onToggle: (open: boolean) => void
 ) {
-  const section = container.createDiv({ cls: "flowdesk-contract-list" });
-  section.createDiv({ cls: "flowdesk-summary-label", text: label });
+  const section = container.createEl("details", {
+    cls: "flowdesk-contract-item-details",
+  });
+  section.open = open;
+  section.addEventListener("toggle", () => onToggle(section.open));
+  const summary = section.createEl("summary");
+  summary.createSpan({ text: label });
+  summary.createSpan({
+    cls: "flowdesk-contract-item-count",
+    text: `${items.length} 条`,
+  });
   if (!items.length) {
     section.createDiv({ cls: "flowdesk-muted", text: "无" });
     return;
   }
+  const list = section.createDiv({ cls: "flowdesk-contract-item-list" });
   for (const item of items) {
-    const coverage = item.requirement_ids?.length
-      ? ` (${item.requirement_ids.join("、")})`
-      : "";
-    section.createDiv({
-      text: `${item.id ?? "未编号"}${coverage}：${item.text ?? "未提供"}`,
+    const presentation = createContractItemPresentation(item, kind);
+    const row = list.createDiv({ cls: "flowdesk-contract-item" });
+    const header = row.createDiv({ cls: "flowdesk-contract-item-head" });
+    header.createSpan({
+      cls: "flowdesk-contract-item-id",
+      text: presentation.id,
     });
+    for (const requirementId of presentation.requirementIds) {
+      header.createSpan({
+        cls: "flowdesk-contract-requirement-ref",
+        text: requirementId,
+      });
+    }
+    const source = header.createEl("button", {
+      cls: "flowdesk-contract-item-source",
+      text: `${presentation.sourceLabel} ↗`,
+      attr: { "aria-label": `打开来源：${presentation.sourceLabel}` },
+    });
+    source.addEventListener("click", () => openSource(item.source));
+    if (presentation.steps) {
+      const steps = row.createDiv({ cls: "flowdesk-scenario-steps" });
+      scenarioStep(steps, "Given", presentation.steps.given);
+      scenarioStep(steps, "When", presentation.steps.when);
+      scenarioStep(steps, "Then", presentation.steps.then);
+    } else {
+      row.createDiv({
+        cls: "flowdesk-contract-item-text",
+        text: presentation.text,
+      });
+    }
   }
+}
+
+function scenarioStep(container: HTMLElement, label: string, value: string) {
+  container.createSpan({ cls: "flowdesk-scenario-step-label", text: label });
+  container.createSpan({ text: value });
 }
 
 function diagnosticRow(container: HTMLElement, label: string, value: string) {
@@ -883,11 +1209,29 @@ function diagnosticRow(container: HTMLElement, label: string, value: string) {
   row.createSpan({ text: value });
 }
 
-function evidenceRow(container: HTMLElement, label: string, health: EvidenceHealth) {
+function evidenceItem(container: HTMLElement, label: string, health: EvidenceHealth) {
   const state = getEvidenceDisplayState(health);
-  const row = container.createDiv({ cls: "flowdesk-evidence-row" });
-  row.createSpan({ cls: `flowdesk-status-dot is-${state}`, text: statusSymbol(state) });
-  row.createSpan({ text: formatEvidenceSummary(label, health) });
+  const item = container.createDiv({ cls: "flowdesk-evidence-item" });
+  item.createDiv({
+    cls: `flowdesk-evidence-title is-${state}`,
+    text: `${statusSymbol(state)} ${label}`,
+  });
+  item.createDiv({
+    cls: "flowdesk-evidence-summary",
+    text: formatEvidenceSummary(label, health).split("：").pop() || "未知",
+  });
+}
+
+function observationField(container: HTMLElement, label: string, value: string) {
+  const cell = container.createDiv({ cls: "flowdesk-observation-cell" });
+  cell.createDiv({ cls: "flowdesk-summary-label", text: label });
+  cell.createDiv({ cls: "flowdesk-observation-value", text: value });
+}
+
+function formatSemanticStatus(value: string): string {
+  if (value === "valid") return "语义有效";
+  if (value === "invalid") return "语义无效";
+  return "语义待确认";
 }
 
 function normalizeStatus(value: unknown) {
