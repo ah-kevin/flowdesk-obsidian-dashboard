@@ -4,7 +4,7 @@
   --fd-red: var(--color-red);
   --fd-blue: var(--color-blue);
   --fd-border: color-mix(in srgb, var(--background-modifier-border) 78%, transparent);
-  --fd-panel: color-mix(in srgb, var(--background-secondary) 88%, transparent);
+  --fd-panel: color-mix(in srgb, var(--background-secondary) 84%, transparent);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -33,79 +33,118 @@
   opacity: 0.65;
 }
 
-.flowdesk-dashboard-header,
-.flowdesk-hero-title-row,
-.flowdesk-child-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
+.flowdesk-dashboard button:focus-visible,
+.flowdesk-dashboard .is-clickable:focus-visible,
+.flowdesk-dashboard details > summary:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
 }
 
-.flowdesk-dashboard-header {
+.flowdesk-task-header {
   position: sticky;
   top: 0;
   z-index: 2;
-  padding: 4px 0 10px;
-  background: var(--background-primary);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
   border-bottom: 1px solid var(--fd-border);
+  background: var(--background-primary);
+  padding: 4px 0 11px;
 }
 
-.flowdesk-dashboard-title {
-  font-size: 16px;
-  font-weight: 700;
+.flowdesk-task-heading {
+  min-width: 0;
 }
 
-.flowdesk-dashboard-path,
-.flowdesk-subline {
-  margin-top: 4px;
-  color: var(--text-muted);
-  font-size: 11px;
+.flowdesk-task-title {
+  font-size: 18px;
+  font-weight: 720;
+  line-height: 1.3;
   overflow-wrap: anywhere;
 }
 
-.flowdesk-dashboard-toolbar {
-  display: flex;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  gap: 6px;
+.flowdesk-task-loading,
+.flowdesk-subline,
+.flowdesk-trust-meta,
+.flowdesk-trust-detail,
+.flowdesk-section-meta,
+.flowdesk-child-meta,
+.flowdesk-primary-location {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
-.flowdesk-breadcrumb {
+.flowdesk-parent-link,
+.flowdesk-diagnostic-link,
+.flowdesk-technical-diagnostic-link {
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--text-accent) !important;
+  padding: 0 !important;
+  text-align: left;
+}
+
+.flowdesk-parent-link {
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.flowdesk-task-badges,
+.flowdesk-dashboard-toolbar,
+.flowdesk-trust-headline,
+.flowdesk-contract-metrics {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  color: var(--text-muted);
-  font-size: 12px;
-  overflow-wrap: anywhere;
 }
 
-.flowdesk-breadcrumb button {
-  border: 0;
-  background: transparent;
-  color: var(--text-accent);
-  padding: 0;
-  text-align: left;
+.flowdesk-task-badges {
+  margin-top: 8px;
 }
 
-.flowdesk-breadcrumb-current {
-  color: var(--text-normal);
+.flowdesk-dashboard-toolbar {
+  flex-shrink: 0;
+}
+
+.flowdesk-state-pill,
+.flowdesk-contract-chip,
+.flowdesk-trust-contract {
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  padding: 3px 8px;
+  font-size: 11px;
   font-weight: 650;
+}
+
+.flowdesk-state-pill.is-healthy,
+.flowdesk-state-pill.is-done {
+  color: var(--fd-green);
+}
+
+.flowdesk-state-pill.is-running {
+  color: var(--fd-blue);
+}
+
+.flowdesk-state-pill.is-warning {
+  color: var(--fd-yellow);
+}
+
+.flowdesk-state-pill.is-error {
+  color: var(--fd-red);
 }
 
 .flowdesk-empty,
 .flowdesk-error,
-.flowdesk-context-pause,
-.flowdesk-primary-status,
-.flowdesk-primary-action,
-.flowdesk-current-task-hero,
-.flowdesk-dashboard-section,
-.flowdesk-detail-group {
+.flowdesk-context-pause {
   border: 1px solid var(--fd-border);
   border-radius: 10px;
   background: var(--fd-panel);
-  padding: 12px;
+  padding: 14px;
 }
 
 .flowdesk-error {
@@ -116,105 +155,70 @@
 
 .flowdesk-card-kicker,
 .flowdesk-dashboard-section-title,
-.flowdesk-metric-label,
 .flowdesk-summary-label {
   color: var(--text-muted);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.025em;
 }
 
-.flowdesk-primary-title,
-.flowdesk-hero-title,
-.flowdesk-child-title {
-  font-weight: 700;
-  line-height: 1.35;
-}
-
-.flowdesk-primary-title,
-.flowdesk-hero-title {
-  margin-top: 5px;
-  font-size: 15px;
-}
-
-.flowdesk-trust-strip {
+.flowdesk-trust-summary {
   border-left: 4px solid var(--fd-blue);
   border-radius: 8px;
   background: var(--fd-panel);
   padding: 9px 11px;
-  font-size: 12px;
 }
 
-.flowdesk-trust-strip.is-healthy {
+.flowdesk-trust-summary.is-healthy {
   border-left-color: var(--fd-green);
 }
 
-.flowdesk-trust-strip.is-degraded,
-.flowdesk-trust-strip.is-stale {
+.flowdesk-trust-summary.is-warning {
   border-left-color: var(--fd-yellow);
 }
 
-.flowdesk-trust-strip.is-failed,
-.flowdesk-trust-strip.is-error {
+.flowdesk-trust-summary.is-error {
   border-left-color: var(--fd-red);
 }
 
 .flowdesk-trust-badge {
-  display: inline-block;
-  margin-right: 8px;
-  font-weight: 700;
-}
-
-.flowdesk-stale-reason,
-.flowdesk-warning {
-  margin-top: 7px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--fd-yellow) 12%, transparent);
-  color: var(--text-warning);
-  padding: 6px 8px;
   font-size: 12px;
+  font-weight: 750;
 }
 
-.flowdesk-hero-metrics {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
-  gap: 8px;
-  margin-top: 12px;
+.flowdesk-trust-meta {
+  margin-top: 5px;
 }
 
-.flowdesk-metric {
-  border-radius: 8px;
-  background: var(--background-primary);
-  padding: 9px;
+.flowdesk-trust-detail {
+  margin-top: 2px;
 }
 
-.flowdesk-metric-value {
-  margin-top: 4px;
-  font-size: 13px;
-  font-weight: 650;
+.flowdesk-primary-status {
+  border: 1px solid var(--fd-border);
+  border-left: 5px solid var(--fd-blue);
+  border-radius: 10px;
+  background: var(--fd-panel);
+  padding: 13px;
 }
 
-.flowdesk-state-pill,
-.flowdesk-priority {
-  flex-shrink: 0;
-  border-radius: 999px;
-  background: var(--background-modifier-border);
-  padding: 3px 8px;
-  font-size: 11px;
-  font-weight: 700;
+.flowdesk-primary-status.is-healthy {
+  border-left-color: var(--fd-green);
 }
 
-.flowdesk-state-pill.is-done {
-  color: var(--fd-green);
+.flowdesk-primary-status.is-warning {
+  border-left-color: var(--fd-yellow);
 }
 
-.flowdesk-state-pill.is-running {
-  color: var(--fd-blue);
+.flowdesk-primary-status.is-error {
+  border-left-color: var(--fd-red);
 }
 
-.flowdesk-state-pill.is-blocked {
-  color: var(--fd-red);
+.flowdesk-primary-title {
+  margin-top: 5px;
+  font-size: 15px;
+  font-weight: 720;
+  line-height: 1.35;
 }
 
 .flowdesk-diagnostic-row,
@@ -224,46 +228,149 @@
   gap: 5px;
   margin-top: 6px;
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
-.flowdesk-primary-status button,
-.flowdesk-primary-action button,
-.flowdesk-child-card button {
-  margin-top: 10px;
+.flowdesk-primary-location {
+  margin-top: 8px;
 }
 
-.flowdesk-child-rollup {
-  border-left: 4px solid var(--fd-blue);
+.flowdesk-child-section {
+  padding-top: 2px;
+}
+
+.flowdesk-section-heading,
+.flowdesk-child-row-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .flowdesk-child-list {
   display: grid;
-  gap: 10px;
-  margin-top: 10px;
+  gap: 7px;
+  margin-top: 8px;
 }
 
-.flowdesk-child-card {
+.flowdesk-child-row {
   border: 1px solid var(--fd-border);
   border-left: 4px solid var(--fd-blue);
   border-radius: 9px;
-  background: var(--background-primary);
-  padding: 11px;
+  background: var(--fd-panel);
+  padding: 10px 11px;
+  cursor: pointer;
 }
 
-.flowdesk-child-card.is-blocked {
+.flowdesk-child-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.flowdesk-child-row.is-healthy {
+  border-left-color: var(--fd-green);
+}
+
+.flowdesk-child-row.is-warning {
+  border-left-color: var(--fd-yellow);
+}
+
+.flowdesk-child-row.is-error {
   border-left-color: var(--fd-red);
 }
 
 .flowdesk-child-title {
-  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
-.flowdesk-child-goal {
-  margin: 9px 0;
-  color: var(--text-normal);
+.flowdesk-child-summary {
+  margin-top: 5px;
   font-size: 12px;
+  line-height: 1.45;
+}
+
+.flowdesk-child-meta {
+  margin-top: 3px;
+}
+
+.flowdesk-contract-summary {
+  border: 1px solid var(--fd-border);
+  border-radius: 10px;
+  background: var(--fd-panel);
+  padding: 11px 12px;
+}
+
+.flowdesk-contract-summary > summary,
+.flowdesk-technical-details > summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.flowdesk-contract-overview {
+  margin-top: 10px;
+}
+
+.flowdesk-contract-goal-text {
+  margin-top: 4px;
+  font-size: 13px;
   line-height: 1.5;
+}
+
+.flowdesk-contract-metrics {
+  margin-top: 9px;
+}
+
+.flowdesk-contract-chip {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-technical-details {
+  margin-top: 11px;
+  border-top: 1px solid var(--fd-border);
+  padding-top: 9px;
+}
+
+.flowdesk-technical-details > summary {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.flowdesk-detail-body {
+  display: grid;
+  gap: 9px;
+  margin-top: 10px;
+}
+
+.flowdesk-dashboard-section {
+  border-radius: 8px;
+  background: var(--background-primary);
+  padding: 10px;
+}
+
+.flowdesk-contract-list {
+  margin-top: 8px;
+  border-top: 1px solid var(--fd-border);
+  padding-top: 7px;
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-diagnostic-item {
+  margin-top: 9px;
+  border-top: 1px solid var(--fd-border);
+  padding-top: 9px;
+}
+
+.flowdesk-technical-diagnostic-link {
+  font-family: var(--font-monospace);
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .flowdesk-status-dot {
@@ -283,52 +390,10 @@
   color: var(--fd-green);
 }
 
-.flowdesk-status-dot.is-running {
-  color: var(--fd-blue);
-}
-
 .flowdesk-status-dot.is-blocked,
 .flowdesk-status-dot.is-error,
 .flowdesk-status-dot.is-invalid {
   color: var(--fd-red);
-}
-
-.flowdesk-contract-list {
-  margin-top: 8px;
-  border-top: 1px solid var(--fd-border);
-  padding-top: 7px;
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.flowdesk-leaf-contract {
-  border-left: 4px solid var(--fd-green);
-}
-
-.flowdesk-detail-group > summary {
-  cursor: pointer;
-  font-weight: 700;
-}
-
-.flowdesk-detail-body {
-  display: grid;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.flowdesk-detail-body .flowdesk-dashboard-section {
-  background: var(--background-primary);
-}
-
-.flowdesk-diagnostic-item {
-  margin-top: 9px;
-  border-top: 1px solid var(--fd-border);
-  padding-top: 9px;
-}
-
-.flowdesk-main-text {
-  font-size: 12px;
-  font-weight: 650;
 }
 
 .flowdesk-muted {
@@ -338,8 +403,7 @@
 }
 
 @media (max-width: 520px) {
-  .flowdesk-dashboard-header,
-  .flowdesk-hero-title-row {
+  .flowdesk-task-header {
     align-items: stretch;
     flex-direction: column;
   }
@@ -348,7 +412,7 @@
     justify-content: flex-end;
   }
 
-  .flowdesk-breadcrumb {
+  .flowdesk-child-row-header {
     align-items: flex-start;
     flex-direction: column;
   }

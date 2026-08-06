@@ -6,7 +6,6 @@ import {
   isCurrentSnapshotRequest,
   registerInitialDashboardSync,
   resolveRefreshFailureDisplay,
-  resolveDetailsOpen,
   resolveDashboardContext,
   TrailingRefreshScheduler,
   validateSnapshotEnvelope,
@@ -114,14 +113,6 @@ test("连续调度只执行最后一次刷新，手动 flush 立即执行", () =
   scheduler.flush();
   assert.equal(refreshCount, 2);
   assert.equal(pending, null);
-});
-
-test("同任务刷新保持详情选择，切换 task 时按 leaf 与诊断默认展开", () => {
-  assert.equal(resolveDetailsOpen(true, false, 0, true), true);
-  assert.equal(resolveDetailsOpen(false, false, 3, false), false);
-  assert.equal(resolveDetailsOpen(false, true, 0, true), false);
-  assert.equal(resolveDetailsOpen(false, true, 0, false), true);
-  assert.equal(resolveDetailsOpen(false, true, 1, true), true);
 });
 
 test("请求必须同时匹配任务路径与 selection revision", () => {

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   createDashboardPresentation,
+  isActivationKey,
   resolveDisclosureState,
 } from "../src/dashboard-presentation.ts";
 import { createDashboardViewModel } from "../src/snapshot-model.ts";
@@ -169,6 +170,19 @@ test("Parent 只生成 direct child 紧凑行，Leaf 不生成空 child 区域",
   assert.equal(leaf.header.parent?.title, "Root");
 });
 
+test("child 只有真实阻塞关系存在时才在紧凑行显示", () => {
+  const snapshot = createSnapshot();
+  snapshot.children[0].is_blocked = true;
+  snapshot.children[0].blocked_by = [
+    { uid: "Tasks/Dependency.md", reltype: "blocks" },
+  ];
+  const model = createDashboardViewModel(snapshot, { expectedTaskPath: taskId });
+
+  const child = createDashboardPresentation(model).children[0];
+
+  assert.equal(child.meta, "阻塞于 Tasks/Dependency.md · 验证无效");
+});
+
 test("合同摘要默认展开，完整详情默认关闭，同 task 刷新保持选择", () => {
   assert.deepEqual(resolveDisclosureState(undefined, true), {
     summaryOpen: true,
@@ -216,4 +230,12 @@ test("合同异常但 diagnostics 为空时不显示健康", () => {
     presentation.primaryStatus.reason,
     "producer 将合同标记为 invalid，但没有返回结构化诊断"
   );
+});
+
+test("整行导航只响应 Enter 与 Space 键", () => {
+  assert.equal(isActivationKey("Enter"), true);
+  assert.equal(isActivationKey(" "), true);
+  assert.equal(isActivationKey("Spacebar"), true);
+  assert.equal(isActivationKey("Tab"), false);
+  assert.equal(isActivationKey("Escape"), false);
 });

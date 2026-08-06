@@ -98,18 +98,6 @@ export function collectObservedTaskPaths(
   return paths;
 }
 
-export function resolveDetailsOpen(
-  previousOpen: boolean,
-  taskChanged: boolean,
-  diagnosticCount: number,
-  hasChildren: boolean
-): boolean {
-  if (!taskChanged) {
-    return previousOpen;
-  }
-  return diagnosticCount > 0 || !hasChildren;
-}
-
 export function validateSnapshotEnvelope(
   value: unknown,
   requestedTaskPath: string

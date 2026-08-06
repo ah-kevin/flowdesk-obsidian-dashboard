@@ -183,7 +183,7 @@ test("task-centric 模型映射当前 task、parent、direct children 与 rollup
   assert.equal(model.observation.isTrustworthy, true);
 });
 
-test("parent breadcrumb 可选且 leaf 合同默认数据完整保序", () => {
+test("parent 上下文可选且 leaf 合同数据完整保序", () => {
   const snapshot = createTaskCentricSnapshot();
   snapshot.current_task.has_children = false;
   snapshot.children = [];

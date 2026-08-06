@@ -80,6 +80,10 @@ export function resolveDisclosureState(
   return previous;
 }
 
+export function isActivationKey(key: string): boolean {
+  return key === "Enter" || key === " " || key === "Spacebar";
+}
+
 export function createDashboardPresentation(
   model: DashboardViewModel
 ): DashboardPresentation {
@@ -228,13 +232,18 @@ function createDiagnosticStatus(
 function createChildRow(
   child: DashboardChildViewModel
 ): DashboardChildRowPresentation {
+  const meta = [];
+  if (child.blockedBy.length) {
+    meta.push(`阻塞于 ${child.blockedBy.join("、")}`);
+  }
+  meta.push(formatChildEvidenceIssues(child.evidenceHealth));
   return {
     id: child.id,
     title: child.title,
     status: formatTaskStatus(child.status),
     tone: taskStatusTone(child.status, child.isBlocked),
     summary: child.primaryDiagnostic?.reason ?? formatRollupState(child.rollupState),
-    meta: formatChildEvidenceIssues(child.evidenceHealth),
+    meta: meta.join(" · "),
   };
 }
 

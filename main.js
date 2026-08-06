@@ -42,6 +42,17 @@ var path2 = __toESM(require("path"));
 var import_util = require("util");
 
 // src/dashboard-state.ts
+function registerInitialDashboardSync(registerLayoutReady, sync) {
+  let active = true;
+  registerLayoutReady(() => {
+    if (active) {
+      sync();
+    }
+  });
+  return () => {
+    active = false;
+  };
+}
 function isTaskPath(filePath) {
   return filePath.endsWith(".md") && (filePath.startsWith("Tasks/") || filePath.startsWith("TaskNotes/"));
 }
@@ -74,12 +85,6 @@ function collectObservedTaskPaths(currentTaskPath, snapshot) {
     }
   }
   return paths;
-}
-function resolveDetailsOpen(previousOpen, taskChanged, diagnosticCount, hasChildren) {
-  if (!taskChanged) {
-    return previousOpen;
-  }
-  return diagnosticCount > 0 || !hasChildren;
 }
 function validateSnapshotEnvelope(value, requestedTaskPath) {
   const snapshot = typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
@@ -161,22 +166,6 @@ function shellQuote(value) {
     return value;
   }
   return `'${value.replace(/'/g, `'"'"'`)}'`;
-}
-
-// src/evidence-presentation.ts
-function getEvidenceDisplayState(health) {
-  if (health === "valid") {
-    return "done";
-  }
-  return health === "invalid" ? "error" : "blocked";
-}
-function formatEvidenceSummary(label, health) {
-  const labels = {
-    missing: "\u7F3A\u5931",
-    invalid: "\u65E0\u6548",
-    valid: "\u6709\u6548"
-  };
-  return `${label}\uFF1A${labels[health]}`;
 }
 
 // src/snapshot-model.ts
@@ -300,35 +289,6 @@ function formatRollupState(value) {
   };
   return (_a = labels[state]) != null ? _a : state;
 }
-function formatChildEvidenceHealth(value) {
-  const labels = {
-    missing: "\u7F3A\u5931",
-    invalid: "\u65E0\u6548",
-    valid: "\u6709\u6548"
-  };
-  if (isRecord(value)) {
-    return [
-      `\u6267\u884C${labels[normalizeEvidenceValue(value.execution)]}`,
-      `\u9A8C\u8BC1${labels[normalizeEvidenceValue(value.verification)]}`,
-      `\u4EA4\u4ED8${labels[normalizeEvidenceValue(value.delivery)]}`
-    ].join(" \xB7 ");
-  }
-  return labels[normalizeEvidenceValue(value)];
-}
-function formatCurrentTaskProgress(input) {
-  if (input.hasChildren) {
-    return `${input.childrenTrustedDone}/${input.childrenTotal} \u4E2A\u76F4\u63A5\u5B50\u4EFB\u52A1\u53EF\u4FE1\u5B8C\u6210`;
-  }
-  const acceptanceChecked = input.acceptance.filter(
-    (item) => item.checked === true
-  ).length;
-  const evidenceValid = [
-    input.evidence.execution,
-    input.evidence.verification,
-    input.evidence.delivery
-  ].filter((health) => health === "valid").length;
-  return `\u81EA\u8EAB\u9A8C\u6536 ${acceptanceChecked}/${input.acceptance.length} \xB7 \u8BC1\u636E ${evidenceValid}/3`;
-}
 function formatNextAction(action) {
   var _a;
   if (!action) {
@@ -447,6 +407,238 @@ function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// src/dashboard-presentation.ts
+function resolveDisclosureState(previous, taskChanged) {
+  if (!previous || taskChanged) {
+    return { summaryOpen: true, fullOpen: false };
+  }
+  return previous;
+}
+function isActivationKey(key) {
+  return key === "Enter" || key === " " || key === "Spacebar";
+}
+function createDashboardPresentation(model) {
+  const kind = model.currentTask.hasChildren ? "parent" : "leaf";
+  return {
+    kind,
+    header: {
+      title: model.currentTask.title,
+      status: formatTaskStatus(model.currentTask.status),
+      statusTone: taskStatusTone(model.currentTask.status, model.currentTask.isBlocked),
+      priority: formatPriority(model.currentTask.priority),
+      kindLabel: kind === "parent" ? "\u7236\u4EFB\u52A1" : "\u53F6\u5B50\u4EFB\u52A1",
+      parent: model.parent ? { id: model.parent.id, title: model.parent.title } : null
+    },
+    trust: createTrustSummary(model),
+    primaryStatus: createPrimaryStatus(model),
+    children: kind === "parent" ? model.children.map(createChildRow) : [],
+    contract: createContractSummary(model)
+  };
+}
+function formatTaskStatus(value) {
+  var _a;
+  const labels = {
+    done: "\u5DF2\u5B8C\u6210",
+    complete: "\u5DF2\u5B8C\u6210",
+    completed: "\u5DF2\u5B8C\u6210",
+    "in-progress": "\u8FDB\u884C\u4E2D",
+    running: "\u8FDB\u884C\u4E2D",
+    open: "\u5F85\u5F00\u59CB",
+    blocked: "\u5DF2\u963B\u585E",
+    error: "\u5F02\u5E38",
+    unknown: "\u672A\u77E5"
+  };
+  return (_a = labels[normalizeToken(value)]) != null ? _a : String(value || "\u672A\u77E5");
+}
+function taskStatusTone(value, isBlocked = false) {
+  if (isBlocked) return "error";
+  const status = normalizeToken(value);
+  if (["done", "complete", "completed"].includes(status)) return "healthy";
+  if (["in-progress", "running"].includes(status)) return "running";
+  if (["blocked", "error", "invalid"].includes(status)) return "error";
+  return "muted";
+}
+function createTrustSummary(model) {
+  const contractLabel = model.contract.semanticStatus === "valid" ? "\u5408\u540C\u6709\u6548" : model.contract.semanticStatus === "invalid" ? "\u5408\u540C\u5B58\u5728\u95EE\u9898" : "\u5408\u540C\u72B6\u6001\u672A\u77E5";
+  if (model.observation.isStale) {
+    return {
+      tone: "warning",
+      label: "\u663E\u793A\u4E0A\u6B21\u6210\u529F\u7ED3\u679C",
+      contractLabel,
+      meta: `${model.schemaLabel} \xB7 \u8BFB\u53D6\u4E8E ${model.observation.loadedAt}`,
+      detail: model.observation.staleReason || "snapshot \u5DF2\u6807\u8BB0\u4E3A\u65E7\u6570\u636E"
+    };
+  }
+  if (!model.observation.isTrustworthy) {
+    return {
+      tone: "error",
+      label: "\u89C2\u5BDF\u4E0D\u53EF\u4FE1",
+      contractLabel,
+      meta: `${model.schemaLabel} \xB7 ${model.observation.generatedAt}`,
+      detail: "\u65E0\u6CD5\u786E\u8BA4 snapshot \u662F\u5426\u5B8C\u6574\u5BF9\u5E94\u5F53\u524D\u4EFB\u52A1"
+    };
+  }
+  return {
+    tone: "healthy",
+    label: "\u89C2\u5BDF\u53EF\u4FE1",
+    contractLabel,
+    meta: `${model.schemaLabel} \xB7 ${model.observation.generatedAt}`,
+    detail: "\u6765\u6E90\u5339\u914D\uFF0C\u5DF2\u8BFB\u53D6\u5F53\u524D\u4EFB\u52A1\u3001\u7236\u4EFB\u52A1\u4E0E\u76F4\u63A5\u5B50\u4EFB\u52A1"
+  };
+}
+function createPrimaryStatus(model) {
+  if (model.observation.isStale) {
+    return {
+      tone: "warning",
+      title: "\u5F53\u524D\u663E\u793A\u7684\u662F\u4E0A\u6B21\u6210\u529F\u7ED3\u679C",
+      reason: model.observation.staleReason || "\u672C\u6B21\u5237\u65B0\u672A\u53D6\u5F97\u53EF\u4FE1 snapshot",
+      remediation: "\u68C0\u67E5 TaskNotes API \u6216 FlowDesk snapshot \u547D\u4EE4\u540E\u91CD\u8BD5",
+      location: "\u5F53\u524D\u4EFB\u52A1",
+      diagnostic: null
+    };
+  }
+  if (!model.observation.isTrustworthy) {
+    return {
+      tone: "error",
+      title: "\u65E0\u6CD5\u786E\u8BA4\u5F53\u524D\u4EFB\u52A1\u72B6\u6001",
+      reason: "snapshot \u89C2\u5BDF\u3001\u6765\u6E90\u6216\u6570\u636E\u5B8C\u6574\u6027\u6821\u9A8C\u672A\u901A\u8FC7",
+      remediation: "\u5C55\u5F00\u6280\u672F\u8BE6\u60C5\u786E\u8BA4 observation \u4E0E source identity",
+      location: "\u5F53\u524D\u4EFB\u52A1",
+      diagnostic: null
+    };
+  }
+  if (model.primaryDiagnostic) {
+    return createDiagnosticStatus(model.primaryDiagnostic);
+  }
+  if (model.contract.semanticStatus !== "valid") {
+    return {
+      tone: "error",
+      title: "\u4EFB\u52A1\u5408\u540C\u5B58\u5728\u95EE\u9898",
+      reason: `producer \u5C06\u5408\u540C\u6807\u8BB0\u4E3A ${model.contract.semanticStatus}\uFF0C\u4F46\u6CA1\u6709\u8FD4\u56DE\u7ED3\u6784\u5316\u8BCA\u65AD`,
+      remediation: "\u5C55\u5F00\u5B8C\u6574\u8BE6\u60C5\u6838\u5BF9\u5408\u540C\u5B57\u6BB5\uFF0C\u5E76\u4F7F\u7528 CLI \u83B7\u53D6 producer \u539F\u59CB\u8F93\u51FA",
+      location: "\u4EFB\u52A1\u5408\u540C",
+      diagnostic: null
+    };
+  }
+  return {
+    tone: "healthy",
+    title: "\u5DF2\u8BFB\u53D6\u5F53\u524D\u4EFB\u52A1\uFF0C\u672A\u53D1\u73B0\u7ED3\u6784\u5316\u8BCA\u65AD",
+    reason: "\u5DF2\u68C0\u67E5\u4EFB\u52A1\u5408\u540C\u4E0E\u6267\u884C\u8BC1\u636E",
+    remediation: model.nextAction || "\u7EE7\u7EED\u6309\u5F53\u524D\u4EFB\u52A1\u5408\u540C\u6267\u884C",
+    location: "\u5F53\u524D\u4EFB\u52A1",
+    diagnostic: null
+  };
+}
+function createDiagnosticStatus(diagnostic) {
+  return {
+    tone: diagnostic.severity === "warning" ? "warning" : "error",
+    title: diagnosticTitle(diagnostic.path),
+    reason: diagnostic.reason,
+    remediation: diagnostic.remediation,
+    location: diagnosticLocation(diagnostic),
+    diagnostic
+  };
+}
+function createChildRow(child) {
+  var _a, _b;
+  const meta = [];
+  if (child.blockedBy.length) {
+    meta.push(`\u963B\u585E\u4E8E ${child.blockedBy.join("\u3001")}`);
+  }
+  meta.push(formatChildEvidenceIssues(child.evidenceHealth));
+  return {
+    id: child.id,
+    title: child.title,
+    status: formatTaskStatus(child.status),
+    tone: taskStatusTone(child.status, child.isBlocked),
+    summary: (_b = (_a = child.primaryDiagnostic) == null ? void 0 : _a.reason) != null ? _b : formatRollupState(child.rollupState),
+    meta: meta.join(" \xB7 ")
+  };
+}
+function createContractSummary(model) {
+  const checked = model.contract.acceptance.filter(
+    (item) => item.checked === true
+  ).length;
+  return {
+    goal: model.contract.goal,
+    coverage: `REQ ${model.contract.requirements.length} \xB7 SCN ${model.contract.scenarios.length}`,
+    acceptance: `\u9A8C\u6536 ${checked}/${model.contract.acceptance.length}`,
+    evidence: formatEvidence(model.evidence),
+    diagnostics: `${model.diagnostics.length} \u4E2A\u8BCA\u65AD`
+  };
+}
+function diagnosticTitle(path3) {
+  const labels = {
+    "contract.goal": "\u4EFB\u52A1\u76EE\u6807\u9700\u8981\u4FEE\u590D",
+    "evidence.execution": "\u6267\u884C\u7ED3\u679C\u9700\u8981\u4FEE\u590D",
+    "evidence.verification": "\u9A8C\u8BC1\u7ED3\u679C\u9700\u8981\u4FEE\u590D",
+    "evidence.delivery": "\u4EA4\u4ED8\u8BB0\u5F55\u9700\u8981\u4FEE\u590D"
+  };
+  if (labels[path3]) return labels[path3];
+  if (path3.startsWith("contract.")) return "\u4EFB\u52A1\u5408\u540C\u9700\u8981\u4FEE\u590D";
+  if (path3.startsWith("evidence.")) return "\u6267\u884C\u8BC1\u636E\u9700\u8981\u4FEE\u590D";
+  return "\u5F53\u524D\u4EFB\u52A1\u9700\u8981\u5904\u7406\u4E00\u9879\u8BCA\u65AD";
+}
+function diagnosticLocation(diagnostic) {
+  var _a, _b, _c;
+  const section = ((_a = diagnostic.source) == null ? void 0 : _a.section) || ((_b = diagnostic.source) == null ? void 0 : _b.after_section);
+  const line = (_c = diagnostic.source) == null ? void 0 : _c.line_start;
+  if (section && typeof line === "number" && line > 0) {
+    return `${section} \xB7 \u7B2C ${line} \u884C`;
+  }
+  if (section) return section;
+  return "\u4EFB\u52A1\u6587\u4EF6";
+}
+function formatChildEvidenceIssues(evidence) {
+  const labels = [
+    ["\u6267\u884C", evidence.execution],
+    ["\u9A8C\u8BC1", evidence.verification],
+    ["\u4EA4\u4ED8", evidence.delivery]
+  ];
+  const issues = labels.filter(([, health]) => health !== "valid").map(([label, health]) => `${label}${health === "invalid" ? "\u65E0\u6548" : "\u7F3A\u5931"}`);
+  return issues.length ? issues.join(" \xB7 ") : "\u8BC1\u636E\u5B8C\u6574";
+}
+function formatEvidence(evidence) {
+  const healthLabel = {
+    valid: "\u6709\u6548",
+    invalid: "\u65E0\u6548",
+    missing: "\u7F3A\u5931"
+  };
+  return [
+    `\u6267\u884C${healthLabel[evidence.execution]}`,
+    `\u9A8C\u8BC1${healthLabel[evidence.verification]}`,
+    `\u4EA4\u4ED8${healthLabel[evidence.delivery]}`
+  ].join(" \xB7 ");
+}
+function formatPriority(value) {
+  var _a;
+  const labels = {
+    high: "\u9AD8\u4F18\u5148\u7EA7",
+    normal: "\u666E\u901A\u4F18\u5148\u7EA7",
+    low: "\u4F4E\u4F18\u5148\u7EA7"
+  };
+  return (_a = labels[value]) != null ? _a : value;
+}
+function normalizeToken(value) {
+  return String(value || "unknown").toLowerCase().replace(/_/g, "-");
+}
+
+// src/evidence-presentation.ts
+function getEvidenceDisplayState(health) {
+  if (health === "valid") {
+    return "done";
+  }
+  return health === "invalid" ? "error" : "blocked";
+}
+function formatEvidenceSummary(label, health) {
+  const labels = {
+    missing: "\u7F3A\u5931",
+    invalid: "\u65E0\u6548",
+    valid: "\u6709\u6548"
+  };
+  return `${label}\uFF1A${labels[health]}`;
+}
+
 // src/main.ts
 var FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
 var execFileAsync = (0, import_util.promisify)(import_child_process.execFile);
@@ -487,10 +679,6 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
         void ((_a = this.getDashboardView()) == null ? void 0 : _a.syncToActiveFile(file));
       })
     );
-    this.app.workspace.onLayoutReady(() => {
-      var _a;
-      void ((_a = this.getDashboardView()) == null ? void 0 : _a.syncToActiveFile());
-    });
     this.registerEvent(
       this.app.vault.on("modify", (file) => {
         const view = this.getDashboardView();
@@ -605,8 +793,8 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     this.loading = false;
     this.queuedRequest = null;
     this.refreshPromise = null;
-    this.detailsOpen = false;
-    this.detailsOpenInitialized = false;
+    this.cancelInitialSync = null;
+    this.disclosureState = resolveDisclosureState(void 0, true);
     this.refreshScheduler = new TrailingRefreshScheduler(() => {
       void this.loadCurrentTask();
     });
@@ -621,9 +809,17 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     return "layout-dashboard";
   }
   async onOpen() {
-    await this.syncToActiveFile();
+    this.cancelInitialSync = registerInitialDashboardSync(
+      (callback) => this.app.workspace.onLayoutReady(callback),
+      () => {
+        void this.syncToActiveFile();
+      }
+    );
   }
   async onClose() {
+    var _a;
+    (_a = this.cancelInitialSync) == null ? void 0 : _a.call(this);
+    this.cancelInitialSync = null;
     this.refreshScheduler.cancel();
   }
   async syncToActiveFile(file = this.app.workspace.getActiveFile()) {
@@ -651,7 +847,6 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   async loadTask(taskPath) {
     const sameTask = this.context.kind === "task" && this.context.taskPath === taskPath;
     if (!sameTask) {
-      const taskChanged = Boolean(this.previousTaskPath && this.previousTaskPath !== taskPath);
       this.selectionRevision += 1;
       this.context = { kind: "task", taskPath };
       this.previousTaskPath = taskPath;
@@ -659,10 +854,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       this.error = "";
       this.loading = true;
       this.refreshScheduler.cancel();
-      if (taskChanged) {
-        this.detailsOpen = false;
-        this.detailsOpenInitialized = false;
-      }
+      this.disclosureState = resolveDisclosureState(this.disclosureState, true);
       this.render();
     }
     this.queuedRequest = { taskPath, selectionRevision: this.selectionRevision };
@@ -732,20 +924,25 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     const container = this.contentEl;
     container.empty();
     container.addClass("flowdesk-dashboard");
-    this.renderHeader(container);
     if (this.context.kind === "non-task") {
       this.renderNonTaskState(container, this.context);
       return;
     }
     if (this.context.kind === "empty") {
-      container.createDiv({ cls: "flowdesk-empty", text: "\u5F53\u524D\u4E0D\u662F TaskNotes \u4EFB\u52A1\uFF0CFlowDesk Dashboard \u4E0D\u53EF\u7528\u3002" });
+      container.createDiv({
+        cls: "flowdesk-empty",
+        text: "\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u4EE5\u67E5\u770B Dashboard\u3002"
+      });
       return;
     }
     const taskPath = this.context.taskPath;
     const displayState = ((_a = this.displayState) == null ? void 0 : _a.taskPath) === taskPath ? this.displayState : null;
     const snapshot = displayState == null ? void 0 : displayState.snapshot;
+    if (!snapshot) {
+      this.renderLoadingHeader(container, taskPath);
+    }
     if (this.loading && !snapshot) {
-      container.createDiv({ cls: "flowdesk-empty", text: "\u6B63\u5728\u9996\u6B21\u8BFB\u53D6 snapshot v3..." });
+      container.createDiv({ cls: "flowdesk-empty", text: "\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u4EFB\u52A1 snapshot..." });
       return;
     }
     if (this.error && !snapshot) {
@@ -762,33 +959,57 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       staleReason: displayState == null ? void 0 : displayState.staleReason
     });
     if (model.errorCode) {
+      this.renderLoadingHeader(container, taskPath);
       container.createDiv({
         cls: "flowdesk-error",
         text: model.errorCode === "unsupported_snapshot_model" ? "Snapshot model \u4E0D\u53D7\u652F\u6301\uFF1A\u9700\u8981 task-centric\u3002" : "Snapshot schema \u4E0D\u53D7\u652F\u6301\uFF1A\u9700\u8981 3\u3002"
       });
       return;
     }
-    this.renderBreadcrumb(container, model);
-    this.renderTrustStrip(container, model);
-    this.renderCurrentTaskHero(container, model);
-    this.renderPrimaryDiagnostic(container, model);
-    this.renderNextAction(container, model);
-    if (model.currentTask.hasChildren) {
-      this.renderChildren(container, model);
+    const presentation = createDashboardPresentation(model);
+    this.renderHeader(container, model, presentation);
+    this.renderTrustStrip(container, presentation.trust);
+    this.renderPrimaryDiagnostic(container, presentation.primaryStatus);
+    if (presentation.children.length) {
+      this.renderChildren(container, model, presentation.children);
     }
-    this.renderDetails(container, model);
+    this.renderDetails(container, model, presentation.contract);
   }
-  renderHeader(container) {
-    const header = container.createDiv({ cls: "flowdesk-dashboard-header" });
-    const title = header.createDiv();
-    title.createDiv({ cls: "flowdesk-dashboard-title", text: "FlowDesk \u5F53\u524D\u4EFB\u52A1 Dashboard" });
-    title.createDiv({
-      cls: "flowdesk-dashboard-path",
-      text: this.context.kind === "task" ? this.context.taskPath : this.context.kind === "non-task" ? this.context.activePath : "\u672A\u9009\u62E9\u4EFB\u52A1"
+  renderLoadingHeader(container, taskPath) {
+    const header = container.createDiv({ cls: "flowdesk-task-header" });
+    const title = header.createDiv({ cls: "flowdesk-task-heading" });
+    title.createDiv({ cls: "flowdesk-task-title", text: taskTitleFromPath(taskPath) });
+    title.createDiv({ cls: "flowdesk-task-loading", text: "\u6B63\u5728\u5EFA\u7ACB\u53EF\u4FE1\u89C2\u5BDF\u2026" });
+    this.renderToolbar(header, taskPath);
+  }
+  renderHeader(container, model, presentation) {
+    const header = container.createDiv({ cls: "flowdesk-task-header" });
+    const heading = header.createDiv({ cls: "flowdesk-task-heading" });
+    if (presentation.header.parent) {
+      const parent = heading.createEl("button", {
+        cls: "flowdesk-parent-link",
+        text: `\u2191 ${presentation.header.parent.title}`
+      });
+      parent.addEventListener("click", () => {
+        var _a, _b;
+        void this.openTask((_b = (_a = presentation.header.parent) == null ? void 0 : _a.id) != null ? _b : "");
+      });
+    }
+    heading.createDiv({ cls: "flowdesk-task-title", text: presentation.header.title });
+    const badges = heading.createDiv({ cls: "flowdesk-task-badges" });
+    badges.createSpan({
+      cls: `flowdesk-state-pill is-${presentation.header.statusTone}`,
+      text: presentation.header.status
     });
-    const toolbar = header.createDiv({ cls: "flowdesk-dashboard-toolbar" });
-    if (this.context.kind !== "task") return;
-    const taskPath = this.context.taskPath;
+    badges.createSpan({ cls: "flowdesk-state-pill", text: presentation.header.kindLabel });
+    badges.createSpan({ cls: "flowdesk-state-pill", text: presentation.header.priority });
+    if (model.currentTask.isBlocked) {
+      badges.createSpan({ cls: "flowdesk-state-pill is-error", text: "\u5B58\u5728\u963B\u585E" });
+    }
+    this.renderToolbar(header, model.currentTask.id);
+  }
+  renderToolbar(container, taskPath) {
+    const toolbar = container.createDiv({ cls: "flowdesk-dashboard-toolbar" });
     const copy = toolbar.createEl("button", { text: "\u590D\u5236 CLI" });
     copy.addEventListener("click", async () => {
       try {
@@ -802,23 +1023,6 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     refresh.disabled = this.loading;
     refresh.addEventListener("click", () => void this.refreshCurrentTask());
   }
-  renderBreadcrumb(container, model) {
-    if (!model.parent) {
-      return;
-    }
-    const breadcrumb = container.createDiv({ cls: "flowdesk-breadcrumb" });
-    const parent = breadcrumb.createEl("button", { text: model.parent.title });
-    parent.addEventListener("click", () => {
-      var _a, _b;
-      void this.app.workspace.openLinkText(
-        (_b = (_a = model.parent) == null ? void 0 : _a.id) != null ? _b : "",
-        model.currentTask.id,
-        false
-      );
-    });
-    breadcrumb.createSpan({ text: "/" });
-    breadcrumb.createSpan({ cls: "flowdesk-breadcrumb-current", text: model.currentTask.title });
-  }
   renderNonTaskState(container, context) {
     const card = container.createDiv({ cls: "flowdesk-context-pause" });
     card.createDiv({ cls: "flowdesk-card-kicker", text: "Dashboard \u4E0D\u53EF\u7528" });
@@ -827,68 +1031,36 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       text: "\u5F53\u524D\u4E0D\u662F TaskNotes \u4EFB\u52A1\uFF0CFlowDesk Dashboard \u4E0D\u53EF\u7528\u3002"
     });
     card.createDiv({ cls: "flowdesk-subline", text: `\u5F53\u524D\u6587\u4EF6\uFF1A${context.activePath}` });
-    if (context.previousTaskPath) {
-      const back = card.createEl("button", { text: "\u56DE\u5230\u4E0A\u4E00\u6B21\u4EFB\u52A1" });
-      back.addEventListener("click", () => void this.openTask(context.previousTaskPath));
-    }
   }
-  renderTrustStrip(container, model) {
-    const state = model.observation.isStale ? "stale" : model.observation.health;
-    const strip = container.createDiv({ cls: `flowdesk-trust-strip is-${state}` });
-    strip.createSpan({
-      cls: "flowdesk-trust-badge",
-      text: model.observation.isStale ? "\u65E7\u6570\u636E" : model.observation.trustMessage
+  renderTrustStrip(container, trust) {
+    const strip = container.createDiv({
+      cls: `flowdesk-trust-summary is-${trust.tone}`
     });
-    strip.createSpan({ text: `${model.schemaLabel} \xB7 ${model.observation.generatedAt}` });
-    if (!model.observation.isTrustworthy) {
-      strip.createDiv({ cls: "flowdesk-warning", text: "\u89C2\u6D4B\u4E0D\u53EF\u4FE1\uFF0C\u65E0\u6CD5\u5224\u65AD\u4EFB\u52A1\u662F\u5426\u6B63\u5E38" });
-    }
-    if (model.observation.isStale) {
-      strip.createDiv({ cls: "flowdesk-stale-reason", text: `\u5237\u65B0\u5931\u8D25\uFF1A${model.observation.staleReason}` });
-    }
+    const headline = strip.createDiv({ cls: "flowdesk-trust-headline" });
+    headline.createSpan({ cls: "flowdesk-trust-badge", text: trust.label });
+    headline.createSpan({ cls: "flowdesk-trust-contract", text: trust.contractLabel });
+    strip.createDiv({ cls: "flowdesk-trust-meta", text: trust.meta });
+    strip.createDiv({ cls: "flowdesk-trust-detail", text: trust.detail });
   }
-  renderCurrentTaskHero(container, model) {
-    const hero = container.createDiv({ cls: "flowdesk-current-task-hero" });
-    hero.createDiv({ cls: "flowdesk-card-kicker", text: "\u5F53\u524D\u4EFB\u52A1" });
-    const title = hero.createDiv({ cls: "flowdesk-hero-title-row" });
-    title.createDiv({ cls: "flowdesk-hero-title", text: model.currentTask.title });
-    title.createSpan({
-      cls: `flowdesk-state-pill is-${normalizeStatus(model.currentTask.status)}`,
-      text: formatStatusLabel(model.currentTask.status)
+  renderPrimaryDiagnostic(container, status) {
+    const card = container.createDiv({
+      cls: `flowdesk-primary-status is-${status.tone}`
     });
-    const metrics = hero.createDiv({ cls: "flowdesk-hero-metrics" });
-    metricCard(metrics, "\u5F53\u524D gate", formatRollupState(model.currentTask.rollupState));
-    metricCard(
-      metrics,
-      "\u53EF\u4FE1\u8FDB\u5EA6",
-      formatCurrentTaskProgress({
-        hasChildren: model.currentTask.hasChildren,
-        childrenTrustedDone: model.rollup.childrenTrustedDone,
-        childrenTotal: model.rollup.childrenTotal,
-        acceptance: model.contract.acceptance,
-        evidence: model.evidence
-      })
-    );
-    metricCard(metrics, "Priority", formatPriority(model.currentTask.priority));
-    if (model.currentTask.isBlocked) {
-      hero.createDiv({
-        cls: "flowdesk-warning",
-        text: model.currentTask.blockedBy.length ? `\u5F53\u524D\u4EFB\u52A1\u88AB\u963B\u585E\uFF1A${model.currentTask.blockedBy.join("\u3001")}` : "\u5F53\u524D\u4EFB\u52A1\u5904\u4E8E\u963B\u585E\u72B6\u6001"
+    card.createDiv({ cls: "flowdesk-card-kicker", text: "\u5F53\u524D\u72B6\u6001" });
+    if (status.diagnostic) {
+      const title = card.createEl("button", {
+        cls: "flowdesk-primary-title flowdesk-diagnostic-link",
+        text: status.title
       });
-    }
-  }
-  renderPrimaryDiagnostic(container, model) {
-    const card = container.createDiv({ cls: "flowdesk-primary-status" });
-    card.createDiv({ cls: "flowdesk-card-kicker", text: "\u9996\u8981\u8BCA\u65AD" });
-    if (!model.primaryDiagnostic) {
-      card.createDiv({
-        cls: "flowdesk-primary-title",
-        text: model.observation.isTrustworthy ? "\u5F53\u524D\u6CA1\u6709\u7ED3\u6784\u5316\u8BCA\u65AD" : "\u89C2\u6D4B\u4E0D\u53EF\u4FE1\uFF0C\u65E0\u6CD5\u786E\u8BA4\u65E0\u5F02\u5E38"
+      title.addEventListener("click", () => {
+        void this.openDiagnosticLocation(status.diagnostic);
       });
-      return;
+    } else {
+      card.createDiv({ cls: "flowdesk-primary-title", text: status.title });
     }
-    card.createDiv({ cls: "flowdesk-primary-title", text: model.primaryDiagnostic.code });
-    this.renderDiagnosticBody(card, model.primaryDiagnostic);
+    diagnosticRow(card, "\u539F\u56E0", status.reason);
+    diagnosticRow(card, "\u5EFA\u8BAE", status.remediation);
+    card.createDiv({ cls: "flowdesk-primary-location", text: status.location });
   }
   renderDiagnosticBody(container, diagnostic) {
     const target = resolveDiagnosticTarget(diagnostic.taskId, diagnostic.source);
@@ -898,10 +1070,6 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     diagnosticRow(container, "\u539F\u56E0", diagnostic.reason);
     diagnosticRow(container, "\u9884\u671F", diagnostic.expected);
     diagnosticRow(container, "\u5EFA\u8BAE\u4FEE\u6CD5", diagnostic.remediation);
-    const open = container.createEl("button", { text: "\u6253\u5F00\u8BCA\u65AD\u4F4D\u7F6E" });
-    open.addEventListener("click", () => {
-      void this.openDiagnosticLocation(diagnostic);
-    });
   }
   async openDiagnosticLocation(diagnostic) {
     var _a;
@@ -931,103 +1099,115 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       new import_obsidian.Notice(`\u65E0\u6CD5\u5B9A\u4F4D\u8BCA\u65AD\u4F4D\u7F6E\uFF1A${message}`);
     }
   }
-  renderNextAction(container, model) {
-    var _a;
-    const card = container.createDiv({ cls: "flowdesk-primary-action" });
-    card.createDiv({ cls: "flowdesk-card-kicker", text: "\u4E0B\u4E00\u52A8\u4F5C" });
-    card.createDiv({ cls: "flowdesk-primary-title", text: (_a = model.nextAction) != null ? _a : "snapshot \u672A\u63D0\u4F9B\u4E0B\u4E00\u52A8\u4F5C" });
-    const copy = card.createEl("button", { text: "\u590D\u5236\u5F53\u524D\u4EFB\u52A1 CLI" });
-    copy.addEventListener("click", async () => {
-      try {
-        await this.plugin.copyDashboardCommand(model.currentTask.id);
-        new import_obsidian.Notice("\u5F53\u524D\u4EFB\u52A1 CLI \u547D\u4EE4\u5DF2\u590D\u5236");
-      } catch (error) {
-        new import_obsidian.Notice(`\u65E0\u6CD5\u590D\u5236 CLI \u547D\u4EE4\uFF1A${String(error)}`);
-      }
+  renderChildren(container, model, children) {
+    const section = container.createDiv({ cls: "flowdesk-child-section" });
+    const heading = section.createDiv({ cls: "flowdesk-section-heading" });
+    heading.createDiv({
+      cls: "flowdesk-dashboard-section-title",
+      text: `\u76F4\u63A5\u5B50\u4EFB\u52A1 \xB7 ${children.length}`
     });
-  }
-  renderChildren(container, model) {
-    const children = model.children;
-    const section = createSection(container, `\u76F4\u63A5\u5B50\u4EFB\u52A1\uFF08${children.length}\uFF09`);
-    section.addClass("flowdesk-child-rollup");
-    childMeta(
-      section,
-      "\u53EF\u4FE1\u8FDB\u5EA6",
-      `${model.rollup.childrenTrustedDone}/${model.rollup.childrenTotal}`
-    );
-    childMeta(section, "\u6C47\u603B\u72B6\u6001", formatRollupState(model.rollup.state));
+    heading.createDiv({
+      cls: "flowdesk-section-meta",
+      text: `${model.rollup.childrenTrustedDone}/${model.rollup.childrenTotal} \u53EF\u4FE1\u5B8C\u6210`
+    });
     const list = section.createDiv({ cls: "flowdesk-child-list" });
     for (const child of children) {
-      const card = list.createDiv({ cls: `flowdesk-child-card${child.isBlocked ? " is-blocked" : ""}` });
-      const header = card.createDiv({ cls: "flowdesk-child-header" });
-      header.createSpan({ cls: `flowdesk-status-dot is-${normalizeStatus(child.status)}`, text: statusSymbol(child.status) });
-      header.createDiv({ cls: "flowdesk-child-title", text: child.title });
-      header.createSpan({ cls: "flowdesk-priority", text: formatPriority(child.priority) });
-      card.createDiv({ cls: "flowdesk-subline", text: child.id });
-      card.createDiv({ cls: "flowdesk-child-goal", text: child.goal });
-      childMeta(card, "\u72B6\u6001", `${formatStatusLabel(child.status)}${child.trustedDone ? " \xB7 \u53EF\u4FE1\u5B8C\u6210" : ""}`);
-      childMeta(card, "Blocked by", child.blockedBy.length ? child.blockedBy.join("\u3001") : "\u65E0");
-      childMeta(card, "\u4E0B\u4E00\u5C42", child.hasChildren ? "\u6709 direct children" : "leaf task");
-      childMeta(card, "\u6C47\u603B", formatRollupState(child.rollupState));
-      childMeta(card, "\u8BC1\u636E", formatChildEvidenceHealth(child.evidenceHealth));
-      if (child.primaryDiagnostic) {
-        childMeta(card, "\u9996\u8981\u8BCA\u65AD", child.primaryDiagnostic.reason);
-      }
-      const open = card.createEl("button", { text: "\u6253\u5F00\u4EFB\u52A1" });
-      open.addEventListener("click", () => void this.openTask(child.id));
+      const row = list.createDiv({
+        cls: `flowdesk-child-row is-${child.tone}`,
+        attr: { role: "button", tabindex: "0" }
+      });
+      const rowHeader = row.createDiv({ cls: "flowdesk-child-row-header" });
+      rowHeader.createDiv({ cls: "flowdesk-child-title", text: child.title });
+      rowHeader.createSpan({
+        cls: `flowdesk-state-pill is-${child.tone}`,
+        text: child.status
+      });
+      row.createDiv({ cls: "flowdesk-child-summary", text: child.summary });
+      row.createDiv({ cls: "flowdesk-child-meta", text: child.meta });
+      this.makeNavigable(row, () => this.openTask(child.id));
     }
   }
-  renderDetails(container, model) {
+  renderDetails(container, model, summary) {
     var _a;
     const details = container.createEl("details", {
-      cls: `flowdesk-detail-group${model.currentTask.hasChildren ? "" : " flowdesk-leaf-contract"}`
+      cls: "flowdesk-contract-summary"
     });
-    if (!this.detailsOpenInitialized) {
-      this.detailsOpen = resolveDetailsOpen(
-        this.detailsOpen,
-        true,
-        model.diagnostics.length,
-        model.currentTask.hasChildren
-      );
-      this.detailsOpenInitialized = true;
-    }
-    details.open = this.detailsOpen;
-    details.addEventListener("toggle", () => this.detailsOpen = details.open);
+    details.open = this.disclosureState.summaryOpen;
+    details.addEventListener("toggle", () => {
+      this.disclosureState.summaryOpen = details.open;
+    });
     details.createEl("summary", { text: "\u5F53\u524D\u4EFB\u52A1\u5408\u540C\u4E0E\u8BC1\u636E" });
-    const body = details.createDiv({ cls: "flowdesk-detail-body" });
-    const observation = createSection(body, "Observation");
-    childMeta(observation, "health", model.observation.health);
-    childMeta(observation, "parent", model.observation.parent);
-    childMeta(observation, "children", model.observation.children);
+    const overview = details.createDiv({ cls: "flowdesk-contract-overview" });
+    const goal = overview.createDiv({ cls: "flowdesk-contract-goal" });
+    goal.createDiv({ cls: "flowdesk-summary-label", text: "\u76EE\u6807" });
+    goal.createDiv({ cls: "flowdesk-contract-goal-text", text: summary.goal });
+    const metrics = overview.createDiv({ cls: "flowdesk-contract-metrics" });
+    for (const value of [
+      summary.coverage,
+      summary.acceptance,
+      summary.evidence,
+      summary.diagnostics
+    ]) {
+      metrics.createSpan({ cls: "flowdesk-contract-chip", text: value });
+    }
+    const full = overview.createEl("details", { cls: "flowdesk-technical-details" });
+    full.open = this.disclosureState.fullOpen;
+    full.addEventListener("toggle", () => {
+      this.disclosureState.fullOpen = full.open;
+    });
+    full.createEl("summary", { text: "\u5C55\u5F00\u5168\u90E8\u5408\u540C\u3001\u8BC1\u636E\u4E0E\u8BCA\u65AD" });
+    const body = full.createDiv({ cls: "flowdesk-detail-body" });
+    const observation = createSection(body, "\u89C2\u5BDF\u8BE6\u60C5");
+    childMeta(observation, "\u5065\u5EB7\u72B6\u6001", model.observation.health);
+    childMeta(observation, "\u5F53\u524D\u4EFB\u52A1", model.observation.currentTask);
+    childMeta(observation, "\u7236\u4EFB\u52A1", model.observation.parent);
+    childMeta(observation, "\u76F4\u63A5\u5B50\u4EFB\u52A1", model.observation.children);
     childMeta(observation, "TaskNotes API", model.observation.tasknotesApi);
-    childMeta(observation, "source", model.observation.sourceTaskId || "\u672A\u63D0\u4F9B");
-    const contract = createSection(body, "Task Contract v3");
+    childMeta(observation, "\u6765\u6E90\u4EFB\u52A1", model.observation.sourceTaskId || "\u672A\u63D0\u4F9B");
+    const contract = createSection(body, "\u4EFB\u52A1\u5408\u540C v3");
     childMeta(contract, "\u7248\u672C", model.contract.version);
     childMeta(contract, "\u8BED\u4E49\u72B6\u6001", model.contract.semanticStatus);
-    childMeta(contract, "Goal", model.contract.goal);
-    renderTextList(contract, "Scope \xB7 \u5305\u542B", model.contract.scope.included);
-    renderTextList(contract, "Scope \xB7 \u4E0D\u5305\u542B", model.contract.scope.excluded);
-    renderContractItems(contract, "Requirements", model.contract.requirements);
-    renderContractItems(contract, "Scenarios", model.contract.scenarios);
-    const acceptance = createSection(body, "Acceptance Criteria");
+    childMeta(contract, "\u76EE\u6807", model.contract.goal);
+    renderTextList(contract, "\u8303\u56F4 \xB7 \u5305\u542B", model.contract.scope.included);
+    renderTextList(contract, "\u8303\u56F4 \xB7 \u4E0D\u5305\u542B", model.contract.scope.excluded);
+    renderContractItems(contract, "\u9700\u6C42", model.contract.requirements);
+    renderContractItems(contract, "\u573A\u666F", model.contract.scenarios);
+    const acceptance = createSection(body, "\u9A8C\u6536\u6807\u51C6");
     if (!model.contract.acceptance.length) {
       acceptance.createDiv({ cls: "flowdesk-muted", text: "producer \u672A\u63D0\u4F9B\u9A8C\u6536\u9879\u3002" });
     }
     for (const item of model.contract.acceptance) {
       acceptance.createDiv({ text: `${item.checked ? "\u2611" : "\u2610"} ${(_a = item.text) != null ? _a : "\u672A\u63D0\u4F9B"}` });
     }
-    const evidence = createSection(body, "Current task evidence");
+    const evidence = createSection(body, "\u5F53\u524D\u4EFB\u52A1\u8BC1\u636E");
     evidenceRow(evidence, "\u6267\u884C\u7ED3\u679C", model.evidence.execution);
     evidenceRow(evidence, "\u9A8C\u8BC1\u7ED3\u679C", model.evidence.verification);
     evidenceRow(evidence, "\u4EA4\u4ED8\u8BB0\u5F55", model.evidence.delivery);
-    if (model.diagnostics.length > 1) {
-      const diagnostics = createSection(body, `\u5168\u90E8\u8BCA\u65AD\uFF08${model.diagnostics.length}\uFF09`);
+    if (model.diagnostics.length) {
+      const diagnostics = createSection(body, `\u6280\u672F\u8BCA\u65AD \xB7 ${model.diagnostics.length}`);
       for (const diagnostic of model.diagnostics) {
         const item = diagnostics.createDiv({ cls: "flowdesk-diagnostic-item" });
-        item.createDiv({ cls: "flowdesk-main-text", text: diagnostic.code });
+        const diagnosticLink = item.createEl("button", {
+          cls: "flowdesk-technical-diagnostic-link",
+          text: diagnostic.code
+        });
+        diagnosticLink.addEventListener("click", () => {
+          void this.openDiagnosticLocation(diagnostic);
+        });
         this.renderDiagnosticBody(item, diagnostic);
       }
     }
+  }
+  makeNavigable(element, action) {
+    element.addClass("is-clickable");
+    element.addEventListener("click", () => {
+      void action();
+    });
+    element.addEventListener("keydown", (event) => {
+      if (!isActivationKey(event.key)) return;
+      event.preventDefault();
+      void action();
+    });
   }
   async openTask(taskPath) {
     if (!taskPath) return;
@@ -1072,11 +1252,6 @@ function createSection(container, title) {
   const section = container.createDiv({ cls: "flowdesk-dashboard-section" });
   section.createDiv({ cls: "flowdesk-dashboard-section-title", text: title });
   return section;
-}
-function metricCard(container, label, value) {
-  const card = container.createDiv({ cls: "flowdesk-metric" });
-  card.createDiv({ cls: "flowdesk-metric-label", text: label });
-  card.createDiv({ cls: "flowdesk-metric-value", text: value });
 }
 function childMeta(container, label, value) {
   const row = container.createDiv({ cls: "flowdesk-meta-row" });
@@ -1126,29 +1301,15 @@ function normalizeStatus(value) {
   if (status === "complete" || status === "completed") return "done";
   return ["done", "running", "open", "blocked", "error", "valid", "invalid", "unknown"].includes(status) ? status : "unknown";
 }
-function formatStatusLabel(value) {
-  var _a;
-  const labels = {
-    done: "\u5DF2\u5B8C\u6210",
-    running: "\u8FDB\u884C\u4E2D",
-    open: "\u5F85\u5F00\u59CB",
-    blocked: "\u5DF2\u963B\u585E",
-    error: "\u5F02\u5E38",
-    unknown: "\u672A\u77E5"
-  };
-  return (_a = labels[normalizeStatus(value)]) != null ? _a : String(value || "\u672A\u77E5");
-}
-function formatPriority(value) {
-  var _a;
-  const labels = { high: "\u9AD8", normal: "\u666E\u901A", low: "\u4F4E" };
-  return (_a = labels[value]) != null ? _a : value;
-}
 function statusSymbol(value) {
   const status = normalizeStatus(value);
   if (status === "done" || status === "valid") return "\u2713";
   if (status === "running") return "\u25C9";
   if (status === "blocked" || status === "error" || status === "invalid") return "!";
   return "\u2022";
+}
+function taskTitleFromPath(taskPath) {
+  return path2.basename(taskPath, path2.extname(taskPath));
 }
 function expandHomePath(value) {
   if (value === "~") return (0, import_os.homedir)();

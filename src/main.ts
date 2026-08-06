@@ -20,7 +20,6 @@ import {
   isTaskPath,
   registerInitialDashboardSync,
   resolveRefreshFailureDisplay,
-  resolveDetailsOpen,
   resolveDashboardContext,
   TrailingRefreshScheduler,
   validateSnapshotEnvelope,
@@ -34,14 +33,22 @@ import {
   type SnapshotInvocation,
 } from "./snapshot-invocation";
 import {
+  createDashboardPresentation,
+  isActivationKey,
+  resolveDisclosureState,
+  type DashboardChildRowPresentation,
+  type DashboardContractPresentation,
+  type DashboardPresentation,
+  type DashboardPrimaryStatusPresentation,
+  type DashboardTrustPresentation,
+  type DisclosureState,
+} from "./dashboard-presentation";
+import {
   formatEvidenceSummary,
   getEvidenceDisplayState,
 } from "./evidence-presentation";
 import {
   createDashboardViewModel,
-  formatChildEvidenceHealth,
-  formatCurrentTaskProgress,
-  formatRollupState,
   resolveDiagnosticTarget,
   type DashboardViewModel,
   type EvidenceHealth,
@@ -237,8 +244,7 @@ class FlowDeskDashboardView extends ItemView {
   private refreshPromise: Promise<void> | null = null;
   private refreshScheduler: TrailingRefreshScheduler;
   private cancelInitialSync: (() => void) | null = null;
-  private detailsOpen = false;
-  private detailsOpenInitialized = false;
+  private disclosureState: DisclosureState = resolveDisclosureState(undefined, true);
 
   constructor(leaf: WorkspaceLeaf, private plugin: FlowDeskDashboardPlugin) {
     super(leaf);
@@ -302,7 +308,6 @@ class FlowDeskDashboardView extends ItemView {
   async loadTask(taskPath: string) {
     const sameTask = this.context.kind === "task" && this.context.taskPath === taskPath;
     if (!sameTask) {
-      const taskChanged = Boolean(this.previousTaskPath && this.previousTaskPath !== taskPath);
       this.selectionRevision += 1;
       this.context = { kind: "task", taskPath };
       this.previousTaskPath = taskPath;
@@ -310,10 +315,7 @@ class FlowDeskDashboardView extends ItemView {
       this.error = "";
       this.loading = true;
       this.refreshScheduler.cancel();
-      if (taskChanged) {
-        this.detailsOpen = false;
-        this.detailsOpenInitialized = false;
-      }
+      this.disclosureState = resolveDisclosureState(this.disclosureState, true);
       this.render();
     }
     this.queuedRequest = { taskPath, selectionRevision: this.selectionRevision };
@@ -390,20 +392,25 @@ class FlowDeskDashboardView extends ItemView {
     const container = this.contentEl;
     container.empty();
     container.addClass("flowdesk-dashboard");
-    this.renderHeader(container);
     if (this.context.kind === "non-task") {
       this.renderNonTaskState(container, this.context);
       return;
     }
     if (this.context.kind === "empty") {
-      container.createDiv({ cls: "flowdesk-empty", text: "当前不是 TaskNotes 任务，FlowDesk Dashboard 不可用。" });
+      container.createDiv({
+        cls: "flowdesk-empty",
+        text: "打开一个 TaskNotes 任务以查看 Dashboard。",
+      });
       return;
     }
     const taskPath = this.context.taskPath;
     const displayState = this.displayState?.taskPath === taskPath ? this.displayState : null;
     const snapshot = displayState?.snapshot;
+    if (!snapshot) {
+      this.renderLoadingHeader(container, taskPath);
+    }
     if (this.loading && !snapshot) {
-      container.createDiv({ cls: "flowdesk-empty", text: "正在首次读取 snapshot v3..." });
+      container.createDiv({ cls: "flowdesk-empty", text: "正在读取当前任务 snapshot..." });
       return;
     }
     if (this.error && !snapshot) {
@@ -420,6 +427,7 @@ class FlowDeskDashboardView extends ItemView {
       staleReason: displayState?.staleReason,
     });
     if (model.errorCode) {
+      this.renderLoadingHeader(container, taskPath);
       container.createDiv({
         cls: "flowdesk-error",
         text:
@@ -429,33 +437,56 @@ class FlowDeskDashboardView extends ItemView {
       });
       return;
     }
-    this.renderBreadcrumb(container, model);
-    this.renderTrustStrip(container, model);
-    this.renderCurrentTaskHero(container, model);
-    this.renderPrimaryDiagnostic(container, model);
-    this.renderNextAction(container, model);
-    if (model.currentTask.hasChildren) {
-      this.renderChildren(container, model);
+    const presentation = createDashboardPresentation(model);
+    this.renderHeader(container, model, presentation);
+    this.renderTrustStrip(container, presentation.trust);
+    this.renderPrimaryDiagnostic(container, presentation.primaryStatus);
+    if (presentation.children.length) {
+      this.renderChildren(container, model, presentation.children);
     }
-    this.renderDetails(container, model);
+    this.renderDetails(container, model, presentation.contract);
   }
 
-  private renderHeader(container: HTMLElement) {
-    const header = container.createDiv({ cls: "flowdesk-dashboard-header" });
-    const title = header.createDiv();
-    title.createDiv({ cls: "flowdesk-dashboard-title", text: "FlowDesk 当前任务 Dashboard" });
-    title.createDiv({
-      cls: "flowdesk-dashboard-path",
-      text:
-        this.context.kind === "task"
-          ? this.context.taskPath
-          : this.context.kind === "non-task"
-            ? this.context.activePath
-            : "未选择任务",
+  private renderLoadingHeader(container: HTMLElement, taskPath: string) {
+    const header = container.createDiv({ cls: "flowdesk-task-header" });
+    const title = header.createDiv({ cls: "flowdesk-task-heading" });
+    title.createDiv({ cls: "flowdesk-task-title", text: taskTitleFromPath(taskPath) });
+    title.createDiv({ cls: "flowdesk-task-loading", text: "正在建立可信观察…" });
+    this.renderToolbar(header, taskPath);
+  }
+
+  private renderHeader(
+    container: HTMLElement,
+    model: DashboardViewModel,
+    presentation: DashboardPresentation
+  ) {
+    const header = container.createDiv({ cls: "flowdesk-task-header" });
+    const heading = header.createDiv({ cls: "flowdesk-task-heading" });
+    if (presentation.header.parent) {
+      const parent = heading.createEl("button", {
+        cls: "flowdesk-parent-link",
+        text: `↑ ${presentation.header.parent.title}`,
+      });
+      parent.addEventListener("click", () => {
+        void this.openTask(presentation.header.parent?.id ?? "");
+      });
+    }
+    heading.createDiv({ cls: "flowdesk-task-title", text: presentation.header.title });
+    const badges = heading.createDiv({ cls: "flowdesk-task-badges" });
+    badges.createSpan({
+      cls: `flowdesk-state-pill is-${presentation.header.statusTone}`,
+      text: presentation.header.status,
     });
-    const toolbar = header.createDiv({ cls: "flowdesk-dashboard-toolbar" });
-    if (this.context.kind !== "task") return;
-    const taskPath = this.context.taskPath;
+    badges.createSpan({ cls: "flowdesk-state-pill", text: presentation.header.kindLabel });
+    badges.createSpan({ cls: "flowdesk-state-pill", text: presentation.header.priority });
+    if (model.currentTask.isBlocked) {
+      badges.createSpan({ cls: "flowdesk-state-pill is-error", text: "存在阻塞" });
+    }
+    this.renderToolbar(header, model.currentTask.id);
+  }
+
+  private renderToolbar(container: HTMLElement, taskPath: string) {
+    const toolbar = container.createDiv({ cls: "flowdesk-dashboard-toolbar" });
     const copy = toolbar.createEl("button", { text: "复制 CLI" });
     copy.addEventListener("click", async () => {
       try {
@@ -470,23 +501,6 @@ class FlowDeskDashboardView extends ItemView {
     refresh.addEventListener("click", () => void this.refreshCurrentTask());
   }
 
-  private renderBreadcrumb(container: HTMLElement, model: DashboardViewModel) {
-    if (!model.parent) {
-      return;
-    }
-    const breadcrumb = container.createDiv({ cls: "flowdesk-breadcrumb" });
-    const parent = breadcrumb.createEl("button", { text: model.parent.title });
-    parent.addEventListener("click", () => {
-      void this.app.workspace.openLinkText(
-        model.parent?.id ?? "",
-        model.currentTask.id,
-        false
-      );
-    });
-    breadcrumb.createSpan({ text: "/" });
-    breadcrumb.createSpan({ cls: "flowdesk-breadcrumb-current", text: model.currentTask.title });
-  }
-
   private renderNonTaskState(
     container: HTMLElement,
     context: Extract<DashboardContext, { kind: "non-task" }>
@@ -498,73 +512,44 @@ class FlowDeskDashboardView extends ItemView {
       text: "当前不是 TaskNotes 任务，FlowDesk Dashboard 不可用。",
     });
     card.createDiv({ cls: "flowdesk-subline", text: `当前文件：${context.activePath}` });
-    if (context.previousTaskPath) {
-      const back = card.createEl("button", { text: "回到上一次任务" });
-      back.addEventListener("click", () => void this.openTask(context.previousTaskPath));
-    }
   }
 
-  private renderTrustStrip(container: HTMLElement, model: DashboardViewModel) {
-    const state = model.observation.isStale ? "stale" : model.observation.health;
-    const strip = container.createDiv({ cls: `flowdesk-trust-strip is-${state}` });
-    strip.createSpan({
-      cls: "flowdesk-trust-badge",
-      text: model.observation.isStale ? "旧数据" : model.observation.trustMessage,
+  private renderTrustStrip(
+    container: HTMLElement,
+    trust: DashboardTrustPresentation
+  ) {
+    const strip = container.createDiv({
+      cls: `flowdesk-trust-summary is-${trust.tone}`,
     });
-    strip.createSpan({ text: `${model.schemaLabel} · ${model.observation.generatedAt}` });
-    if (!model.observation.isTrustworthy) {
-      strip.createDiv({ cls: "flowdesk-warning", text: "观测不可信，无法判断任务是否正常" });
-    }
-    if (model.observation.isStale) {
-      strip.createDiv({ cls: "flowdesk-stale-reason", text: `刷新失败：${model.observation.staleReason}` });
-    }
+    const headline = strip.createDiv({ cls: "flowdesk-trust-headline" });
+    headline.createSpan({ cls: "flowdesk-trust-badge", text: trust.label });
+    headline.createSpan({ cls: "flowdesk-trust-contract", text: trust.contractLabel });
+    strip.createDiv({ cls: "flowdesk-trust-meta", text: trust.meta });
+    strip.createDiv({ cls: "flowdesk-trust-detail", text: trust.detail });
   }
 
-  private renderCurrentTaskHero(container: HTMLElement, model: DashboardViewModel) {
-    const hero = container.createDiv({ cls: "flowdesk-current-task-hero" });
-    hero.createDiv({ cls: "flowdesk-card-kicker", text: "当前任务" });
-    const title = hero.createDiv({ cls: "flowdesk-hero-title-row" });
-    title.createDiv({ cls: "flowdesk-hero-title", text: model.currentTask.title });
-    title.createSpan({
-      cls: `flowdesk-state-pill is-${normalizeStatus(model.currentTask.status)}`,
-      text: formatStatusLabel(model.currentTask.status),
+  private renderPrimaryDiagnostic(
+    container: HTMLElement,
+    status: DashboardPrimaryStatusPresentation
+  ) {
+    const card = container.createDiv({
+      cls: `flowdesk-primary-status is-${status.tone}`,
     });
-    const metrics = hero.createDiv({ cls: "flowdesk-hero-metrics" });
-    metricCard(metrics, "当前 gate", formatRollupState(model.currentTask.rollupState));
-    metricCard(
-      metrics,
-      "可信进度",
-      formatCurrentTaskProgress({
-        hasChildren: model.currentTask.hasChildren,
-        childrenTrustedDone: model.rollup.childrenTrustedDone,
-        childrenTotal: model.rollup.childrenTotal,
-        acceptance: model.contract.acceptance,
-        evidence: model.evidence,
-      })
-    );
-    metricCard(metrics, "Priority", formatPriority(model.currentTask.priority));
-    if (model.currentTask.isBlocked) {
-      hero.createDiv({
-        cls: "flowdesk-warning",
-        text: model.currentTask.blockedBy.length
-          ? `当前任务被阻塞：${model.currentTask.blockedBy.join("、")}`
-          : "当前任务处于阻塞状态",
+    card.createDiv({ cls: "flowdesk-card-kicker", text: "当前状态" });
+    if (status.diagnostic) {
+      const title = card.createEl("button", {
+        cls: "flowdesk-primary-title flowdesk-diagnostic-link",
+        text: status.title,
       });
-    }
-  }
-
-  private renderPrimaryDiagnostic(container: HTMLElement, model: DashboardViewModel) {
-    const card = container.createDiv({ cls: "flowdesk-primary-status" });
-    card.createDiv({ cls: "flowdesk-card-kicker", text: "首要诊断" });
-    if (!model.primaryDiagnostic) {
-      card.createDiv({
-        cls: "flowdesk-primary-title",
-        text: model.observation.isTrustworthy ? "当前没有结构化诊断" : "观测不可信，无法确认无异常",
+      title.addEventListener("click", () => {
+        void this.openDiagnosticLocation(status.diagnostic as SnapshotDiagnostic);
       });
-      return;
+    } else {
+      card.createDiv({ cls: "flowdesk-primary-title", text: status.title });
     }
-    card.createDiv({ cls: "flowdesk-primary-title", text: model.primaryDiagnostic.code });
-    this.renderDiagnosticBody(card, model.primaryDiagnostic);
+    diagnosticRow(card, "原因", status.reason);
+    diagnosticRow(card, "建议", status.remediation);
+    card.createDiv({ cls: "flowdesk-primary-location", text: status.location });
   }
 
   private renderDiagnosticBody(container: HTMLElement, diagnostic: SnapshotDiagnostic) {
@@ -575,10 +560,6 @@ class FlowDeskDashboardView extends ItemView {
     diagnosticRow(container, "原因", diagnostic.reason);
     diagnosticRow(container, "预期", diagnostic.expected);
     diagnosticRow(container, "建议修法", diagnostic.remediation);
-    const open = container.createEl("button", { text: "打开诊断位置" });
-    open.addEventListener("click", () => {
-      void this.openDiagnosticLocation(diagnostic);
-    });
   }
 
   private async openDiagnosticLocation(diagnostic: SnapshotDiagnostic) {
@@ -609,103 +590,125 @@ class FlowDeskDashboardView extends ItemView {
     }
   }
 
-  private renderNextAction(container: HTMLElement, model: DashboardViewModel) {
-    const card = container.createDiv({ cls: "flowdesk-primary-action" });
-    card.createDiv({ cls: "flowdesk-card-kicker", text: "下一动作" });
-    card.createDiv({ cls: "flowdesk-primary-title", text: model.nextAction ?? "snapshot 未提供下一动作" });
-    const copy = card.createEl("button", { text: "复制当前任务 CLI" });
-    copy.addEventListener("click", async () => {
-      try {
-        await this.plugin.copyDashboardCommand(model.currentTask.id);
-        new Notice("当前任务 CLI 命令已复制");
-      } catch (error) {
-        new Notice(`无法复制 CLI 命令：${String(error)}`);
-      }
+  private renderChildren(
+    container: HTMLElement,
+    model: DashboardViewModel,
+    children: DashboardChildRowPresentation[]
+  ) {
+    const section = container.createDiv({ cls: "flowdesk-child-section" });
+    const heading = section.createDiv({ cls: "flowdesk-section-heading" });
+    heading.createDiv({
+      cls: "flowdesk-dashboard-section-title",
+      text: `直接子任务 · ${children.length}`,
     });
-  }
-
-  private renderChildren(container: HTMLElement, model: DashboardViewModel) {
-    const children = model.children;
-    const section = createSection(container, `直接子任务（${children.length}）`);
-    section.addClass("flowdesk-child-rollup");
-    childMeta(
-      section,
-      "可信进度",
-      `${model.rollup.childrenTrustedDone}/${model.rollup.childrenTotal}`
-    );
-    childMeta(section, "汇总状态", formatRollupState(model.rollup.state));
+    heading.createDiv({
+      cls: "flowdesk-section-meta",
+      text: `${model.rollup.childrenTrustedDone}/${model.rollup.childrenTotal} 可信完成`,
+    });
     const list = section.createDiv({ cls: "flowdesk-child-list" });
     for (const child of children) {
-      const card = list.createDiv({ cls: `flowdesk-child-card${child.isBlocked ? " is-blocked" : ""}` });
-      const header = card.createDiv({ cls: "flowdesk-child-header" });
-      header.createSpan({ cls: `flowdesk-status-dot is-${normalizeStatus(child.status)}`, text: statusSymbol(child.status) });
-      header.createDiv({ cls: "flowdesk-child-title", text: child.title });
-      header.createSpan({ cls: "flowdesk-priority", text: formatPriority(child.priority) });
-      card.createDiv({ cls: "flowdesk-subline", text: child.id });
-      card.createDiv({ cls: "flowdesk-child-goal", text: child.goal });
-      childMeta(card, "状态", `${formatStatusLabel(child.status)}${child.trustedDone ? " · 可信完成" : ""}`);
-      childMeta(card, "Blocked by", child.blockedBy.length ? child.blockedBy.join("、") : "无");
-      childMeta(card, "下一层", child.hasChildren ? "有 direct children" : "leaf task");
-      childMeta(card, "汇总", formatRollupState(child.rollupState));
-      childMeta(card, "证据", formatChildEvidenceHealth(child.evidenceHealth));
-      if (child.primaryDiagnostic) {
-        childMeta(card, "首要诊断", child.primaryDiagnostic.reason);
-      }
-      const open = card.createEl("button", { text: "打开任务" });
-      open.addEventListener("click", () => void this.openTask(child.id));
+      const row = list.createDiv({
+        cls: `flowdesk-child-row is-${child.tone}`,
+        attr: { role: "button", tabindex: "0" },
+      });
+      const rowHeader = row.createDiv({ cls: "flowdesk-child-row-header" });
+      rowHeader.createDiv({ cls: "flowdesk-child-title", text: child.title });
+      rowHeader.createSpan({
+        cls: `flowdesk-state-pill is-${child.tone}`,
+        text: child.status,
+      });
+      row.createDiv({ cls: "flowdesk-child-summary", text: child.summary });
+      row.createDiv({ cls: "flowdesk-child-meta", text: child.meta });
+      this.makeNavigable(row, () => this.openTask(child.id));
     }
   }
 
-  private renderDetails(container: HTMLElement, model: DashboardViewModel) {
+  private renderDetails(
+    container: HTMLElement,
+    model: DashboardViewModel,
+    summary: DashboardContractPresentation
+  ) {
     const details = container.createEl("details", {
-      cls: `flowdesk-detail-group${model.currentTask.hasChildren ? "" : " flowdesk-leaf-contract"}`,
+      cls: "flowdesk-contract-summary",
     });
-    if (!this.detailsOpenInitialized) {
-      this.detailsOpen = resolveDetailsOpen(
-        this.detailsOpen,
-        true,
-        model.diagnostics.length,
-        model.currentTask.hasChildren
-      );
-      this.detailsOpenInitialized = true;
-    }
-    details.open = this.detailsOpen;
-    details.addEventListener("toggle", () => (this.detailsOpen = details.open));
+    details.open = this.disclosureState.summaryOpen;
+    details.addEventListener("toggle", () => {
+      this.disclosureState.summaryOpen = details.open;
+    });
     details.createEl("summary", { text: "当前任务合同与证据" });
-    const body = details.createDiv({ cls: "flowdesk-detail-body" });
-    const observation = createSection(body, "Observation");
-    childMeta(observation, "health", model.observation.health);
-    childMeta(observation, "parent", model.observation.parent);
-    childMeta(observation, "children", model.observation.children);
+    const overview = details.createDiv({ cls: "flowdesk-contract-overview" });
+    const goal = overview.createDiv({ cls: "flowdesk-contract-goal" });
+    goal.createDiv({ cls: "flowdesk-summary-label", text: "目标" });
+    goal.createDiv({ cls: "flowdesk-contract-goal-text", text: summary.goal });
+    const metrics = overview.createDiv({ cls: "flowdesk-contract-metrics" });
+    for (const value of [
+      summary.coverage,
+      summary.acceptance,
+      summary.evidence,
+      summary.diagnostics,
+    ]) {
+      metrics.createSpan({ cls: "flowdesk-contract-chip", text: value });
+    }
+
+    const full = overview.createEl("details", { cls: "flowdesk-technical-details" });
+    full.open = this.disclosureState.fullOpen;
+    full.addEventListener("toggle", () => {
+      this.disclosureState.fullOpen = full.open;
+    });
+    full.createEl("summary", { text: "展开全部合同、证据与诊断" });
+    const body = full.createDiv({ cls: "flowdesk-detail-body" });
+    const observation = createSection(body, "观察详情");
+    childMeta(observation, "健康状态", model.observation.health);
+    childMeta(observation, "当前任务", model.observation.currentTask);
+    childMeta(observation, "父任务", model.observation.parent);
+    childMeta(observation, "直接子任务", model.observation.children);
     childMeta(observation, "TaskNotes API", model.observation.tasknotesApi);
-    childMeta(observation, "source", model.observation.sourceTaskId || "未提供");
-    const contract = createSection(body, "Task Contract v3");
+    childMeta(observation, "来源任务", model.observation.sourceTaskId || "未提供");
+    const contract = createSection(body, "任务合同 v3");
     childMeta(contract, "版本", model.contract.version);
     childMeta(contract, "语义状态", model.contract.semanticStatus);
-    childMeta(contract, "Goal", model.contract.goal);
-    renderTextList(contract, "Scope · 包含", model.contract.scope.included);
-    renderTextList(contract, "Scope · 不包含", model.contract.scope.excluded);
-    renderContractItems(contract, "Requirements", model.contract.requirements);
-    renderContractItems(contract, "Scenarios", model.contract.scenarios);
-    const acceptance = createSection(body, "Acceptance Criteria");
+    childMeta(contract, "目标", model.contract.goal);
+    renderTextList(contract, "范围 · 包含", model.contract.scope.included);
+    renderTextList(contract, "范围 · 不包含", model.contract.scope.excluded);
+    renderContractItems(contract, "需求", model.contract.requirements);
+    renderContractItems(contract, "场景", model.contract.scenarios);
+    const acceptance = createSection(body, "验收标准");
     if (!model.contract.acceptance.length) {
       acceptance.createDiv({ cls: "flowdesk-muted", text: "producer 未提供验收项。" });
     }
     for (const item of model.contract.acceptance) {
       acceptance.createDiv({ text: `${item.checked ? "☑" : "☐"} ${item.text ?? "未提供"}` });
     }
-    const evidence = createSection(body, "Current task evidence");
+    const evidence = createSection(body, "当前任务证据");
     evidenceRow(evidence, "执行结果", model.evidence.execution);
     evidenceRow(evidence, "验证结果", model.evidence.verification);
     evidenceRow(evidence, "交付记录", model.evidence.delivery);
-    if (model.diagnostics.length > 1) {
-      const diagnostics = createSection(body, `全部诊断（${model.diagnostics.length}）`);
+    if (model.diagnostics.length) {
+      const diagnostics = createSection(body, `技术诊断 · ${model.diagnostics.length}`);
       for (const diagnostic of model.diagnostics) {
         const item = diagnostics.createDiv({ cls: "flowdesk-diagnostic-item" });
-        item.createDiv({ cls: "flowdesk-main-text", text: diagnostic.code });
+        const diagnosticLink = item.createEl("button", {
+          cls: "flowdesk-technical-diagnostic-link",
+          text: diagnostic.code,
+        });
+        diagnosticLink.addEventListener("click", () => {
+          void this.openDiagnosticLocation(diagnostic);
+        });
         this.renderDiagnosticBody(item, diagnostic);
       }
     }
+  }
+
+  private makeNavigable(element: HTMLElement, action: () => Promise<void>) {
+    element.addClass("is-clickable");
+    element.addEventListener("click", () => {
+      void action();
+    });
+    element.addEventListener("keydown", (event) => {
+      if (!isActivationKey(event.key)) return;
+      event.preventDefault();
+      void action();
+    });
   }
 
   private async openTask(taskPath: string) {
@@ -762,12 +765,6 @@ function createSection(container: HTMLElement, title: string) {
   const section = container.createDiv({ cls: "flowdesk-dashboard-section" });
   section.createDiv({ cls: "flowdesk-dashboard-section-title", text: title });
   return section;
-}
-
-function metricCard(container: HTMLElement, label: string, value: string) {
-  const card = container.createDiv({ cls: "flowdesk-metric" });
-  card.createDiv({ cls: "flowdesk-metric-label", text: label });
-  card.createDiv({ cls: "flowdesk-metric-value", text: value });
 }
 
 function childMeta(container: HTMLElement, label: string, value: string) {
@@ -831,29 +828,16 @@ function normalizeStatus(value: unknown) {
     : "unknown";
 }
 
-function formatStatusLabel(value: unknown) {
-  const labels: Record<string, string> = {
-    done: "已完成",
-    running: "进行中",
-    open: "待开始",
-    blocked: "已阻塞",
-    error: "异常",
-    unknown: "未知",
-  };
-  return labels[normalizeStatus(value)] ?? String(value || "未知");
-}
-
-function formatPriority(value: string) {
-  const labels: Record<string, string> = { high: "高", normal: "普通", low: "低" };
-  return labels[value] ?? value;
-}
-
 function statusSymbol(value: unknown) {
   const status = normalizeStatus(value);
   if (status === "done" || status === "valid") return "✓";
   if (status === "running") return "◉";
   if (status === "blocked" || status === "error" || status === "invalid") return "!";
   return "•";
+}
+
+function taskTitleFromPath(taskPath: string) {
+  return path.basename(taskPath, path.extname(taskPath));
 }
 
 function expandHomePath(value: string) {

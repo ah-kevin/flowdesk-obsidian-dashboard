@@ -135,31 +135,36 @@ ln -s "$(pwd)" \
 
 ## Task-centric snapshot v3 展示语义
 
-侧栏默认按高频决策顺序显示：
+侧栏使用行动优先的单列控制台，默认按以下顺序显示：
 
-1. 可选 parent breadcrumb、observation 可信度与 snapshot 模型；
-2. 当前 task 的状态、priority、可信 gate 与 producer rollup；
-3. 首要诊断、producer 给出的下一动作与当前 task CLI 复制；
-4. 当前 task 有 children 时，显示 direct child rollup 与 child cards；卡片包含 Goal、status、
-   priority、blockedBy、是否还有下一层、rollup、三类证据健康和首要诊断；
-5. 当前 task 的 Goal、Scope、Requirements、Scenarios、Acceptance 与三类证据。
+1. 唯一的当前任务标题、可选 Parent 返回入口、状态标签以及“复制 CLI”“刷新”；
+2. snapshot 观察可信度、来源匹配和当前 task 合同状态；
+3. 一条首要状态或诊断，优先说明发生了什么、为什么、怎么修和短位置；
+4. Parent task 的 direct children 紧凑行，整行点击打开 child；Leaf 不显示空 children 区域；
+5. 默认展开的合同与证据摘要，以及默认关闭的完整合同、证据和机器诊断详情。
 
-打开任一 TaskNotes task 都只解释该 task。parent 仅作为 breadcrumb，children 只展示
-direct summaries，不从 parent 拼接当前 task 合同。有 children 的 task 默认先看 rollup 与
-child cards，合同/证据折叠；leaf 不显示空 children section，并默认展开自身合同与证据。
+打开任一 TaskNotes task 都只解释该 task。Parent 上下文只提供返回入口，children 只展示
+direct summaries，不从 parent 拼接当前 task 合同。Parent 自己仍持有并展示自己的合同；Leaf
+只展示自身合同，并通过标题上方的 Parent 链接返回父任务。
+
+任务标题、Parent 链接、child 整行与诊断标题承担导航，不再额外显示“打开任务”或“打开诊断
+位置”按钮。机器错误码、完整 task path、字段路径、原始 expected 等信息只出现在完整技术
+详情中；默认诊断摘要保留原因、建议修法和 producer 提供的 section/line。
 
 Dashboard 不自行推断 task 状态、证据有效性或完成顺序。`rollup`、children counts、
 `trusted_done`、diagnostics 和 next actions 都直接来自同一份 producer JSON。
 
 ## 任务上下文与刷新
 
-- 面板首次打开或 Obsidian 恢复布局时，会主动同步当前活动文件，不依赖再次切换文件来触发加载。
-- 当前文件不是 `Tasks/*.md` 或 `TaskNotes/*.md` 时，面板进入醒目的暂停状态，不再保留上一任务的 dashboard；如果存在上一任务，可点击“回到上一次任务”。
+- 面板首次打开或 Obsidian 恢复布局时，由当前 Dashboard 视图实例在 workspace layout ready
+  后同步活动文件，不依赖插件级临时查找视图，也不需要再次切换文件。
+- 当前文件不是 `Tasks/*.md` 或 `TaskNotes/*.md` 时，面板进入醒目的不可用状态，并立即清空上一任务的 dashboard。
 - 当前 task、可选 parent 或 snapshot 中的 direct child 文件发生变化时，面板会在 500ms 内
   合并连续保存并自动刷新。
-- 自动刷新期间保留上一次成功结果和“查看执行详情”的展开选择；手动刷新会立即执行。
-- “复制 CLI”与“复制当前任务 CLI”都会复制以当前 task path 为首个 positional 参数、带绝对
-  可执行文件路径的完整 `--format dashboard` 命令；不使用 `--parent` 或 root 假设。
+- 自动刷新和手动刷新都保留同一 task 的摘要/完整详情展开选择；切换到另一 task 时重置为
+  “摘要展开、完整详情关闭”。
+- 顶部唯一的“复制 CLI”会复制以当前 task path 为首个 positional 参数、带绝对可执行文件
+  路径的完整 `--format dashboard` 命令；不使用 `--parent` 或 root 假设。
 
 对 snapshot schema 3：
 
@@ -170,8 +175,8 @@ Dashboard 不自行推断 task 状态、证据有效性或完成顺序。`rollup
   匹配且数据不是 stale 时，才显示为可信观测。
 - observation 非 healthy 时明确显示“观测不可信，无法判断任务是否正常”，不会把不完整数据
   渲染为健康成功。
-- diagnostic 显示 `task_id`、section/line、path、实际原因、预期形态与建议修法；定位按钮打开
-  root 或具体 child 的对应 heading，不会改写文件。
+- diagnostic 默认显示人类可读的原因、建议修法与短位置；点击诊断标题可打开 root 或具体
+  child 的对应 heading。`task_id`、path、预期形态等机器字段位于完整技术详情中。
 - 同一任务刷新失败时可继续查看上次成功 snapshot，但顶部标记“旧数据”并显示失败原因；
   切换任务或切到非 TaskNotes 文件会立即清空旧 snapshot。
 - 如果顶层 `source_task_id` 与请求任务不一致，该结果会被拒绝展示，并同时显示请求路径与
