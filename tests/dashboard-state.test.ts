@@ -11,6 +11,7 @@ import {
   TrailingRefreshScheduler,
   validateSnapshotEnvelope,
 } from "../src/dashboard-state.ts";
+import * as dashboardState from "../src/dashboard-state.ts";
 
 test("视图在 layout ready 后执行首次同步，关闭后不再执行", () => {
   let ready: (() => void) | null = null;
@@ -114,6 +115,60 @@ test("连续调度只执行最后一次刷新，手动 flush 立即执行", () =
   scheduler.flush();
   assert.equal(refreshCount, 2);
   assert.equal(pending, null);
+});
+
+test("新 snapshot 请求会取消旧请求，关闭视图也会取消当前请求", () => {
+  const Coordinator = (
+    dashboardState as typeof dashboardState & {
+      SnapshotRequestAbortCoordinator?: new () => {
+        begin(): AbortSignal;
+        finish(signal: AbortSignal): void;
+        cancel(): void;
+      };
+    }
+  ).SnapshotRequestAbortCoordinator;
+
+  assert.equal(typeof Coordinator, "function");
+  if (!Coordinator) return;
+
+  const coordinator = new Coordinator();
+  const first = coordinator.begin();
+  assert.equal(first.aborted, false);
+  const second = coordinator.begin();
+  assert.equal(first.aborted, true);
+  assert.equal(second.aborted, false);
+
+  coordinator.finish(first);
+  assert.equal(second.aborted, false, "旧请求结束不能清除新请求");
+  coordinator.cancel();
+  assert.equal(second.aborted, true);
+});
+
+test("snapshot 执行设置同时限制输出大小和最长运行时间", () => {
+  const createOptions = (
+    dashboardState as typeof dashboardState & {
+      createSnapshotExecutionOptions?: (
+        cwd: string,
+        signal: AbortSignal
+      ) => {
+        cwd: string;
+        maxBuffer: number;
+        timeout: number;
+        signal: AbortSignal;
+      };
+    }
+  ).createSnapshotExecutionOptions;
+
+  assert.equal(typeof createOptions, "function");
+  if (!createOptions) return;
+
+  const signal = new AbortController().signal;
+  assert.deepEqual(createOptions("/work/flowdesk", signal), {
+    cwd: "/work/flowdesk",
+    maxBuffer: 8 * 1024 * 1024,
+    timeout: 30_000,
+    signal,
+  });
 });
 
 test("请求必须同时匹配任务路径与 selection revision", () => {
