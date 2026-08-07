@@ -655,6 +655,7 @@ class FlowDeskDashboardView extends ItemView {
       model &&
       canReviewEvidence({
         trustLevel: model.currentTask.trustLevel,
+        reviewStatus: model.review.status,
         observationTrustworthy: model.observation.isTrustworthy,
         sourceIdentity: model.observation.sourceIdentity,
         sourceIdentityMatch: model.observation.sourceIdentityMatch,

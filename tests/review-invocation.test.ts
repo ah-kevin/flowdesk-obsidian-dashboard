@@ -84,9 +84,10 @@ test("review_conflict 从 CLI JSON 错误中结构化识别", () => {
   );
 });
 
-test("复核按钮只对 review_required 且 identity/digest 有效的 v4 model 开放", () => {
+test("复核按钮只对 pending review 且 identity/digest 有效的 v4 model 开放", () => {
   const base = {
-    trustLevel: "review_required",
+    trustLevel: "untrusted_v4",
+    reviewStatus: "pending",
     observationTrustworthy: true,
     sourceIdentity: true as const,
     sourceIdentityMatch: true as const,
@@ -94,6 +95,7 @@ test("复核按钮只对 review_required 且 identity/digest 有效的 v4 model 
     requirementUids: ["EVR-001"],
   };
   assert.equal(canReviewEvidence(base), true);
+  assert.equal(canReviewEvidence({ ...base, reviewStatus: "approved" }), false);
   assert.equal(canReviewEvidence({ ...base, trustLevel: "attested_v4" }), false);
   assert.equal(canReviewEvidence({ ...base, observationTrustworthy: false }), false);
   assert.equal(canReviewEvidence({ ...base, sourceIdentity: false }), false);

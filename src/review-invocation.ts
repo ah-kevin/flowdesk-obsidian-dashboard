@@ -95,6 +95,7 @@ export function parseReviewCommandFailure(error: unknown): {
 
 export function canReviewEvidence(input: {
   trustLevel: string;
+  reviewStatus: string;
   observationTrustworthy: boolean;
   sourceIdentity: true | false | "unknown";
   sourceIdentityMatch: boolean | "unknown";
@@ -102,7 +103,8 @@ export function canReviewEvidence(input: {
   requirementUids: string[];
 }): boolean {
   return (
-    input.trustLevel === "review_required" &&
+    input.trustLevel === "untrusted_v4" &&
+    input.reviewStatus === "pending" &&
     input.observationTrustworthy &&
     input.sourceIdentity === true &&
     input.sourceIdentityMatch === true &&

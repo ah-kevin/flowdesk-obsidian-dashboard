@@ -297,7 +297,7 @@ function parseReviewCommandFailure(error) {
   };
 }
 function canReviewEvidence(input) {
-  return input.trustLevel === "review_required" && input.observationTrustworthy && input.sourceIdentity === true && input.sourceIdentityMatch === true && typeof input.evidenceBundleDigest === "string" && /^sha256:.+/.test(input.evidenceBundleDigest) && input.requirementUids.some((uid) => Boolean(uid.trim()));
+  return input.trustLevel === "untrusted_v4" && input.reviewStatus === "pending" && input.observationTrustworthy && input.sourceIdentity === true && input.sourceIdentityMatch === true && typeof input.evidenceBundleDigest === "string" && /^sha256:.+/.test(input.evidenceBundleDigest) && input.requirementUids.some((uid) => Boolean(uid.trim()));
 }
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -1871,6 +1871,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     });
     if (model && canReviewEvidence({
       trustLevel: model.currentTask.trustLevel,
+      reviewStatus: model.review.status,
       observationTrustworthy: model.observation.isTrustworthy,
       sourceIdentity: model.observation.sourceIdentity,
       sourceIdentityMatch: model.observation.sourceIdentityMatch,
