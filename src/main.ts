@@ -84,6 +84,8 @@ import {
   taskNavigationNewLeaf,
   type TaskNavigationOrigin,
 } from "./task-navigation";
+import { resolveVaultPath } from "./vault-path";
+import { formatDiagnosticClipboard } from "./diagnostic-clipboard";
 
 export const FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
 
@@ -92,12 +94,14 @@ const execFileAsync = promisify(execFile);
 interface FlowDeskDashboardSettings {
   flowdeskRoot: string;
   workingDirectory: string;
+  vaultPath: string;
   apiUrl: string;
 }
 
 const DEFAULT_SETTINGS: FlowDeskDashboardSettings = {
   flowdeskRoot: "",
   workingDirectory: "",
+  vaultPath: "",
   apiUrl: "",
 };
 
@@ -228,6 +232,7 @@ export default class FlowDeskDashboardPlugin extends Plugin {
         flowdeskRoot,
         taskPath,
         workingDirectory,
+        vaultPath: this.resolveEvidenceVaultPath(),
         apiUrl: this.settings.apiUrl.trim(),
       },
       format
@@ -247,13 +252,6 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     requirementUids: string[];
     note: string;
   }): Promise<void> {
-    const adapter = this.app.vault.adapter;
-    if (!(adapter instanceof FileSystemAdapter)) {
-      throw new EvidenceReviewCommandError(
-        "review_request_rejected",
-        "人工复核仅支持本地文件系统 Vault。"
-      );
-    }
     const invocation = buildReviewInvocation({
       flowdeskRoot: this.resolveFlowDeskRoot(),
       taskPath: input.taskPath,
@@ -261,7 +259,7 @@ export default class FlowDeskDashboardPlugin extends Plugin {
       decision: input.decision,
       requirementUids: input.requirementUids,
       note: input.note,
-      vaultPath: adapter.getBasePath(),
+      vaultPath: this.resolveEvidenceVaultPath(),
       apiUrl: this.settings.apiUrl.trim(),
     });
     try {
@@ -305,6 +303,18 @@ export default class FlowDeskDashboardPlugin extends Plugin {
       }
     }
     throw new Error("未找到 FlowDesk 仓库路径，请在插件设置里配置 FlowDesk repo path。");
+  }
+
+  private resolveEvidenceVaultPath(): string {
+    const adapter = this.app.vault.adapter;
+    const adapterBasePath = adapter instanceof FileSystemAdapter
+      ? adapter.getBasePath()
+      : "";
+    return resolveVaultPath({
+      configuredPath: expandHomePath(this.settings.vaultPath.trim()),
+      environmentPath: expandHomePath(process.env.OBSIDIAN_VAULT || ""),
+      adapterBasePath,
+    });
   }
 }
 
@@ -530,7 +540,12 @@ class FlowDeskDashboardView extends ItemView {
     const presentation = createDashboardPresentation(model);
     this.renderHeader(container, model, presentation);
     this.renderTrustStrip(container, presentation.trust);
-    this.renderPrimaryDiagnostic(container, presentation.primaryStatus);
+    this.renderPrimaryDiagnostic(
+      container,
+      presentation.primaryStatus,
+      model.currentTask.title,
+      model.currentTask.id
+    );
     if (presentation.children.length) {
       this.renderChildren(container, model, presentation.children);
     }
@@ -733,7 +748,9 @@ class FlowDeskDashboardView extends ItemView {
 
   private renderPrimaryDiagnostic(
     container: HTMLElement,
-    status: DashboardPrimaryStatusPresentation
+    status: DashboardPrimaryStatusPresentation,
+    taskTitle: string,
+    taskId: string
   ) {
     const card = container.createDiv({
       cls: `flowdesk-primary-status is-${status.tone}`,
@@ -755,6 +772,35 @@ class FlowDeskDashboardView extends ItemView {
     }
     diagnosticRow(card, "原因", status.reason);
     diagnosticRow(card, "建议", status.remediation);
+    if (status.diagnostic) {
+      const copyProblem = card.createEl("button", {
+        cls: "flowdesk-copy-problem",
+        text: "复制问题",
+        attr: { "aria-label": "复制问题" },
+      });
+      copyProblem.addEventListener("click", (event) => {
+        event.stopPropagation();
+        void this.copyDiagnostic({
+          taskTitle,
+          taskId,
+          title: status.title,
+          reason: status.reason,
+          remediation: status.remediation,
+          code: status.diagnostic?.code || "unknown_diagnostic",
+          path: status.diagnostic?.path || "未提供",
+          location: status.location,
+        });
+      });
+    }
+  }
+
+  private async copyDiagnostic(input: Parameters<typeof formatDiagnosticClipboard>[0]) {
+    try {
+      await navigator.clipboard.writeText(formatDiagnosticClipboard(input));
+      new Notice("问题已复制");
+    } catch (error) {
+      new Notice(`无法复制问题：${String(error)}`);
+    }
   }
 
   private async openDiagnosticLocation(diagnostic: SnapshotDiagnostic) {
@@ -1167,6 +1213,24 @@ class FlowDeskDashboardView extends ItemView {
             event.stopPropagation();
             void this.openDiagnosticLocation(diagnostic.diagnostic);
           });
+          const copyProblem = itemHead.createEl("button", {
+            cls: "flowdesk-copy-problem",
+            text: "复制问题",
+            attr: { "aria-label": "复制问题" },
+          });
+          copyProblem.addEventListener("click", (event) => {
+            event.stopPropagation();
+            void this.copyDiagnostic({
+              taskTitle: group.taskTitle,
+              taskId: group.taskId,
+              title: diagnostic.title,
+              reason: diagnostic.actual,
+              remediation: diagnostic.remediation,
+              code: diagnostic.machine.code,
+              path: diagnostic.machine.path,
+              location: diagnostic.machine.location,
+            });
+          });
           const itemBody = item.createDiv({ cls: "flowdesk-diagnostic-item-body" });
           diagnosticRow(itemBody, "实际", diagnostic.actual);
           diagnosticRow(itemBody, "修复", diagnostic.remediation);
@@ -1292,6 +1356,15 @@ class FlowDeskDashboardSettingTab extends PluginSettingTab {
       .addText((text) =>
         text.setPlaceholder("/Users/me/workspaces/flowdesk-plugin").setValue(this.plugin.settings.flowdeskRoot).onChange(async (value) => {
           this.plugin.settings.flowdeskRoot = value.trim();
+          await this.plugin.saveSettings();
+        })
+      );
+    new Setting(containerEl)
+      .setName("Evidence Vault 路径")
+      .setDesc("留空时依次使用 OBSIDIAN_VAULT 和当前 Obsidian 本地 Vault。")
+      .addText((text) =>
+        text.setPlaceholder("/Users/me/Documents/Vault").setValue(this.plugin.settings.vaultPath).onChange(async (value) => {
+          this.plugin.settings.vaultPath = value.trim();
           await this.plugin.saveSettings();
         })
       );

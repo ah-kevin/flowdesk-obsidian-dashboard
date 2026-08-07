@@ -205,7 +205,7 @@ test("合同块缺失诊断直接说明问题并生成紧凑来源", () => {
     createDashboardViewModel(snapshot, { expectedTaskPath: taskId })
   );
 
-  assert.equal(presentation.primaryStatus.title, "缺少 Task Contract v3");
+  assert.equal(presentation.primaryStatus.title, "Task Contract v3 数量不正确");
   assert.equal(
     presentation.diagnostics[0].sourceLabel,
     "Task Contract v3 · 第 1 行"
@@ -219,6 +219,26 @@ test("合同块缺失诊断直接说明问题并生成紧凑来源", () => {
     presentation.diagnostics[0].remediation,
     "补充唯一的 v3 task 合同块"
   );
+});
+
+test("v4 合同诊断由结构化 schema 决定标题而不猜 reason", () => {
+  const presentation = createDiagnosticPresentation({
+    code: "task_contract_count_invalid",
+    severity: "error",
+    taskId,
+    path: "contract.task_contract",
+    reason: "expected exactly one section, found",
+    evidence: {
+      contract_kind: "task_contract",
+      schema: "flowdesk.task-contract/4",
+      expected_count: 1,
+      actual_count: 0,
+    },
+    expected: "1",
+    remediation: "apply the task contract",
+  }, taskId);
+
+  assert.equal(presentation.title, "缺少 Task Contract v4");
 });
 
 test("跨 task 诊断在来源标题中加入任务名", () => {
