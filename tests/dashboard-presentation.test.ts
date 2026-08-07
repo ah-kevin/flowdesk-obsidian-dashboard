@@ -464,16 +464,19 @@ test("详情存在诊断时优先展示诊断，否则保持合同审阅顺序",
   ]);
 });
 
-test("健康摘要同时证明观察、来源和检查范围", () => {
+test("legacy 摘要同时证明观察、来源和历史验证边界", () => {
   const presentation = createDashboardPresentation(createModel());
 
-  assert.equal(presentation.trust.label, "观察可信");
-  assert.equal(presentation.trust.contractLabel, "合同有效");
+  assert.equal(presentation.trust.label, "v3 历史验证");
+  assert.equal(presentation.trust.contractLabel, "v3 历史合同有效");
   assert.equal(
     presentation.primaryStatus.title,
-    "已读取当前任务，未发现结构化诊断"
+    "v3 历史验证已保留"
   );
-  assert.equal(presentation.primaryStatus.reason, "已检查任务合同与执行证据");
+  assert.equal(
+    presentation.primaryStatus.reason,
+    "Dashboard 明示 legacy_v3，不将历史结论伪装成 v4 attested"
+  );
   assert.equal(presentation.contract.goal, "交付可验证的 Dashboard");
   assert.deepEqual(presentation.contract.metrics, [
     { label: "REQ / SCN", value: "2 / 1" },
@@ -499,7 +502,7 @@ test("合同异常但 diagnostics 为空时不显示健康", () => {
     presentation.primaryStatus.reason,
     "producer 将合同标记为 invalid，但没有返回结构化诊断"
   );
-  assert.equal(presentation.trust.tone, "healthy");
+  assert.equal(presentation.trust.tone, "warning");
   assert.equal(presentation.trust.contractTone, "error");
 });
 
@@ -515,6 +518,28 @@ test("任务壳层标题区分加载、失败和待读取", () => {
   assert.equal(formatTaskShellStatus(true, ""), "正在建立可信观察…");
   assert.equal(formatTaskShellStatus(false, "API 不可用"), "读取失败");
   assert.equal(formatTaskShellStatus(false, ""), "尚未读取 snapshot");
+});
+
+test("schema、model 与 protocol mismatch 使用具体 fail-closed 文案", () => {
+  const formatError = (
+    dashboardPresentation as typeof dashboardPresentation & {
+      formatSnapshotCompatibilityError?: (code: string) => string;
+    }
+  ).formatSnapshotCompatibilityError;
+  assert.equal(typeof formatError, "function");
+  if (!formatError) return;
+  assert.equal(
+    formatError("unsupported_snapshot_schema"),
+    "Snapshot schema 不受支持：需要 schema 4，或显式 legacy_v3。"
+  );
+  assert.equal(
+    formatError("unsupported_snapshot_model"),
+    "Snapshot model 不受支持：需要 task-centric。"
+  );
+  assert.equal(
+    formatError("unsupported_snapshot_protocol"),
+    "Snapshot protocol 不受支持：请核对 producer 与 Dashboard 版本。"
+  );
 });
 
 test("父任务技术诊断按当前任务与直接子任务分组", () => {
@@ -592,4 +617,90 @@ test("v4 合同条目使用稳定 UID、label 与 covers", () => {
     ).requirementIds,
     ["REQ-001"]
   );
+});
+
+test("legacy_v3 trust strip 明确显示历史验证且保留可信完成", () => {
+  const snapshot = createSnapshot() as any;
+  snapshot.current_task.status = "done";
+  snapshot.current_task.trusted_done = true;
+  snapshot.contract.acceptance = [{ text: "历史验收", checked: true }];
+  snapshot.evidence = {
+    execution: "valid",
+    verification: "valid",
+    delivery: "valid",
+  };
+  const model = createDashboardViewModel(snapshot, { expectedTaskPath: taskId });
+  const presentation = createDashboardPresentation(model);
+
+  assert.equal(model.currentTask.trustedDone, true);
+  assert.equal(presentation.trust.label, "v3 历史验证");
+  assert.equal(presentation.primaryStatus.title, "v3 历史验证已保留");
+});
+
+test("v4 review_required 与缺失证据使用增量 trust/diagnostic 文案", () => {
+  const base = createSnapshot() as any;
+  base.snapshot_schema_version = 4;
+  delete base.source_task_id;
+  delete base.generated_at;
+  delete base.evidence;
+  base.source = { task_id: taskId, generated_at: "2026-08-07T12:00:00Z" };
+  base.protocol = {
+    producer_protocol_version: 4,
+    task_contract_schema: "flowdesk.task-contract/4",
+    evidence_contract_schema: "flowdesk.evidence-contract/1",
+    evidence_record_schema: "flowdesk.evidence-record/1",
+    review_record_schema: "flowdesk.review-record/1",
+    legacy_policy: "explicit_legacy_v3",
+  };
+  base.contract = {
+    status: "valid",
+    task_contract: {
+      schema: "flowdesk.task-contract/4",
+      goal: "复核证据",
+      scope: { included: ["复核"], excluded: [] },
+      requirements: [],
+      scenarios: [],
+      acceptance: [],
+    },
+  };
+  base.current_task.completion = {
+    lifecycle_status: "done",
+    contract_status: "valid",
+    evidence_status: "satisfied",
+    verification_status: "passed",
+    review_status: "pending",
+    acceptance_status: "satisfied",
+    trust_level: "review_required",
+    trusted_done: false,
+  };
+  base.current_task.evidence_requirements = [];
+  base.current_task.acceptance = [];
+  base.current_task.review = { status: "pending" };
+  base.diagnostics = [
+    {
+      code: "review_required",
+      severity: "error",
+      task_id: taskId,
+      path: "reviews",
+      reason: "current evidence bundle requires review",
+      evidence: { requirement_uids: ["EVR-001"] },
+      next_action: "approve or request changes from the Dashboard review action",
+    },
+  ];
+  const reviewPresentation = createDashboardPresentation(
+    createDashboardViewModel(base, { expectedTaskPath: taskId })
+  );
+  assert.equal(reviewPresentation.trust.label, "等待人工复核");
+  assert.equal(reviewPresentation.primaryStatus.title, "结构化证据等待人工复核");
+
+  base.current_task.completion.evidence_status = "missing";
+  base.current_task.completion.review_status = "pending";
+  base.current_task.completion.trust_level = "untrusted_v4";
+  base.diagnostics[0].code = "evidence_requirement_missing";
+  base.diagnostics[0].path = "evidence.requirements.EVR-001";
+  const missingPresentation = createDashboardPresentation(
+    createDashboardViewModel(base, { expectedTaskPath: taskId })
+  );
+  assert.equal(missingPresentation.trust.label, "证据待补充");
+  assert.equal(missingPresentation.primaryStatus.title, "结构化证据缺失");
 });

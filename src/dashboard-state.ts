@@ -172,14 +172,21 @@ export function validateSnapshotEnvelope(
   }
   if (schemaVersion === 4) {
     const protocol = snapshot.protocol;
-    const protocolValid =
+    const v4ProtocolValid =
       protocol?.producer_protocol_version === 4 &&
       protocol.task_contract_schema === "flowdesk.task-contract/4" &&
       protocol.evidence_contract_schema === "flowdesk.evidence-contract/1" &&
       protocol.evidence_record_schema === "flowdesk.evidence-record/1" &&
       protocol.review_record_schema === "flowdesk.review-record/1" &&
       protocol.legacy_policy === "explicit_legacy_v3";
-    if (!protocolValid) {
+    const legacyProtocolValid =
+      protocol?.producer_protocol_version === 4 &&
+      protocol.task_contract_schema === "legacy_v3" &&
+      protocol.evidence_contract_schema === null &&
+      protocol.evidence_record_schema === null &&
+      protocol.review_record_schema === null &&
+      protocol.legacy_policy === "explicit_legacy_v3";
+    if (!v4ProtocolValid && !legacyProtocolValid) {
       return `Snapshot protocol 不受支持：请求 ${requestedTaskPath} 必须使用完整 SDD v4 protocol。`;
     }
   }

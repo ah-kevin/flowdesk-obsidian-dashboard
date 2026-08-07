@@ -48,6 +48,7 @@ import {
   createDashboardPresentation,
   createDiagnosticDisclosureKey,
   DisclosureStateCache,
+  formatSnapshotCompatibilityError,
   formatTaskShellStatus,
   isActivationKey,
   reconcileDiagnosticDisclosureState,
@@ -522,10 +523,7 @@ class FlowDeskDashboardView extends ItemView {
       this.renderLoadingHeader(container, taskPath, "snapshot 不兼容");
       container.createDiv({
         cls: "flowdesk-error",
-        text:
-          model.errorCode === "unsupported_snapshot_model"
-            ? "Snapshot model 不受支持：需要 task-centric。"
-            : "Snapshot schema 不受支持：需要 3。",
+        text: formatSnapshotCompatibilityError(model.errorCode),
       });
       return;
     }

@@ -350,3 +350,29 @@ test("schema 3 envelope 仅保留 explicit legacy_v3 路径", () => {
     null
   );
 });
+
+test("schema 4 仅接受 producer 明示的 legacy_v3 protocol", () => {
+  const legacy = {
+    snapshot_schema_version: 4,
+    snapshot_model: "task-centric",
+    source: { task_id: "Tasks/A.md" },
+    protocol: {
+      producer_protocol_version: 4,
+      task_contract_schema: "legacy_v3",
+      evidence_contract_schema: null,
+      evidence_record_schema: null,
+      review_record_schema: null,
+      legacy_policy: "explicit_legacy_v3",
+    },
+  };
+  assert.equal(validateSnapshotEnvelope(legacy, "Tasks/A.md"), null);
+  assert.ok(
+    validateSnapshotEnvelope(
+      {
+        ...legacy,
+        protocol: { ...legacy.protocol, legacy_policy: "silent_fallback" },
+      },
+      "Tasks/A.md"
+    )
+  );
+});

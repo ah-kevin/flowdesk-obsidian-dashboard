@@ -72,6 +72,11 @@ export interface SnapshotTaskSummary {
   evidence_requirements?: SnapshotStructuredEvidenceRequirement[];
   acceptance?: SnapshotDerivedAcceptance[];
   review?: SnapshotReviewSummary;
+  legacy_v3?: {
+    semantic_status?: string;
+    evidence_health?: SnapshotEvidenceHealth;
+    contract?: SnapshotTaskContract;
+  };
 }
 
 export interface SnapshotObservation {
@@ -183,10 +188,10 @@ export interface SnapshotReviewSummary {
 
 export interface SnapshotProtocol {
   producer_protocol_version?: number;
-  task_contract_schema?: string;
-  evidence_contract_schema?: string;
-  evidence_record_schema?: string;
-  review_record_schema?: string;
+  task_contract_schema?: string | null;
+  evidence_contract_schema?: string | null;
+  evidence_record_schema?: string | null;
+  review_record_schema?: string | null;
   legacy_policy?: string;
 }
 
@@ -433,7 +438,9 @@ export function createDashboardViewModel(
     ? normalizeCompletion(currentTask.completion, currentTask.status)
     : legacyCompletion(currentTask, v3Snapshot ?? {});
   const evidence = isV4
-    ? evidenceHealthFromCompletion(completion)
+    ? completion.trustLevel === "legacy_v3"
+      ? normalizeEvidenceHealth(currentTask.legacy_v3?.evidence_health)
+      : evidenceHealthFromCompletion(completion)
     : normalizeEvidenceHealth(v3Snapshot?.evidence);
   const diagnostics = (snapshot.diagnostics ?? []).map((diagnostic) =>
     normalizeDiagnostic(diagnostic, currentTaskId)
@@ -493,7 +500,13 @@ export function createDashboardViewModel(
     },
     contract: {
       version: isV4
-        ? normalizeText(v4Snapshot?.contract?.task_contract?.schema, "未提供")
+        ? normalizeText(
+            v4Snapshot?.contract?.task_contract?.schema,
+            normalizeText(
+              v4Snapshot?.contract?.task_contract?.version,
+              "未提供"
+            )
+          )
         : normalizeText(v3Snapshot?.contract?.version, "未提供"),
       goal: isV4
         ? normalizeText(v4Snapshot?.contract?.task_contract?.goal, "未提供")
@@ -509,7 +522,12 @@ export function createDashboardViewModel(
         )?.map(String) ?? [],
       },
       semanticStatus: isV4
-        ? normalizeText(v4Snapshot?.contract?.status, "unknown")
+        ? v4Snapshot?.contract?.status === "legacy_v3"
+          ? normalizeText(
+              v4Snapshot.contract.task_contract?.semantic_status,
+              "unknown"
+            )
+          : normalizeText(v4Snapshot?.contract?.status, "unknown")
         : normalizeText(
             v3Snapshot?.contract?.semantic_status,
             "unknown"
@@ -706,12 +724,18 @@ function normalizeProtocol(
   };
   return {
     supported:
-      normalized.producerProtocolVersion === 4 &&
-      normalized.taskContractSchema === "flowdesk.task-contract/4" &&
-      normalized.evidenceContractSchema === "flowdesk.evidence-contract/1" &&
-      normalized.evidenceRecordSchema === "flowdesk.evidence-record/1" &&
-      normalized.reviewRecordSchema === "flowdesk.review-record/1" &&
-      normalized.legacyPolicy === "explicit_legacy_v3",
+      (normalized.producerProtocolVersion === 4 &&
+        normalized.taskContractSchema === "flowdesk.task-contract/4" &&
+        normalized.evidenceContractSchema === "flowdesk.evidence-contract/1" &&
+        normalized.evidenceRecordSchema === "flowdesk.evidence-record/1" &&
+        normalized.reviewRecordSchema === "flowdesk.review-record/1" &&
+        normalized.legacyPolicy === "explicit_legacy_v3") ||
+      (normalized.producerProtocolVersion === 4 &&
+        normalized.taskContractSchema === "legacy_v3" &&
+        protocol.evidence_contract_schema === null &&
+        protocol.evidence_record_schema === null &&
+        protocol.review_record_schema === null &&
+        normalized.legacyPolicy === "explicit_legacy_v3"),
     ...normalized,
   };
 }
@@ -876,6 +900,9 @@ function createChildViewModel(
   child: SnapshotTaskSummary
 ): DashboardChildViewModel {
   const id = normalizeText(child.id, "");
+  const completion = child.completion
+    ? normalizeCompletion(child.completion, child.status)
+    : null;
   return {
     id,
     title: normalizeText(child.title, id || "未命名子任务"),
@@ -886,9 +913,19 @@ function createChildViewModel(
     goal: normalizeText(child.goal, "未提供"),
     hasChildren: child.has_children === true,
     rollupState: normalizeText(child.rollup_state, "unknown"),
-    semanticStatus: normalizeText(child.semantic_status, "unknown"),
-    evidenceHealth: normalizeEvidenceHealth(child.evidence_health),
-    trustedDone: child.trusted_done === true,
+    semanticStatus: normalizeText(
+      child.legacy_v3?.semantic_status,
+      normalizeText(child.semantic_status, "unknown")
+    ),
+    evidenceHealth:
+      completion?.trustLevel === "legacy_v3"
+        ? normalizeEvidenceHealth(child.legacy_v3?.evidence_health)
+        : completion
+          ? evidenceHealthFromCompletion(completion)
+          : normalizeEvidenceHealth(child.evidence_health),
+    trustedDone: completion
+      ? completion.trustedDone
+      : child.trusted_done === true,
     primaryDiagnostic: child.primary_diagnostic
       ? normalizeDiagnostic(child.primary_diagnostic, id)
       : null,
@@ -917,6 +954,7 @@ function normalizeDiagnostic(
   const remediation = isRecord(diagnostic.remediation)
     ? diagnostic.remediation
     : {};
+  const evidence = isRecord(diagnostic.evidence) ? diagnostic.evidence : null;
   return {
     code: normalizeText(diagnostic.code, "unknown_diagnostic"),
     severity: normalizeText(diagnostic.severity, "error"),
@@ -929,10 +967,19 @@ function normalizeDiagnostic(
       reason.actual,
       normalizeText(diagnostic.reason, "producer 未提供")
     ),
-    expected: normalizeText(reason.expected, "producer 未提供"),
+    expected: normalizeText(
+      reason.expected,
+      normalizeText(
+        diagnostic.expected,
+        evidence ? JSON.stringify(evidence) : "producer 未提供"
+      )
+    ),
     remediation: normalizeText(
       remediation.summary,
-      normalizeText(diagnostic.remediation, "producer 未提供")
+      normalizeText(
+        diagnostic.next_action,
+        normalizeText(diagnostic.remediation, "producer 未提供")
+      )
     ),
   };
 }

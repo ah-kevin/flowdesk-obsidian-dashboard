@@ -479,3 +479,123 @@ test("schema 3 只作为 explicit legacy_v3，schema 4 不回退到 v3 source", 
   assert.equal(model.observation.sourceIdentity, "unknown");
   assert.equal(model.observation.isTrustworthy, false);
 });
+
+test("schema 4 explicit legacy_v3 保留历史 trusted done 与证据健康", () => {
+  const snapshot = {
+    snapshot_schema_version: 4,
+    snapshot_model: "task-centric",
+    source: {
+      task_id: rootId,
+      generated_at: "2026-08-07T12:00:00Z",
+    },
+    observation: {
+      health: "healthy",
+      current_task: "observed",
+      parent: "not_applicable",
+      children: "observed",
+      tasknotes_api: "ok",
+      source_identity_match: true,
+      stale: false,
+    },
+    contract: {
+      status: "legacy_v3",
+      task_contract: {
+        version: "v3",
+        goal: "保留历史结论",
+        scope: { included: ["历史任务"], excluded: ["自动迁移"] },
+        requirements: [],
+        scenarios: [],
+        acceptance: [],
+        semantic_status: "valid",
+      },
+    },
+    current_task: {
+      id: rootId,
+      title: "Legacy root",
+      status: "done",
+      priority: "normal",
+      is_blocked: false,
+      blocked_by: [],
+      has_children: false,
+      completion: {
+        lifecycle_status: "done",
+        contract_status: "legacy_v3_valid",
+        evidence_status: "satisfied",
+        verification_status: "passed",
+        review_status: "legacy_v3",
+        acceptance_status: "satisfied",
+        trust_level: "legacy_v3",
+        trusted_done: true,
+      },
+      evidence_requirements: [],
+      acceptance: [],
+      review: { status: "legacy_v3" },
+      legacy_v3: {
+        semantic_status: "valid",
+        evidence_health: {
+          execution: "valid",
+          verification: "valid",
+          delivery: "valid",
+        },
+      },
+    },
+    parent: null,
+    children: [],
+    rollup: { state: "done", trusted_done: true },
+    diagnostics: [],
+    next_actions: [{ kind: "review_done_snapshot", summary: "复核历史 snapshot" }],
+    protocol: {
+      producer_protocol_version: 4,
+      task_contract_schema: "legacy_v3",
+      evidence_contract_schema: null,
+      evidence_record_schema: null,
+      review_record_schema: null,
+      legacy_policy: "explicit_legacy_v3",
+    },
+  };
+
+  const model = createDashboardViewModel(snapshot, { expectedTaskPath: rootId });
+  assert.equal(model.errorCode, null);
+  assert.equal(model.currentTask.trustLevel, "legacy_v3");
+  assert.equal(model.currentTask.trustedDone, true);
+  assert.deepEqual(model.evidence, {
+    execution: "valid",
+    verification: "valid",
+    delivery: "valid",
+  });
+  assert.equal(model.contract.version, "v3");
+  assert.equal(model.nextAction, "复核历史 snapshot");
+});
+
+test("v4 diagnostic 映射 evidence 与 next_action，不丢失可行动信息", () => {
+  const fixturePath = path.join(
+    process.cwd(),
+    "tests/fixtures/sdd_v4_real_root_snapshot.json"
+  );
+  const snapshot = JSON.parse(readFileSync(fixturePath, "utf8"));
+  snapshot.current_task.completion.review_status = "pending";
+  snapshot.current_task.completion.trust_level = "review_required";
+  snapshot.current_task.completion.trusted_done = false;
+  snapshot.diagnostics = [
+    {
+      code: "review_required",
+      severity: "error",
+      blocking: true,
+      task_id: snapshot.source.task_id,
+      path: "reviews",
+      reason: "current evidence bundle requires review",
+      evidence: { requirement_uids: ["EVR-002"] },
+      next_action: "approve or request changes from the Dashboard review action",
+    },
+  ];
+
+  const model = createDashboardViewModel(snapshot, {
+    expectedTaskPath: snapshot.source.task_id,
+  });
+  assert.equal(model.primaryDiagnostic?.reason, "current evidence bundle requires review");
+  assert.equal(model.primaryDiagnostic?.expected, '{"requirement_uids":["EVR-002"]}');
+  assert.equal(
+    model.primaryDiagnostic?.remediation,
+    "approve or request changes from the Dashboard review action"
+  );
+});
