@@ -192,6 +192,10 @@
   height: 14px;
 }
 
+.flowdesk-review-button {
+  color: var(--text-accent);
+}
+
 .flowdesk-state-pill {
   display: inline-flex;
   min-height: 22px;
@@ -849,6 +853,17 @@
   color: var(--fd-green);
 }
 
+.flowdesk-acceptance-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-acceptance-evidence {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+
 .flowdesk-evidence-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -883,6 +898,27 @@
   margin-top: 3px;
   color: var(--text-muted);
   font-size: 10.5px;
+}
+
+.flowdesk-evidence-fields {
+  min-width: 0;
+  margin-top: 7px;
+  border-top: 1px solid var(--fd-border);
+  padding-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-evidence-fields .flowdesk-diagnostic-row {
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 5px;
+  margin-top: 4px;
+  font-size: 10.5px;
+}
+
+.flowdesk-review-modal textarea {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
 }
 
 .flowdesk-observation-summary {

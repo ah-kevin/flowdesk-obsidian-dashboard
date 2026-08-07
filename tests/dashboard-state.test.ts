@@ -310,3 +310,69 @@ test("同一 task 的 schema、model 或 source mismatch 必须清空旧 snapsho
     assert.equal(outcome.displayState, null);
   }
 });
+
+test("schema 4 envelope 严格校验 source identity 与完整 protocol", () => {
+  const valid = {
+    snapshot_schema_version: 4,
+    snapshot_model: "task-centric",
+    source: { task_id: "Tasks/A.md" },
+    protocol: {
+      producer_protocol_version: 4,
+      task_contract_schema: "flowdesk.task-contract/4",
+      evidence_contract_schema: "flowdesk.evidence-contract/1",
+      evidence_record_schema: "flowdesk.evidence-record/1",
+      review_record_schema: "flowdesk.review-record/1",
+      legacy_policy: "explicit_legacy_v3",
+    },
+  };
+  assert.equal(validateSnapshotEnvelope(valid, "Tasks/A.md"), null);
+
+  for (const snapshot of [
+    { ...valid, source: { task_id: "Tasks/B.md" } },
+    { ...valid, source_task_id: "Tasks/A.md", source: {} },
+    { ...valid, protocol: { ...valid.protocol, producer_protocol_version: 3 } },
+    { ...valid, protocol: { ...valid.protocol, review_record_schema: undefined } },
+  ]) {
+    assert.ok(validateSnapshotEnvelope(snapshot, "Tasks/A.md"));
+  }
+});
+
+test("schema 3 envelope 仅保留 explicit legacy_v3 路径", () => {
+  assert.equal(
+    validateSnapshotEnvelope(
+      {
+        snapshot_schema_version: 3,
+        snapshot_model: "task-centric",
+        source_task_id: "Tasks/A.md",
+      },
+      "Tasks/A.md"
+    ),
+    null
+  );
+});
+
+test("schema 4 仅接受 producer 明示的 legacy_v3 protocol", () => {
+  const legacy = {
+    snapshot_schema_version: 4,
+    snapshot_model: "task-centric",
+    source: { task_id: "Tasks/A.md" },
+    protocol: {
+      producer_protocol_version: 4,
+      task_contract_schema: "legacy_v3",
+      evidence_contract_schema: null,
+      evidence_record_schema: null,
+      review_record_schema: null,
+      legacy_policy: "explicit_legacy_v3",
+    },
+  };
+  assert.equal(validateSnapshotEnvelope(legacy, "Tasks/A.md"), null);
+  assert.ok(
+    validateSnapshotEnvelope(
+      {
+        ...legacy,
+        protocol: { ...legacy.protocol, legacy_policy: "silent_fallback" },
+      },
+      "Tasks/A.md"
+    )
+  );
+});

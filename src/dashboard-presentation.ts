@@ -144,13 +144,15 @@ export function createContractItemPresentation(
   item: SnapshotContractItem,
   kind: "requirement" | "scenario"
 ): ContractItemPresentation {
-  const text = String(item.text || "未提供").trim() || "未提供";
+  const text = String(item.label || item.text || "未提供").trim() || "未提供";
   return {
-    id: String(item.id || "未编号").trim() || "未编号",
+    id: String(item.uid || item.id || "未编号").trim() || "未编号",
     text,
-    requirementIds: Array.isArray(item.requirement_ids)
-      ? item.requirement_ids.map(String).filter(Boolean)
-      : [],
+    requirementIds: Array.isArray(item.covers)
+      ? item.covers.map(String).filter(Boolean)
+      : Array.isArray(item.requirement_ids)
+        ? item.requirement_ids.map(String).filter(Boolean)
+        : [],
     sourceLabel: formatContractSource(item),
     steps: kind === "scenario" ? parseScenarioSteps(text) : null,
   };
@@ -267,6 +269,16 @@ export function formatTaskShellStatus(
   return loading ? "正在建立可信观察…" : "尚未读取 snapshot";
 }
 
+export function formatSnapshotCompatibilityError(code: string): string {
+  if (code === "unsupported_snapshot_model") {
+    return "Snapshot model 不受支持：需要 task-centric。";
+  }
+  if (code === "unsupported_snapshot_protocol") {
+    return "Snapshot protocol 不受支持：请核对 producer 与 Dashboard 版本。";
+  }
+  return "Snapshot schema 不受支持：需要 schema 4，或显式 legacy_v3。";
+}
+
 export function createDashboardPresentation(
   model: DashboardViewModel
 ): DashboardPresentation {
@@ -358,8 +370,12 @@ export function taskStatusTone(
 function createTrustSummary(
   model: DashboardViewModel
 ): DashboardTrustPresentation {
-  const contractLabel =
-    model.contract.semanticStatus === "valid"
+  const isLegacy = model.currentTask.trustLevel === "legacy_v3";
+  const contractLabel = isLegacy
+    ? model.contract.semanticStatus === "valid"
+      ? "v3 历史合同有效"
+      : "v3 历史合同需检查"
+    : model.contract.semanticStatus === "valid"
       ? "合同有效"
       : model.contract.semanticStatus === "invalid"
         ? "合同存在问题"
@@ -396,10 +412,57 @@ function createTrustSummary(
       detail,
     };
   }
+  if (isLegacy) {
+    const detail = model.currentTask.trustedDone
+      ? "保留 SDD v3 历史可信结论；未自动迁移为 v4 attested"
+      : "保留 SDD v3 历史验证状态；未自动迁移为 v4";
+    return {
+      tone: model.currentTask.trustedDone ? "healthy" : "warning",
+      label: "v3 历史验证",
+      contractLabel,
+      contractTone,
+      sourceLabel: model.schemaLabel,
+      tooltip: `${model.observation.generatedAt} · ${detail}`,
+      meta: `${model.schemaLabel} · ${model.observation.generatedAt}`,
+      detail,
+    };
+  }
+  if (model.currentTask.trustLevel === "review_required") {
+    const detail = "结构化证据已满足，等待对当前 evidence bundle 人工复核";
+    return {
+      tone: "warning",
+      label: "等待人工复核",
+      contractLabel,
+      contractTone,
+      sourceLabel: model.schemaLabel,
+      tooltip: `${model.observation.generatedAt} · ${detail}`,
+      meta: `${model.schemaLabel} · ${model.observation.generatedAt}`,
+      detail,
+    };
+  }
+  if (
+    ["missing", "incomplete", "invalid", "failed"].includes(
+      model.currentTask.completion.evidenceStatus
+    )
+  ) {
+    const detail = "必需结构化 Evidence requirement 尚未全部满足";
+    return {
+      tone: "warning",
+      label: "证据待补充",
+      contractLabel,
+      contractTone,
+      sourceLabel: model.schemaLabel,
+      tooltip: `${model.observation.generatedAt} · ${detail}`,
+      meta: `${model.schemaLabel} · ${model.observation.generatedAt}`,
+      detail,
+    };
+  }
   const detail = "来源匹配，已读取当前任务、父任务与直接子任务";
   return {
     tone: "healthy",
-    label: "观察可信",
+    label: model.currentTask.trustLevel === "attested_v4"
+      ? "v4 可信验证"
+      : "观察可信",
     contractLabel,
     contractTone,
     sourceLabel: model.schemaLabel,
@@ -442,6 +505,26 @@ function createPrimaryStatus(
       reason: `producer 将合同标记为 ${model.contract.semanticStatus}，但没有返回结构化诊断`,
       remediation: "展开完整详情核对合同字段，并使用 CLI 获取 producer 原始输出",
       location: "任务合同",
+      diagnostic: null,
+    };
+  }
+  if (model.currentTask.trustLevel === "legacy_v3") {
+    return {
+      tone: model.currentTask.trustedDone ? "healthy" : "warning",
+      title: "v3 历史验证已保留",
+      reason: "Dashboard 明示 legacy_v3，不将历史结论伪装成 v4 attested",
+      remediation: model.nextAction || "按需显式迁移到 SDD v4",
+      location: "当前任务",
+      diagnostic: null,
+    };
+  }
+  if (model.currentTask.trustLevel === "review_required") {
+    return {
+      tone: "warning",
+      title: "结构化证据等待人工复核",
+      reason: "必需 evidence 已满足，但当前 bundle 尚未批准",
+      remediation: model.nextAction || "使用 Dashboard 复核操作确认或要求修改",
+      location: "执行证据",
       diagnostic: null,
     };
   }
@@ -547,17 +630,23 @@ function formatTaskReference(taskId: string): string {
 function createContractSummary(
   model: DashboardViewModel
 ): DashboardContractPresentation {
-  const checked = model.contract.acceptance.filter(
-    (item) => item.checked === true
-  ).length;
-  const validEvidence = Object.values(model.evidence).filter(
-    (health) => health === "valid"
-  ).length;
+  const acceptanceTotal = model.acceptance.length || model.contract.acceptance.length;
+  const checked = model.acceptance.length
+    ? model.acceptance.filter((item) => item.status === "satisfied").length
+    : model.contract.acceptance.filter((item) => item.checked === true).length;
+  const evidenceTotal = model.evidenceRequirements.length || 3;
+  const validEvidence = model.evidenceRequirements.length
+    ? model.evidenceRequirements.filter(
+        (item) => item.status === "satisfied" && item.matchedExpected !== false
+      ).length
+    : Object.values(model.evidence).filter((health) => health === "valid").length;
   return {
     goal: model.contract.goal,
     coverage: `REQ ${model.contract.requirements.length} · SCN ${model.contract.scenarios.length}`,
-    acceptance: `验收 ${checked}/${model.contract.acceptance.length}`,
-    evidence: formatEvidence(model.evidence),
+    acceptance: `验收 ${checked}/${acceptanceTotal}`,
+    evidence: model.evidenceRequirements.length
+      ? `结构化证据 ${validEvidence}/${evidenceTotal}`
+      : formatEvidence(model.evidence),
     diagnostics: `${model.diagnostics.length} 个诊断`,
     metrics: [
       {
@@ -566,9 +655,9 @@ function createContractSummary(
       },
       {
         label: "验收",
-        value: `${checked} / ${model.contract.acceptance.length}`,
+        value: `${checked} / ${acceptanceTotal}`,
       },
-      { label: "证据有效", value: `${validEvidence} / 3` },
+      { label: "证据有效", value: `${validEvidence} / ${evidenceTotal}` },
     ],
   };
 }
@@ -580,11 +669,26 @@ function diagnosticActionTitle(diagnostic: SnapshotDiagnostic): string {
       : "Task Contract v3 数量不正确";
   }
   const labels: Record<string, string> = {
+    review_required: "结构化证据等待人工复核",
+    review_conflict: "复核记录与当前证据冲突",
+    review_changes_requested: "复核要求修改",
+    evidence_requirement_missing: "结构化证据缺失",
+    stale_against_component_revision: "结构化证据版本已过期",
+    record_unconfirmed: "Evidence Record 未确认",
+    record_drift: "Evidence Record 已漂移",
+    failed_as_observed: "运行结果不符合声明预期",
+    protocol_mismatch: "证据协议不匹配",
+    contract_missing: "Evidence Contract 镜像缺失",
+    contract_drift: "Evidence Contract 已漂移",
+    contract_invalid: "结构化合同无效",
+    observation_unavailable: "TaskNotes 观察不可用",
+    reference_unaccepted: "实验参考真值不被合同接受",
     "contract.goal": "任务目标需要修复",
     "evidence.execution": "执行结果需要修复",
     "evidence.verification": "验证结果需要修复",
     "evidence.delivery": "交付记录需要修复",
   };
+  if (labels[diagnostic.code]) return labels[diagnostic.code];
   if (labels[diagnostic.path]) return labels[diagnostic.path];
   if (diagnostic.path.startsWith("contract.")) return "任务合同需要修复";
   if (diagnostic.path.startsWith("evidence.")) return "执行证据需要修复";

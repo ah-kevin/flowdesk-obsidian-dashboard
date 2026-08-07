@@ -38,7 +38,7 @@ var import_obsidian = require("obsidian");
 var import_child_process = require("child_process");
 var import_fs = require("fs");
 var import_os = require("os");
-var path2 = __toESM(require("path"));
+var path3 = __toESM(require("path"));
 var import_util = require("util");
 
 // src/dashboard-state.ts
@@ -118,15 +118,26 @@ function collectObservedTaskPaths(currentTaskPath, snapshot) {
   return paths;
 }
 function validateSnapshotEnvelope(value, requestedTaskPath) {
+  var _a;
   const snapshot = typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
-  if (snapshot.snapshot_schema_version !== 3) {
-    return `Snapshot schema \u4E0D\u53D7\u652F\u6301\uFF1A\u9700\u8981 3\uFF1B\u8BF7\u6C42 ${requestedTaskPath}\uFF0C\u5B9E\u9645 schema ${formatEnvelopeValue(snapshot.snapshot_schema_version)}\u3002`;
+  const schemaVersion = snapshot.snapshot_schema_version;
+  if (schemaVersion !== 3 && schemaVersion !== 4) {
+    return `Snapshot schema \u4E0D\u53D7\u652F\u6301\uFF1A\u9700\u8981 3\uFF08legacy_v3\uFF09\u6216 4\uFF1B\u8BF7\u6C42 ${requestedTaskPath}\uFF0C\u5B9E\u9645 schema ${formatEnvelopeValue(schemaVersion)}\u3002`;
   }
   if (snapshot.snapshot_model !== "task-centric") {
     return `Snapshot model \u4E0D\u53D7\u652F\u6301\uFF1A\u9700\u8981 task-centric\uFF1B\u8BF7\u6C42 ${requestedTaskPath}\uFF0C\u5B9E\u9645 model ${formatEnvelopeValue(snapshot.snapshot_model)}\u3002`;
   }
-  if (snapshot.source_task_id !== requestedTaskPath) {
-    return `Snapshot source identity \u4E0D\u5339\u914D\uFF1A\u8BF7\u6C42 ${requestedTaskPath}\uFF0C\u8FD4\u56DE ${formatEnvelopeValue(snapshot.source_task_id)}\u3002`;
+  const sourceTaskId = schemaVersion === 4 ? (_a = snapshot.source) == null ? void 0 : _a.task_id : snapshot.source_task_id;
+  if (sourceTaskId !== requestedTaskPath) {
+    return `Snapshot source identity \u4E0D\u5339\u914D\uFF1A\u8BF7\u6C42 ${requestedTaskPath}\uFF0C\u8FD4\u56DE ${formatEnvelopeValue(sourceTaskId)}\u3002`;
+  }
+  if (schemaVersion === 4) {
+    const protocol = snapshot.protocol;
+    const v4ProtocolValid = (protocol == null ? void 0 : protocol.producer_protocol_version) === 4 && protocol.task_contract_schema === "flowdesk.task-contract/4" && protocol.evidence_contract_schema === "flowdesk.evidence-contract/1" && protocol.evidence_record_schema === "flowdesk.evidence-record/1" && protocol.review_record_schema === "flowdesk.review-record/1" && protocol.legacy_policy === "explicit_legacy_v3";
+    const legacyProtocolValid = (protocol == null ? void 0 : protocol.producer_protocol_version) === 4 && protocol.task_contract_schema === "legacy_v3" && protocol.evidence_contract_schema === null && protocol.evidence_record_schema === null && protocol.review_record_schema === null && protocol.legacy_policy === "explicit_legacy_v3";
+    if (!v4ProtocolValid && !legacyProtocolValid) {
+      return `Snapshot protocol \u4E0D\u53D7\u652F\u6301\uFF1A\u8BF7\u6C42 ${requestedTaskPath} \u5FC5\u987B\u4F7F\u7528\u5B8C\u6574 SDD v4 protocol\u3002`;
+    }
   }
   return null;
 }
@@ -214,16 +225,103 @@ function shellQuote(value) {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
+// src/review-invocation.ts
+var path2 = __toESM(require("path"));
+function buildReviewInvocation(input) {
+  const flowdeskRoot = path2.resolve(input.flowdeskRoot);
+  const taskPath = input.taskPath.trim();
+  const digest = input.digest.trim();
+  const requirementUids = [
+    ...new Set(input.requirementUids.map((uid) => uid.trim()).filter(Boolean))
+  ];
+  if (!taskPath) throw new Error("review task path \u4E0D\u80FD\u4E3A\u7A7A");
+  if (!/^sha256:.+/.test(digest)) {
+    throw new Error("review evidence bundle digest \u5FC5\u987B\u662F sha256 \u503C");
+  }
+  if (!requirementUids.length) {
+    throw new Error("review \u81F3\u5C11\u9700\u8981\u4E00\u4E2A requirement UID");
+  }
+  if (!input.vaultPath.trim()) {
+    throw new Error("review vault path \u4E0D\u80FD\u4E3A\u7A7A");
+  }
+  const args = [
+    "review",
+    "--task-id",
+    taskPath,
+    "--evidence-bundle-digest",
+    digest,
+    "--decision",
+    input.decision
+  ];
+  for (const uid of requirementUids) {
+    args.push("--requirement-uid", uid);
+  }
+  args.push(
+    "--note",
+    input.note,
+    "--reviewer-kind",
+    "user",
+    "--reviewer-surface",
+    "obsidian-dashboard",
+    "--vault",
+    path2.resolve(input.vaultPath)
+  );
+  if (input.apiUrl.trim()) {
+    args.push("--api-url", input.apiUrl.trim());
+  }
+  return {
+    executable: path2.join(flowdeskRoot, "bin", "flowdesk-evidence"),
+    args,
+    cwd: flowdeskRoot
+  };
+}
+function parseReviewCommandFailure(error) {
+  const failure = isRecord(error) ? error : {};
+  for (const output of [failure.stdout, failure.stderr]) {
+    if (typeof output !== "string" || !output.trim()) continue;
+    try {
+      const payload = JSON.parse(output);
+      if (isRecord(payload)) {
+        return {
+          code: text(payload.code, "review_request_rejected"),
+          message: text(payload.error, text(payload.message, "\u590D\u6838\u8BF7\u6C42\u5931\u8D25"))
+        };
+      }
+    } catch (e) {
+    }
+  }
+  return {
+    code: "review_request_rejected",
+    message: text(failure.message, "\u590D\u6838\u8BF7\u6C42\u5931\u8D25")
+  };
+}
+function canReviewEvidence(input) {
+  return input.trustLevel === "review_required" && input.observationTrustworthy && input.sourceIdentity === true && input.sourceIdentityMatch === true && typeof input.evidenceBundleDigest === "string" && /^sha256:.+/.test(input.evidenceBundleDigest) && input.requirementUids.some((uid) => Boolean(uid.trim()));
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function text(value, fallback) {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
 // src/snapshot-model.ts
 function createDashboardViewModel(value, options = {}) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L;
-  const snapshot = isRecord(value) ? value : {};
-  const schemaSupported = snapshot.snapshot_schema_version === 3;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, __, _$, _aa, _ba, _ca, _da, _ea, _fa, _ga, _ha, _ia, _ja, _ka, _la, _ma, _na, _oa, _pa;
+  const snapshot = isRecord2(value) ? value : {};
+  const schemaVersion = snapshot.snapshot_schema_version;
+  const isV4 = schemaVersion === 4;
+  const isV3 = schemaVersion === 3;
+  const v4Snapshot = isV4 ? snapshot : null;
+  const v3Snapshot = isV3 ? snapshot : null;
+  const schemaSupported = isV3 || isV4;
   const modelSupported = snapshot.snapshot_model === "task-centric";
+  const protocol = normalizeProtocol(v4Snapshot == null ? void 0 : v4Snapshot.protocol, isV3);
+  const protocolSupported = protocol.supported;
   const currentTask = (_a = snapshot.current_task) != null ? _a : {};
   const currentTaskId = normalizeText(
     currentTask.id,
-    normalizeText(snapshot.source_task_id, "")
+    snapshotSourceTaskId(snapshot)
   );
   const rollup = (_b = snapshot.rollup) != null ? _b : {};
   const staleReason = normalizeText(options.staleReason, "");
@@ -236,30 +334,38 @@ function createDashboardViewModel(value, options = {}) {
   );
   const sourceIdentityMatch = typeof ((_d = snapshot.observation) == null ? void 0 : _d.source_identity_match) === "boolean" ? snapshot.observation.source_identity_match : "unknown";
   const parentObserved = ((_e = snapshot.observation) == null ? void 0 : _e.parent) === "observed" || ((_f = snapshot.observation) == null ? void 0 : _f.parent) === "not_applicable";
-  const isTrustworthy = schemaSupported && modelSupported && observationHealth === "healthy" && ((_g = snapshot.observation) == null ? void 0 : _g.current_task) === "observed" && parentObserved && ((_h = snapshot.observation) == null ? void 0 : _h.children) === "observed" && ((_i = snapshot.observation) == null ? void 0 : _i.tasknotes_api) === "ok" && sourceIdentityMatch === true && ((_j = snapshot.observation) == null ? void 0 : _j.stale) === false && sourceIdentity === true && !staleReason;
-  const evidence = normalizeEvidenceHealth(snapshot.evidence);
-  const diagnostics = ((_k = snapshot.diagnostics) != null ? _k : []).map(
+  const isTrustworthy = schemaSupported && modelSupported && protocolSupported && observationHealth === "healthy" && ((_g = snapshot.observation) == null ? void 0 : _g.current_task) === "observed" && parentObserved && ((_h = snapshot.observation) == null ? void 0 : _h.children) === "observed" && ((_i = snapshot.observation) == null ? void 0 : _i.tasknotes_api) === "ok" && sourceIdentityMatch === true && ((_j = snapshot.observation) == null ? void 0 : _j.stale) === false && sourceIdentity === true && !staleReason;
+  const evidenceRequirements = isV4 ? ((_k = currentTask.evidence_requirements) != null ? _k : []).map(
+    normalizeStructuredEvidenceRequirement
+  ) : [];
+  const acceptance = isV4 ? ((_l = currentTask.acceptance) != null ? _l : []).map(normalizeDerivedAcceptance) : [];
+  const review = isV4 ? normalizeReviewSummary(currentTask.review) : emptyReviewSummary("legacy_v3");
+  const completion = isV4 ? normalizeCompletion(currentTask.completion, currentTask.status) : legacyCompletion(currentTask, v3Snapshot != null ? v3Snapshot : {});
+  const evidence = isV4 ? completion.trustLevel === "legacy_v3" ? normalizeEvidenceHealth((_m = currentTask.legacy_v3) == null ? void 0 : _m.evidence_health) : evidenceHealthFromCompletion(completion) : normalizeEvidenceHealth(v3Snapshot == null ? void 0 : v3Snapshot.evidence);
+  const diagnostics = ((_n = snapshot.diagnostics) != null ? _n : []).map(
     (diagnostic) => normalizeDiagnostic(diagnostic, currentTaskId)
   );
-  const children = ((_l = snapshot.children) != null ? _l : []).map(
+  const children = ((_o = snapshot.children) != null ? _o : []).map(
     (child) => createChildViewModel(child)
   );
   return {
-    errorCode: !schemaSupported ? "unsupported_snapshot_schema" : !modelSupported ? "unsupported_snapshot_model" : null,
+    errorCode: !schemaSupported ? "unsupported_snapshot_schema" : !modelSupported ? "unsupported_snapshot_model" : !protocolSupported ? "unsupported_snapshot_protocol" : null,
     schemaSupported,
     modelSupported,
-    schemaLabel: schemaSupported && modelSupported ? "snapshot v3 \xB7 task-centric" : "\u4E0D\u652F\u6301\u7684 snapshot \u6A21\u578B",
+    schemaLabel: schemaSupported && modelSupported && protocolSupported ? isV4 ? "snapshot v4 \xB7 task-centric" : "snapshot v3 \xB7 task-centric \xB7 legacy_v3" : "\u4E0D\u652F\u6301\u7684 snapshot \u6A21\u578B",
     currentTask: {
       id: currentTaskId,
       title: normalizeText(currentTask.title, "\u672A\u63D0\u4F9B\u4EFB\u52A1\u6807\u9898"),
       status: normalizeText(currentTask.status, "unknown"),
       priority: normalizeText(currentTask.priority, "\u672A\u63D0\u4F9B"),
       isBlocked: currentTask.is_blocked === true,
-      blockedBy: ((_m = currentTask.blocked_by) != null ? _m : []).map(normalizeBlockedBy).filter(Boolean),
+      blockedBy: ((_p = currentTask.blocked_by) != null ? _p : []).map(normalizeBlockedBy).filter(Boolean),
       parentId: typeof currentTask.parent_id === "string" ? currentTask.parent_id : null,
       hasChildren: currentTask.has_children === true,
       rollupState: normalizeText(currentTask.rollup_state, "unknown"),
-      trustedDone: currentTask.trusted_done === true,
+      trustedDone: completion.trustedDone,
+      trustLevel: completion.trustLevel,
+      completion,
       evidenceHealth: evidence
     },
     parent: normalizeParent(snapshot.parent),
@@ -271,50 +377,63 @@ function createDashboardViewModel(value, options = {}) {
       childrenTotal: finiteNumber(rollup.children_total),
       childrenTrustedDone: finiteNumber(rollup.children_trusted_done),
       childrenComplete: rollup.children_complete === true,
-      blockedChildren: (_n = rollup.blocked_children) != null ? _n : [],
-      incompleteChildren: (_o = rollup.incomplete_children) != null ? _o : [],
-      contradictions: (_p = rollup.contradictions) != null ? _p : []
+      blockedChildren: (_q = rollup.blocked_children) != null ? _q : [],
+      incompleteChildren: (_r = rollup.incomplete_children) != null ? _r : [],
+      contradictions: (_s = rollup.contradictions) != null ? _s : []
     },
     contract: {
-      version: normalizeText((_q = snapshot.contract) == null ? void 0 : _q.version, "\u672A\u63D0\u4F9B"),
-      goal: normalizeText((_r = snapshot.contract) == null ? void 0 : _r.goal, "\u672A\u63D0\u4F9B"),
+      version: isV4 ? normalizeText(
+        (_u = (_t = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _t.task_contract) == null ? void 0 : _u.schema,
+        normalizeText(
+          (_w = (_v = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _v.task_contract) == null ? void 0 : _w.version,
+          "\u672A\u63D0\u4F9B"
+        )
+      ) : normalizeText((_x = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _x.version, "\u672A\u63D0\u4F9B"),
+      goal: isV4 ? normalizeText((_z = (_y = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _y.task_contract) == null ? void 0 : _z.goal, "\u672A\u63D0\u4F9B") : normalizeText((_A = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _A.goal, "\u672A\u63D0\u4F9B"),
       scope: {
-        included: ((_u = (_t = (_s = snapshot.contract) == null ? void 0 : _s.scope) == null ? void 0 : _t.included) != null ? _u : []).map(String),
-        excluded: ((_x = (_w = (_v = snapshot.contract) == null ? void 0 : _v.scope) == null ? void 0 : _w.excluded) != null ? _x : []).map(String)
+        included: (_I = (_H = isV4 ? (_D = (_C = (_B = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _B.task_contract) == null ? void 0 : _C.scope) == null ? void 0 : _D.included : (_G = (_F = (_E = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _E.scope) == null ? void 0 : _F.included) != null ? _G : []) == null ? void 0 : _H.map(String)) != null ? _I : [],
+        excluded: (_Q = (_P = isV4 ? (_L = (_K = (_J = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _J.task_contract) == null ? void 0 : _K.scope) == null ? void 0 : _L.excluded : (_O = (_N = (_M = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _M.scope) == null ? void 0 : _N.excluded) != null ? _O : []) == null ? void 0 : _P.map(String)) != null ? _Q : []
       },
-      semanticStatus: normalizeText(
-        (_y = snapshot.contract) == null ? void 0 : _y.semantic_status,
+      semanticStatus: isV4 ? ((_R = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _R.status) === "legacy_v3" ? normalizeText(
+        (_S = v4Snapshot.contract.task_contract) == null ? void 0 : _S.semantic_status,
+        "unknown"
+      ) : normalizeText((_T = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _T.status, "unknown") : normalizeText(
+        (_U = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _U.semantic_status,
         "unknown"
       ),
-      requirements: (_A = (_z = snapshot.contract) == null ? void 0 : _z.requirements) != null ? _A : [],
-      scenarios: (_C = (_B = snapshot.contract) == null ? void 0 : _B.scenarios) != null ? _C : [],
-      acceptance: (_E = (_D = snapshot.contract) == null ? void 0 : _D.acceptance) != null ? _E : []
+      requirements: isV4 ? (_X = (_W = (_V = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _V.task_contract) == null ? void 0 : _W.requirements) != null ? _X : [] : (_Z = (_Y = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _Y.requirements) != null ? _Z : [],
+      scenarios: isV4 ? (_aa = (_$ = (__ = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : __.task_contract) == null ? void 0 : _$.scenarios) != null ? _aa : [] : (_ca = (_ba = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _ba.scenarios) != null ? _ca : [],
+      acceptance: isV4 ? (_fa = (_ea = (_da = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _da.task_contract) == null ? void 0 : _ea.acceptance) != null ? _fa : [] : (_ha = (_ga = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _ga.acceptance) != null ? _ha : []
     },
+    evidenceRequirements,
+    acceptance,
+    review,
+    protocol,
     evidence,
     observation: {
       health: observationHealth,
-      currentTask: normalizeText((_F = snapshot.observation) == null ? void 0 : _F.current_task, "unknown"),
-      parent: normalizeText((_G = snapshot.observation) == null ? void 0 : _G.parent, "unknown"),
-      children: normalizeText((_H = snapshot.observation) == null ? void 0 : _H.children, "unknown"),
-      tasknotesApi: normalizeText((_I = snapshot.observation) == null ? void 0 : _I.tasknotes_api, "unknown"),
+      currentTask: normalizeText((_ia = snapshot.observation) == null ? void 0 : _ia.current_task, "unknown"),
+      parent: normalizeText((_ja = snapshot.observation) == null ? void 0 : _ja.parent, "unknown"),
+      children: normalizeText((_ka = snapshot.observation) == null ? void 0 : _ka.children, "unknown"),
+      tasknotesApi: normalizeText((_la = snapshot.observation) == null ? void 0 : _la.tasknotes_api, "unknown"),
       sourceIdentityMatch,
-      sourceTaskId: normalizeText(snapshot.source_task_id, ""),
-      generatedAt: normalizeText(snapshot.generated_at, "\u672A\u63D0\u4F9B"),
+      sourceTaskId: snapshotSourceTaskId(snapshot),
+      generatedAt: isV4 ? normalizeText((_ma = v4Snapshot == null ? void 0 : v4Snapshot.source) == null ? void 0 : _ma.generated_at, "\u672A\u63D0\u4F9B") : normalizeText(v3Snapshot == null ? void 0 : v3Snapshot.generated_at, "\u672A\u63D0\u4F9B"),
       isTrustworthy,
       trustMessage: isTrustworthy ? "\u89C2\u6D4B\u53EF\u4FE1" : "\u89C2\u6D4B\u4E0D\u53EF\u4FE1\uFF0C\u65E0\u6CD5\u5224\u65AD\u4EFB\u52A1\u662F\u5426\u6B63\u5E38",
-      isStale: Boolean(staleReason) || ((_J = snapshot.observation) == null ? void 0 : _J.stale) === true,
+      isStale: Boolean(staleReason) || ((_na = snapshot.observation) == null ? void 0 : _na.stale) === true,
       staleReason,
       loadedAt: normalizeText(options.loadedAt, "\u672A\u63D0\u4F9B"),
       sourceIdentity
     },
-    primaryDiagnostic: (_K = diagnostics[0]) != null ? _K : null,
+    primaryDiagnostic: (_oa = diagnostics[0]) != null ? _oa : null,
     diagnostics,
-    nextAction: formatNextAction((_L = snapshot.next_actions) == null ? void 0 : _L[0])
+    nextAction: formatNextAction((_pa = snapshot.next_actions) == null ? void 0 : _pa[0])
   };
 }
 function validateSnapshotSource(value, expectedTaskPath) {
-  const snapshot = isRecord(value) ? value : {};
-  const actual = normalizeText(snapshot.source_task_id, "");
+  const snapshot = isRecord2(value) ? value : {};
+  const actual = snapshotSourceTaskId(snapshot);
   const expected = normalizeText(expectedTaskPath, "");
   if (!actual || !expected) {
     return "unknown";
@@ -371,9 +490,144 @@ function resolveDiagnosticNavigation(taskPath, source) {
     target: resolveDiagnosticTarget(taskPath, source)
   };
 }
-function createChildViewModel(child) {
+function snapshotSourceTaskId(snapshot) {
   var _a;
+  return snapshot.snapshot_schema_version === 4 ? normalizeText((_a = snapshot.source) == null ? void 0 : _a.task_id, "") : normalizeText(snapshot.source_task_id, "");
+}
+function normalizeProtocol(value, isLegacyV3) {
+  if (isLegacyV3) {
+    return {
+      supported: true,
+      producerProtocolVersion: 3,
+      taskContractSchema: "flowdesk.task-contract/3",
+      evidenceContractSchema: "legacy_v3",
+      evidenceRecordSchema: "legacy_v3",
+      reviewRecordSchema: "legacy_v3",
+      legacyPolicy: "explicit_legacy_v3"
+    };
+  }
+  const protocol = value != null ? value : {};
+  const normalized = {
+    producerProtocolVersion: finiteNumber(protocol.producer_protocol_version),
+    taskContractSchema: normalizeText(protocol.task_contract_schema, ""),
+    evidenceContractSchema: normalizeText(protocol.evidence_contract_schema, ""),
+    evidenceRecordSchema: normalizeText(protocol.evidence_record_schema, ""),
+    reviewRecordSchema: normalizeText(protocol.review_record_schema, ""),
+    legacyPolicy: normalizeText(protocol.legacy_policy, "")
+  };
+  return {
+    supported: normalized.producerProtocolVersion === 4 && normalized.taskContractSchema === "flowdesk.task-contract/4" && normalized.evidenceContractSchema === "flowdesk.evidence-contract/1" && normalized.evidenceRecordSchema === "flowdesk.evidence-record/1" && normalized.reviewRecordSchema === "flowdesk.review-record/1" && normalized.legacyPolicy === "explicit_legacy_v3" || normalized.producerProtocolVersion === 4 && normalized.taskContractSchema === "legacy_v3" && protocol.evidence_contract_schema === null && protocol.evidence_record_schema === null && protocol.review_record_schema === null && normalized.legacyPolicy === "explicit_legacy_v3",
+    ...normalized
+  };
+}
+function normalizeCompletion(value, fallbackStatus) {
+  const completion = value != null ? value : {};
+  return {
+    lifecycleStatus: normalizeText(
+      completion.lifecycle_status,
+      normalizeText(fallbackStatus, "unknown")
+    ),
+    contractStatus: normalizeText(completion.contract_status, "unknown"),
+    evidenceStatus: normalizeText(completion.evidence_status, "unknown"),
+    verificationStatus: normalizeText(
+      completion.verification_status,
+      "unknown"
+    ),
+    reviewStatus: normalizeText(completion.review_status, "unknown"),
+    acceptanceStatus: normalizeText(completion.acceptance_status, "unknown"),
+    trustLevel: normalizeText(completion.trust_level, "unknown"),
+    trustedDone: completion.trusted_done === true
+  };
+}
+function legacyCompletion(currentTask, snapshot) {
+  var _a, _b, _c;
+  const evidence = normalizeEvidenceHealth(snapshot.evidence);
+  const evidenceValues = [
+    evidence.execution,
+    evidence.verification,
+    evidence.delivery
+  ];
+  const acceptance = (_b = (_a = snapshot.contract) == null ? void 0 : _a.acceptance) != null ? _b : [];
+  return {
+    lifecycleStatus: normalizeText(currentTask.status, "unknown"),
+    contractStatus: normalizeText(
+      (_c = snapshot.contract) == null ? void 0 : _c.semantic_status,
+      "unknown"
+    ),
+    evidenceStatus: evidenceValues.every((value) => value === "valid") ? "satisfied" : evidenceValues.some((value) => value === "invalid") ? "invalid" : "missing",
+    verificationStatus: evidence.verification === "valid" ? "passed" : evidence.verification === "invalid" ? "failed" : "missing",
+    reviewStatus: "legacy_v3",
+    acceptanceStatus: acceptance.length > 0 && acceptance.every((item) => item.checked === true) ? "satisfied" : "incomplete",
+    trustLevel: "legacy_v3",
+    trustedDone: currentTask.trusted_done === true
+  };
+}
+function evidenceHealthFromCompletion(completion) {
+  const evidence = completion.evidenceStatus === "satisfied" ? "valid" : completion.evidenceStatus === "failed" || completion.evidenceStatus === "invalid" ? "invalid" : "missing";
+  const verification = completion.verificationStatus === "passed" ? "valid" : completion.verificationStatus === "failed" ? "invalid" : "missing";
+  const delivery = completion.reviewStatus === "approved" && completion.acceptanceStatus === "satisfied" ? "valid" : completion.reviewStatus === "changes_requested" ? "invalid" : "missing";
+  return { execution: evidence, verification, delivery };
+}
+function normalizeStructuredEvidenceRequirement(value) {
+  var _a;
+  return {
+    uid: normalizeText(value.uid, "\u672A\u63D0\u4F9B"),
+    componentUid: normalizeText(value.component_uid, "\u672A\u63D0\u4F9B"),
+    semanticRevision: finiteNumber(value.semantic_revision),
+    method: normalizeText(value.method, "unknown"),
+    required: value.required === true,
+    satisfies: ((_a = value.satisfies) != null ? _a : []).map(String),
+    expected: isRecord2(value.expected) ? value.expected : {},
+    reviewRequired: value.review_required === true,
+    status: normalizeText(value.status, "unknown"),
+    runId: nullableText(value.run_id),
+    actual: isRecord2(value.actual) ? value.actual : null,
+    matchedExpected: typeof value.matched_expected === "boolean" ? value.matched_expected : null,
+    provenance: normalizeText(value.provenance, "unknown"),
+    stdoutDigest: nullableText(value.stdout_digest),
+    stderrDigest: nullableText(value.stderr_digest),
+    runtimeOrigin: nullableText(value.runtime_origin),
+    implementationDigest: nullableText(value.implementation_digest)
+  };
+}
+function normalizeDerivedAcceptance(value) {
+  var _a;
+  return {
+    uid: normalizeText(value.uid, "\u672A\u63D0\u4F9B"),
+    label: normalizeText(value.label, "\u672A\u63D0\u4F9B"),
+    required: value.required === true,
+    status: normalizeText(value.status, "unknown"),
+    evidenceRequirementUids: ((_a = value.evidence_requirement_uids) != null ? _a : []).map(String)
+  };
+}
+function normalizeReviewSummary(value) {
+  var _a;
+  const review = value != null ? value : {};
+  return {
+    status: normalizeText(review.status, "not_required"),
+    requirementUids: ((_a = review.requirement_uids) != null ? _a : []).map(String),
+    componentRevisions: isRecord2(review.component_revisions) ? Object.fromEntries(
+      Object.entries(review.component_revisions).filter(
+        (entry) => typeof entry[1] === "number" && Number.isFinite(entry[1])
+      )
+    ) : {},
+    evidenceBundleDigest: nullableText(review.evidence_bundle_digest),
+    record: isRecord2(review.record) ? review.record : null
+  };
+}
+function emptyReviewSummary(status) {
+  return {
+    status,
+    requirementUids: [],
+    componentRevisions: {},
+    evidenceBundleDigest: null,
+    record: null
+  };
+}
+function createChildViewModel(child) {
+  var _a, _b, _c;
   const id = normalizeText(child.id, "");
+  const completion = child.completion ? normalizeCompletion(child.completion, child.status) : null;
   return {
     id,
     title: normalizeText(child.title, id || "\u672A\u547D\u540D\u5B50\u4EFB\u52A1"),
@@ -384,9 +638,12 @@ function createChildViewModel(child) {
     goal: normalizeText(child.goal, "\u672A\u63D0\u4F9B"),
     hasChildren: child.has_children === true,
     rollupState: normalizeText(child.rollup_state, "unknown"),
-    semanticStatus: normalizeText(child.semantic_status, "unknown"),
-    evidenceHealth: normalizeEvidenceHealth(child.evidence_health),
-    trustedDone: child.trusted_done === true,
+    semanticStatus: normalizeText(
+      (_b = child.legacy_v3) == null ? void 0 : _b.semantic_status,
+      normalizeText(child.semantic_status, "unknown")
+    ),
+    evidenceHealth: (completion == null ? void 0 : completion.trustLevel) === "legacy_v3" ? normalizeEvidenceHealth((_c = child.legacy_v3) == null ? void 0 : _c.evidence_health) : completion ? evidenceHealthFromCompletion(completion) : normalizeEvidenceHealth(child.evidence_health),
+    trustedDone: completion ? completion.trustedDone : child.trusted_done === true,
     primaryDiagnostic: child.primary_diagnostic ? normalizeDiagnostic(child.primary_diagnostic, id) : null
   };
 }
@@ -401,23 +658,33 @@ function normalizeParent(parent) {
   };
 }
 function normalizeDiagnostic(value, fallbackTaskId) {
-  const diagnostic = isRecord(value) ? value : {};
-  const reason = isRecord(diagnostic.reason) ? diagnostic.reason : {};
-  const remediation = isRecord(diagnostic.remediation) ? diagnostic.remediation : {};
+  const diagnostic = isRecord2(value) ? value : {};
+  const reason = isRecord2(diagnostic.reason) ? diagnostic.reason : {};
+  const remediation = isRecord2(diagnostic.remediation) ? diagnostic.remediation : {};
+  const evidence = isRecord2(diagnostic.evidence) ? diagnostic.evidence : null;
   return {
     code: normalizeText(diagnostic.code, "unknown_diagnostic"),
     severity: normalizeText(diagnostic.severity, "error"),
     taskId: normalizeText(diagnostic.task_id, fallbackTaskId),
     path: normalizeText(diagnostic.path, "\u672A\u63D0\u4F9B"),
-    source: isRecord(diagnostic.source) ? diagnostic.source : void 0,
+    source: isRecord2(diagnostic.source) ? diagnostic.source : void 0,
     reason: normalizeText(
       reason.actual,
       normalizeText(diagnostic.reason, "producer \u672A\u63D0\u4F9B")
     ),
-    expected: normalizeText(reason.expected, "producer \u672A\u63D0\u4F9B"),
+    expected: normalizeText(
+      reason.expected,
+      normalizeText(
+        diagnostic.expected,
+        evidence ? JSON.stringify(evidence) : "producer \u672A\u63D0\u4F9B"
+      )
+    ),
     remediation: normalizeText(
       remediation.summary,
-      normalizeText(diagnostic.remediation, "producer \u672A\u63D0\u4F9B")
+      normalizeText(
+        diagnostic.next_action,
+        normalizeText(diagnostic.remediation, "producer \u672A\u63D0\u4F9B")
+      )
     )
   };
 }
@@ -425,7 +692,7 @@ function normalizeBlockedBy(value) {
   if (typeof value === "string") {
     return value;
   }
-  if (isRecord(value)) {
+  if (isRecord2(value)) {
     return normalizeText(value.uid, normalizeText(value.id, ""));
   }
   return "";
@@ -452,10 +719,14 @@ function normalizeText(value, fallback) {
   }
   return fallback;
 }
+function nullableText(value) {
+  const normalized = normalizeText(value, "");
+  return normalized || null;
+}
 function finiteNumber(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
-function isRecord(value) {
+function isRecord2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -486,13 +757,13 @@ var DisclosureStateCache = class {
   }
 };
 function createContractItemPresentation(item, kind) {
-  const text = String(item.text || "\u672A\u63D0\u4F9B").trim() || "\u672A\u63D0\u4F9B";
+  const text2 = String(item.label || item.text || "\u672A\u63D0\u4F9B").trim() || "\u672A\u63D0\u4F9B";
   return {
-    id: String(item.id || "\u672A\u7F16\u53F7").trim() || "\u672A\u7F16\u53F7",
-    text,
-    requirementIds: Array.isArray(item.requirement_ids) ? item.requirement_ids.map(String).filter(Boolean) : [],
+    id: String(item.uid || item.id || "\u672A\u7F16\u53F7").trim() || "\u672A\u7F16\u53F7",
+    text: text2,
+    requirementIds: Array.isArray(item.covers) ? item.covers.map(String).filter(Boolean) : Array.isArray(item.requirement_ids) ? item.requirement_ids.map(String).filter(Boolean) : [],
     sourceLabel: formatContractSource(item),
-    steps: kind === "scenario" ? parseScenarioSteps(text) : null
+    steps: kind === "scenario" ? parseScenarioSteps(text2) : null
   };
 }
 function formatContractSource(item) {
@@ -501,8 +772,8 @@ function formatContractSource(item) {
   const line = (_c = item.source) == null ? void 0 : _c.line_start;
   return typeof line === "number" && line > 0 ? `${section} \xB7 \u7B2C ${line} \u884C` : section;
 }
-function parseScenarioSteps(text) {
-  const match = text.match(
+function parseScenarioSteps(text2) {
+  const match = text2.match(
     /^\s*Given\s+([\s\S]*?)[,，]\s*When\s+([\s\S]*?)[,，]\s*Then\s+([\s\S]+?)\s*$/i
   );
   if (!match) return null;
@@ -567,6 +838,15 @@ function isActivationKey(key) {
 function formatTaskShellStatus(loading, error) {
   if (error) return "\u8BFB\u53D6\u5931\u8D25";
   return loading ? "\u6B63\u5728\u5EFA\u7ACB\u53EF\u4FE1\u89C2\u5BDF\u2026" : "\u5C1A\u672A\u8BFB\u53D6 snapshot";
+}
+function formatSnapshotCompatibilityError(code) {
+  if (code === "unsupported_snapshot_model") {
+    return "Snapshot model \u4E0D\u53D7\u652F\u6301\uFF1A\u9700\u8981 task-centric\u3002";
+  }
+  if (code === "unsupported_snapshot_protocol") {
+    return "Snapshot protocol \u4E0D\u53D7\u652F\u6301\uFF1A\u8BF7\u6838\u5BF9 producer \u4E0E Dashboard \u7248\u672C\u3002";
+  }
+  return "Snapshot schema \u4E0D\u53D7\u652F\u6301\uFF1A\u9700\u8981 schema 4\uFF0C\u6216\u663E\u5F0F legacy_v3\u3002";
 }
 function createDashboardPresentation(model) {
   const kind = model.currentTask.hasChildren ? "parent" : "leaf";
@@ -644,7 +924,8 @@ function taskStatusTone(value, isBlocked = false) {
   return "muted";
 }
 function createTrustSummary(model) {
-  const contractLabel = model.contract.semanticStatus === "valid" ? "\u5408\u540C\u6709\u6548" : model.contract.semanticStatus === "invalid" ? "\u5408\u540C\u5B58\u5728\u95EE\u9898" : "\u5408\u540C\u72B6\u6001\u672A\u77E5";
+  const isLegacy = model.currentTask.trustLevel === "legacy_v3";
+  const contractLabel = isLegacy ? model.contract.semanticStatus === "valid" ? "v3 \u5386\u53F2\u5408\u540C\u6709\u6548" : "v3 \u5386\u53F2\u5408\u540C\u9700\u68C0\u67E5" : model.contract.semanticStatus === "valid" ? "\u5408\u540C\u6709\u6548" : model.contract.semanticStatus === "invalid" ? "\u5408\u540C\u5B58\u5728\u95EE\u9898" : "\u5408\u540C\u72B6\u6001\u672A\u77E5";
   const contractTone = model.contract.semanticStatus === "valid" ? "healthy" : model.contract.semanticStatus === "invalid" ? "error" : "muted";
   if (model.observation.isStale) {
     const detail2 = model.observation.staleReason || "snapshot \u5DF2\u6807\u8BB0\u4E3A\u65E7\u6570\u636E";
@@ -672,10 +953,51 @@ function createTrustSummary(model) {
       detail: detail2
     };
   }
+  if (isLegacy) {
+    const detail2 = model.currentTask.trustedDone ? "\u4FDD\u7559 SDD v3 \u5386\u53F2\u53EF\u4FE1\u7ED3\u8BBA\uFF1B\u672A\u81EA\u52A8\u8FC1\u79FB\u4E3A v4 attested" : "\u4FDD\u7559 SDD v3 \u5386\u53F2\u9A8C\u8BC1\u72B6\u6001\uFF1B\u672A\u81EA\u52A8\u8FC1\u79FB\u4E3A v4";
+    return {
+      tone: model.currentTask.trustedDone ? "healthy" : "warning",
+      label: "v3 \u5386\u53F2\u9A8C\u8BC1",
+      contractLabel,
+      contractTone,
+      sourceLabel: model.schemaLabel,
+      tooltip: `${model.observation.generatedAt} \xB7 ${detail2}`,
+      meta: `${model.schemaLabel} \xB7 ${model.observation.generatedAt}`,
+      detail: detail2
+    };
+  }
+  if (model.currentTask.trustLevel === "review_required") {
+    const detail2 = "\u7ED3\u6784\u5316\u8BC1\u636E\u5DF2\u6EE1\u8DB3\uFF0C\u7B49\u5F85\u5BF9\u5F53\u524D evidence bundle \u4EBA\u5DE5\u590D\u6838";
+    return {
+      tone: "warning",
+      label: "\u7B49\u5F85\u4EBA\u5DE5\u590D\u6838",
+      contractLabel,
+      contractTone,
+      sourceLabel: model.schemaLabel,
+      tooltip: `${model.observation.generatedAt} \xB7 ${detail2}`,
+      meta: `${model.schemaLabel} \xB7 ${model.observation.generatedAt}`,
+      detail: detail2
+    };
+  }
+  if (["missing", "incomplete", "invalid", "failed"].includes(
+    model.currentTask.completion.evidenceStatus
+  )) {
+    const detail2 = "\u5FC5\u9700\u7ED3\u6784\u5316 Evidence requirement \u5C1A\u672A\u5168\u90E8\u6EE1\u8DB3";
+    return {
+      tone: "warning",
+      label: "\u8BC1\u636E\u5F85\u8865\u5145",
+      contractLabel,
+      contractTone,
+      sourceLabel: model.schemaLabel,
+      tooltip: `${model.observation.generatedAt} \xB7 ${detail2}`,
+      meta: `${model.schemaLabel} \xB7 ${model.observation.generatedAt}`,
+      detail: detail2
+    };
+  }
   const detail = "\u6765\u6E90\u5339\u914D\uFF0C\u5DF2\u8BFB\u53D6\u5F53\u524D\u4EFB\u52A1\u3001\u7236\u4EFB\u52A1\u4E0E\u76F4\u63A5\u5B50\u4EFB\u52A1";
   return {
     tone: "healthy",
-    label: "\u89C2\u5BDF\u53EF\u4FE1",
+    label: model.currentTask.trustLevel === "attested_v4" ? "v4 \u53EF\u4FE1\u9A8C\u8BC1" : "\u89C2\u5BDF\u53EF\u4FE1",
     contractLabel,
     contractTone,
     sourceLabel: model.schemaLabel,
@@ -715,6 +1037,26 @@ function createPrimaryStatus(model) {
       reason: `producer \u5C06\u5408\u540C\u6807\u8BB0\u4E3A ${model.contract.semanticStatus}\uFF0C\u4F46\u6CA1\u6709\u8FD4\u56DE\u7ED3\u6784\u5316\u8BCA\u65AD`,
       remediation: "\u5C55\u5F00\u5B8C\u6574\u8BE6\u60C5\u6838\u5BF9\u5408\u540C\u5B57\u6BB5\uFF0C\u5E76\u4F7F\u7528 CLI \u83B7\u53D6 producer \u539F\u59CB\u8F93\u51FA",
       location: "\u4EFB\u52A1\u5408\u540C",
+      diagnostic: null
+    };
+  }
+  if (model.currentTask.trustLevel === "legacy_v3") {
+    return {
+      tone: model.currentTask.trustedDone ? "healthy" : "warning",
+      title: "v3 \u5386\u53F2\u9A8C\u8BC1\u5DF2\u4FDD\u7559",
+      reason: "Dashboard \u660E\u793A legacy_v3\uFF0C\u4E0D\u5C06\u5386\u53F2\u7ED3\u8BBA\u4F2A\u88C5\u6210 v4 attested",
+      remediation: model.nextAction || "\u6309\u9700\u663E\u5F0F\u8FC1\u79FB\u5230 SDD v4",
+      location: "\u5F53\u524D\u4EFB\u52A1",
+      diagnostic: null
+    };
+  }
+  if (model.currentTask.trustLevel === "review_required") {
+    return {
+      tone: "warning",
+      title: "\u7ED3\u6784\u5316\u8BC1\u636E\u7B49\u5F85\u4EBA\u5DE5\u590D\u6838",
+      reason: "\u5FC5\u9700 evidence \u5DF2\u6EE1\u8DB3\uFF0C\u4F46\u5F53\u524D bundle \u5C1A\u672A\u6279\u51C6",
+      remediation: model.nextAction || "\u4F7F\u7528 Dashboard \u590D\u6838\u64CD\u4F5C\u786E\u8BA4\u6216\u8981\u6C42\u4FEE\u6539",
+      location: "\u6267\u884C\u8BC1\u636E",
       diagnostic: null
     };
   }
@@ -799,17 +1141,17 @@ function formatTaskReference(taskId) {
   return filename.endsWith(".md") ? filename.slice(0, -3) : filename;
 }
 function createContractSummary(model) {
-  const checked = model.contract.acceptance.filter(
-    (item) => item.checked === true
-  ).length;
-  const validEvidence = Object.values(model.evidence).filter(
-    (health) => health === "valid"
-  ).length;
+  const acceptanceTotal = model.acceptance.length || model.contract.acceptance.length;
+  const checked = model.acceptance.length ? model.acceptance.filter((item) => item.status === "satisfied").length : model.contract.acceptance.filter((item) => item.checked === true).length;
+  const evidenceTotal = model.evidenceRequirements.length || 3;
+  const validEvidence = model.evidenceRequirements.length ? model.evidenceRequirements.filter(
+    (item) => item.status === "satisfied" && item.matchedExpected !== false
+  ).length : Object.values(model.evidence).filter((health) => health === "valid").length;
   return {
     goal: model.contract.goal,
     coverage: `REQ ${model.contract.requirements.length} \xB7 SCN ${model.contract.scenarios.length}`,
-    acceptance: `\u9A8C\u6536 ${checked}/${model.contract.acceptance.length}`,
-    evidence: formatEvidence(model.evidence),
+    acceptance: `\u9A8C\u6536 ${checked}/${acceptanceTotal}`,
+    evidence: model.evidenceRequirements.length ? `\u7ED3\u6784\u5316\u8BC1\u636E ${validEvidence}/${evidenceTotal}` : formatEvidence(model.evidence),
     diagnostics: `${model.diagnostics.length} \u4E2A\u8BCA\u65AD`,
     metrics: [
       {
@@ -818,9 +1160,9 @@ function createContractSummary(model) {
       },
       {
         label: "\u9A8C\u6536",
-        value: `${checked} / ${model.contract.acceptance.length}`
+        value: `${checked} / ${acceptanceTotal}`
       },
-      { label: "\u8BC1\u636E\u6709\u6548", value: `${validEvidence} / 3` }
+      { label: "\u8BC1\u636E\u6709\u6548", value: `${validEvidence} / ${evidenceTotal}` }
     ]
   };
 }
@@ -829,11 +1171,26 @@ function diagnosticActionTitle(diagnostic) {
     return /找到\s*0\s*个/.test(diagnostic.reason) ? "\u7F3A\u5C11 Task Contract v3" : "Task Contract v3 \u6570\u91CF\u4E0D\u6B63\u786E";
   }
   const labels = {
+    review_required: "\u7ED3\u6784\u5316\u8BC1\u636E\u7B49\u5F85\u4EBA\u5DE5\u590D\u6838",
+    review_conflict: "\u590D\u6838\u8BB0\u5F55\u4E0E\u5F53\u524D\u8BC1\u636E\u51B2\u7A81",
+    review_changes_requested: "\u590D\u6838\u8981\u6C42\u4FEE\u6539",
+    evidence_requirement_missing: "\u7ED3\u6784\u5316\u8BC1\u636E\u7F3A\u5931",
+    stale_against_component_revision: "\u7ED3\u6784\u5316\u8BC1\u636E\u7248\u672C\u5DF2\u8FC7\u671F",
+    record_unconfirmed: "Evidence Record \u672A\u786E\u8BA4",
+    record_drift: "Evidence Record \u5DF2\u6F02\u79FB",
+    failed_as_observed: "\u8FD0\u884C\u7ED3\u679C\u4E0D\u7B26\u5408\u58F0\u660E\u9884\u671F",
+    protocol_mismatch: "\u8BC1\u636E\u534F\u8BAE\u4E0D\u5339\u914D",
+    contract_missing: "Evidence Contract \u955C\u50CF\u7F3A\u5931",
+    contract_drift: "Evidence Contract \u5DF2\u6F02\u79FB",
+    contract_invalid: "\u7ED3\u6784\u5316\u5408\u540C\u65E0\u6548",
+    observation_unavailable: "TaskNotes \u89C2\u5BDF\u4E0D\u53EF\u7528",
+    reference_unaccepted: "\u5B9E\u9A8C\u53C2\u8003\u771F\u503C\u4E0D\u88AB\u5408\u540C\u63A5\u53D7",
     "contract.goal": "\u4EFB\u52A1\u76EE\u6807\u9700\u8981\u4FEE\u590D",
     "evidence.execution": "\u6267\u884C\u7ED3\u679C\u9700\u8981\u4FEE\u590D",
     "evidence.verification": "\u9A8C\u8BC1\u7ED3\u679C\u9700\u8981\u4FEE\u590D",
     "evidence.delivery": "\u4EA4\u4ED8\u8BB0\u5F55\u9700\u8981\u4FEE\u590D"
   };
+  if (labels[diagnostic.code]) return labels[diagnostic.code];
   if (labels[diagnostic.path]) return labels[diagnostic.path];
   if (diagnostic.path.startsWith("contract.")) return "\u4EFB\u52A1\u5408\u540C\u9700\u8981\u4FEE\u590D";
   if (diagnostic.path.startsWith("evidence.")) return "\u6267\u884C\u8BC1\u636E\u9700\u8981\u4FEE\u590D";
@@ -898,6 +1255,52 @@ function formatEvidenceSummary(label, health) {
   };
   return `${label}\uFF1A${labels[health]}`;
 }
+function createStructuredEvidencePresentation(requirement, reviewStatus) {
+  const status = requirement.status;
+  const state = status === "satisfied" && requirement.matchedExpected !== false ? "done" : ["failed", "invalid", "record_drift", "stale"].includes(status) || requirement.matchedExpected === false ? "error" : "blocked";
+  return {
+    uid: requirement.uid,
+    state,
+    method: requirement.method,
+    expected: formatStructuredRecord(requirement.expected, [
+      "outcome",
+      "exit_code"
+    ]),
+    actual: requirement.actual ? formatStructuredRecord(requirement.actual, [
+      "exit_code",
+      "timed_out",
+      "duration_ms",
+      "signal"
+    ]) : "\u5C1A\u65E0\u8FD0\u884C\u7ED3\u679C",
+    provenance: requirement.provenance,
+    review: !requirement.reviewRequired ? "\u65E0\u9700\u590D\u6838" : reviewStatus === "approved" ? "\u5DF2\u590D\u6838" : reviewStatus === "changes_requested" ? "\u8981\u6C42\u4FEE\u6539" : "\u5F85\u590D\u6838",
+    status
+  };
+}
+function createDerivedAcceptancePresentation(acceptance) {
+  const state = acceptance.status === "satisfied" ? "done" : ["failed", "invalid"].includes(acceptance.status) ? "error" : "blocked";
+  return {
+    uid: acceptance.uid,
+    label: acceptance.label,
+    state,
+    status: acceptance.status,
+    evidence: acceptance.evidenceRequirementUids.join("\u3001") || "\u672A\u5173\u8054\u8BC1\u636E"
+  };
+}
+function formatStructuredRecord(value, preferredKeys) {
+  const keys = [
+    ...preferredKeys.filter((key) => key in value),
+    ...Object.keys(value).filter((key) => !preferredKeys.includes(key)).sort()
+  ];
+  if (!keys.length) return "\u672A\u63D0\u4F9B";
+  return keys.map((key) => `${key}=${formatStructuredValue(value[key])}`).join(" \xB7 ");
+}
+function formatStructuredValue(value) {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
 
 // src/task-navigation.ts
 function taskNavigationNewLeaf(origin) {
@@ -911,6 +1314,13 @@ var DEFAULT_SETTINGS = {
   flowdeskRoot: "",
   workingDirectory: "",
   apiUrl: ""
+};
+var EvidenceReviewCommandError = class extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+    this.name = "EvidenceReviewCommandError";
+  }
 };
 var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
   async onload() {
@@ -1017,6 +1427,35 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
       formatShellCommand(this.createSnapshotInvocation(taskPath, "dashboard"))
     );
   }
+  async submitEvidenceReview(input) {
+    const adapter = this.app.vault.adapter;
+    if (!(adapter instanceof import_obsidian.FileSystemAdapter)) {
+      throw new EvidenceReviewCommandError(
+        "review_request_rejected",
+        "\u4EBA\u5DE5\u590D\u6838\u4EC5\u652F\u6301\u672C\u5730\u6587\u4EF6\u7CFB\u7EDF Vault\u3002"
+      );
+    }
+    const invocation = buildReviewInvocation({
+      flowdeskRoot: this.resolveFlowDeskRoot(),
+      taskPath: input.taskPath,
+      digest: input.digest,
+      decision: input.decision,
+      requirementUids: input.requirementUids,
+      note: input.note,
+      vaultPath: adapter.getBasePath(),
+      apiUrl: this.settings.apiUrl.trim()
+    });
+    try {
+      await execFileAsync(invocation.executable, invocation.args, {
+        cwd: invocation.cwd,
+        maxBuffer: 1024 * 1024,
+        timeout: 3e4
+      });
+    } catch (error) {
+      const failure = parseReviewCommandFailure(error);
+      throw new EvidenceReviewCommandError(failure.code, failure.message);
+    }
+  }
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
   }
@@ -1034,10 +1473,10 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     const candidates = [
       expandHomePath(this.settings.flowdeskRoot.trim()),
       expandHomePath(process.env.FLOWDESK_PLUGIN_ROOT || ""),
-      path2.resolve(__dirname, "..", "..")
+      path3.resolve(__dirname, "..", "..")
     ].filter(Boolean);
     for (const candidate of candidates) {
-      if ((0, import_fs.existsSync)(path2.join(candidate, "bin", "flowdesk-execution-snapshot"))) {
+      if ((0, import_fs.existsSync)(path3.join(candidate, "bin", "flowdesk-execution-snapshot"))) {
         return candidate;
       }
     }
@@ -1243,7 +1682,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       this.renderLoadingHeader(container, taskPath, "snapshot \u4E0D\u517C\u5BB9");
       container.createDiv({
         cls: "flowdesk-error",
-        text: model.errorCode === "unsupported_snapshot_model" ? "Snapshot model \u4E0D\u53D7\u652F\u6301\uFF1A\u9700\u8981 task-centric\u3002" : "Snapshot schema \u4E0D\u53D7\u652F\u6301\uFF1A\u9700\u8981 3\u3002"
+        text: formatSnapshotCompatibilityError(model.errorCode)
       });
       return;
     }
@@ -1304,7 +1743,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       });
     }
     const actions = topRow.createDiv({ cls: "flowdesk-task-meta-actions" });
-    this.renderToolbar(actions, model.currentTask.id);
+    this.renderToolbar(actions, model.currentTask.id, model);
     const heading = header.createDiv({ cls: "flowdesk-task-heading" });
     const title = heading.createDiv({
       cls: "flowdesk-task-title flowdesk-current-task-link",
@@ -1328,7 +1767,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       text: this.loading ? `\u6B63\u5728\u5237\u65B0 \xB7 \u4E0A\u6B21\u8BFB\u53D6 ${model.observation.loadedAt}` : `\u672C\u5730\u8BFB\u53D6 ${model.observation.loadedAt}`
     });
   }
-  renderToolbar(container, taskPath) {
+  renderToolbar(container, taskPath, model) {
     const toolbar = container.createDiv({ cls: "flowdesk-dashboard-toolbar" });
     const copy = toolbar.createEl("button", {
       cls: "flowdesk-toolbar-button",
@@ -1343,6 +1782,21 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         new import_obsidian.Notice(`\u65E0\u6CD5\u590D\u5236 CLI \u547D\u4EE4\uFF1A${String(error)}`);
       }
     });
+    if (model && canReviewEvidence({
+      trustLevel: model.currentTask.trustLevel,
+      observationTrustworthy: model.observation.isTrustworthy,
+      sourceIdentity: model.observation.sourceIdentity,
+      sourceIdentityMatch: model.observation.sourceIdentityMatch,
+      evidenceBundleDigest: model.review.evidenceBundleDigest,
+      requirementUids: model.review.requirementUids
+    })) {
+      const review = toolbar.createEl("button", {
+        cls: "flowdesk-toolbar-button flowdesk-review-button",
+        attr: { "aria-label": "\u590D\u6838\u8BC1\u636E", title: "\u590D\u6838\u8BC1\u636E" }
+      });
+      (0, import_obsidian.setIcon)(review, "clipboard-check");
+      review.addEventListener("click", () => this.openEvidenceReview(model));
+    }
     const refresh = toolbar.createEl("button", {
       cls: "flowdesk-toolbar-button",
       attr: {
@@ -1353,6 +1807,37 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     (0, import_obsidian.setIcon)(refresh, "refresh-cw");
     refresh.disabled = this.loading;
     refresh.addEventListener("click", () => void this.refreshCurrentTask());
+  }
+  openEvidenceReview(model) {
+    const digest = model.review.evidenceBundleDigest;
+    if (!digest) {
+      new import_obsidian.Notice("\u5F53\u524D snapshot \u6CA1\u6709\u53EF\u590D\u6838\u7684 evidence bundle digest\u3002");
+      return;
+    }
+    new EvidenceReviewModal(this.app, async (decision, note) => {
+      try {
+        await this.plugin.submitEvidenceReview({
+          taskPath: model.currentTask.id,
+          digest,
+          decision,
+          requirementUids: model.review.requirementUids,
+          note
+        });
+        new import_obsidian.Notice(decision === "approved" ? "\u590D\u6838\u5DF2\u786E\u8BA4" : "\u5DF2\u8981\u6C42\u4FEE\u6539");
+        await this.refreshCurrentTask();
+      } catch (error) {
+        const failure = error instanceof EvidenceReviewCommandError ? error : new EvidenceReviewCommandError(
+          "review_request_rejected",
+          error instanceof Error ? error.message : String(error)
+        );
+        if (failure.code === "review_conflict") {
+          new import_obsidian.Notice("\u8BC1\u636E\u5DF2\u53D8\u5316\uFF0C\u5DF2\u5237\u65B0 Dashboard\uFF1B\u8BF7\u590D\u6838\u6700\u65B0\u7ED3\u679C\u3002");
+          await this.refreshCurrentTask();
+          return;
+        }
+        new import_obsidian.Notice(`\u590D\u6838\u5931\u8D25\uFF1A${failure.message}`);
+      }
+    }).open();
   }
   renderNonTaskState(container, context) {
     const card = container.createDiv({ cls: "flowdesk-context-pause" });
@@ -1504,7 +1989,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     const renderedSections = /* @__PURE__ */ new Map();
     const contract = createSection(
       body,
-      "\u4EFB\u52A1\u5408\u540C v3",
+      model.currentTask.trustLevel === "legacy_v3" ? "\u4EFB\u52A1\u5408\u540C v3" : "\u4EFB\u52A1\u5408\u540C v4",
       formatSemanticStatus(model.contract.semanticStatus)
     );
     renderedSections.set("contract", contract);
@@ -1549,16 +2034,18 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         this.disclosureState.scenariosOpen = open;
       }
     );
-    const checkedAcceptance = model.contract.acceptance.filter(
-      (item) => item.checked === true
-    ).length;
+    const derivedAcceptance = model.acceptance.map(
+      (item) => createDerivedAcceptancePresentation(item)
+    );
+    const acceptanceTotal = derivedAcceptance.length || model.contract.acceptance.length;
+    const checkedAcceptance = derivedAcceptance.length ? derivedAcceptance.filter((item) => item.state === "done").length : model.contract.acceptance.filter((item) => item.checked === true).length;
     const acceptance = createSection(
       body,
       "\u9A8C\u6536\u6807\u51C6",
-      `${checkedAcceptance} / ${model.contract.acceptance.length} \u5DF2\u901A\u8FC7`
+      `${checkedAcceptance} / ${acceptanceTotal} \u5DF2\u901A\u8FC7`
     );
     renderedSections.set("acceptance", acceptance);
-    if (!model.contract.acceptance.length) {
+    if (!acceptanceTotal) {
       acceptance.createDiv({ cls: "flowdesk-muted", text: "producer \u672A\u63D0\u4F9B\u9A8C\u6536\u9879\u3002" });
     } else {
       const progress = acceptance.createDiv({ cls: "flowdesk-acceptance-progress" });
@@ -1566,35 +2053,59 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         cls: "flowdesk-acceptance-progress-value",
         attr: {
           style: `width: ${Math.round(
-            checkedAcceptance / model.contract.acceptance.length * 100
+            checkedAcceptance / acceptanceTotal * 100
           )}%`
         }
       });
       const acceptanceGrid = acceptance.createDiv({
         cls: "flowdesk-acceptance-grid"
       });
-      for (const item of model.contract.acceptance) {
-        const row = acceptanceGrid.createDiv({ cls: "flowdesk-acceptance-item" });
-        row.createSpan({
-          cls: item.checked ? "flowdesk-acceptance-check is-checked" : "flowdesk-acceptance-check",
-          text: item.checked ? "\u2713" : "\u25CB"
-        });
-        row.createSpan({ text: (_a = item.text) != null ? _a : "\u672A\u63D0\u4F9B" });
+      if (derivedAcceptance.length) {
+        for (const item of derivedAcceptance) {
+          const row = acceptanceGrid.createDiv({ cls: "flowdesk-acceptance-item" });
+          row.createSpan({
+            cls: item.state === "done" ? "flowdesk-acceptance-check is-checked" : "flowdesk-acceptance-check",
+            text: item.state === "done" ? "\u2713" : "\u25CB"
+          });
+          const copy = row.createDiv({ cls: "flowdesk-acceptance-copy" });
+          copy.createDiv({ text: `${item.uid} \xB7 ${item.label}` });
+          copy.createDiv({
+            cls: "flowdesk-acceptance-evidence",
+            text: `${item.status} \xB7 ${item.evidence}`
+          });
+        }
+      } else {
+        for (const item of model.contract.acceptance) {
+          const row = acceptanceGrid.createDiv({ cls: "flowdesk-acceptance-item" });
+          row.createSpan({
+            cls: item.checked ? "flowdesk-acceptance-check is-checked" : "flowdesk-acceptance-check",
+            text: item.checked ? "\u2713" : "\u25CB"
+          });
+          row.createSpan({ text: (_a = item.text) != null ? _a : "\u672A\u63D0\u4F9B" });
+        }
       }
     }
-    const validEvidence = Object.values(model.evidence).filter(
-      (health) => health === "valid"
-    ).length;
+    const structuredEvidence = model.evidenceRequirements.map(
+      (requirement) => createStructuredEvidencePresentation(requirement, model.review.status)
+    );
+    const validEvidence = structuredEvidence.length ? structuredEvidence.filter((item) => item.state === "done").length : Object.values(model.evidence).filter((health) => health === "valid").length;
+    const evidenceTotal = structuredEvidence.length || 3;
     const evidence = createSection(
       body,
       "\u6267\u884C\u8BC1\u636E",
-      validEvidence === 3 ? "\u5168\u90E8\u6709\u6548" : `${validEvidence} / 3 \u6709\u6548`
+      validEvidence === evidenceTotal ? "\u5168\u90E8\u6709\u6548" : `${validEvidence} / ${evidenceTotal} \u6709\u6548`
     );
     renderedSections.set("evidence", evidence);
     const evidenceGrid = evidence.createDiv({ cls: "flowdesk-evidence-grid" });
-    evidenceItem(evidenceGrid, "\u6267\u884C\u7ED3\u679C", model.evidence.execution);
-    evidenceItem(evidenceGrid, "\u9A8C\u8BC1\u7ED3\u679C", model.evidence.verification);
-    evidenceItem(evidenceGrid, "\u4EA4\u4ED8\u8BB0\u5F55", model.evidence.delivery);
+    if (structuredEvidence.length) {
+      for (const item of structuredEvidence) {
+        structuredEvidenceItem(evidenceGrid, item);
+      }
+    } else {
+      evidenceItem(evidenceGrid, "\u6267\u884C\u7ED3\u679C", model.evidence.execution);
+      evidenceItem(evidenceGrid, "\u9A8C\u8BC1\u7ED3\u679C", model.evidence.verification);
+      evidenceItem(evidenceGrid, "\u4EA4\u4ED8\u8BB0\u5F55", model.evidence.delivery);
+    }
     const observation = createSection(
       body,
       "\u89C2\u5BDF\u4E0E\u6765\u6E90",
@@ -1788,6 +2299,46 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     await this.app.workspace.getLeaf(taskNavigationNewLeaf(origin)).openFile(file);
   }
 };
+var EvidenceReviewModal = class extends import_obsidian.Modal {
+  constructor(app, onSubmit) {
+    super(app);
+    this.onSubmit = onSubmit;
+    this.note = "";
+    this.submitted = false;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("flowdesk-review-modal");
+    contentEl.createEl("h2", { text: "\u590D\u6838\u7ED3\u6784\u5316\u8BC1\u636E" });
+    contentEl.createDiv({
+      cls: "flowdesk-muted",
+      text: "\u63D0\u4EA4\u65F6\u4F1A\u6309\u5F53\u524D evidence bundle digest \u505A\u51B2\u7A81\u68C0\u67E5\u3002"
+    });
+    new import_obsidian.Setting(contentEl).setName("\u590D\u6838\u8BF4\u660E").setDesc("\u53EF\u9009\uFF1B\u8981\u6C42\u4FEE\u6539\u65F6\u5EFA\u8BAE\u8BF4\u660E\u539F\u56E0\u3002").addTextArea(
+      (text2) => text2.setPlaceholder("\u8865\u5145\u590D\u6838\u8BF4\u660E").onChange((value) => {
+        this.note = value;
+      })
+    );
+    new import_obsidian.Setting(contentEl).setClass("flowdesk-review-actions").addButton(
+      (button) => button.setButtonText("\u8981\u6C42\u4FEE\u6539").onClick(() => {
+        void this.submit("changes_requested");
+      })
+    ).addButton(
+      (button) => button.setCta().setButtonText("\u590D\u6838\u786E\u8BA4").onClick(() => {
+        void this.submit("approved");
+      })
+    );
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+  async submit(decision) {
+    if (this.submitted) return;
+    this.submitted = true;
+    this.close();
+    await this.onSubmit(decision, this.note.trim());
+  }
+};
 var FlowDeskDashboardSettingTab = class extends import_obsidian.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
@@ -1798,19 +2349,19 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian.PluginSettingTab
     containerEl.empty();
     containerEl.createEl("h2", { text: "FlowDesk Dashboard" });
     new import_obsidian.Setting(containerEl).setName("FlowDesk \u4ED3\u5E93\u8DEF\u5F84").setDesc("\u672C\u5730 FlowDesk-Plugin \u4ED3\u5E93\u8DEF\u5F84\u3002").addText(
-      (text) => text.setPlaceholder("/Users/me/workspaces/flowdesk-plugin").setValue(this.plugin.settings.flowdeskRoot).onChange(async (value) => {
+      (text2) => text2.setPlaceholder("/Users/me/workspaces/flowdesk-plugin").setValue(this.plugin.settings.flowdeskRoot).onChange(async (value) => {
         this.plugin.settings.flowdeskRoot = value.trim();
         await this.plugin.saveSettings();
       })
     );
     new import_obsidian.Setting(containerEl).setName("\u5DE5\u4F5C\u76EE\u5F55").setDesc("\u4F20\u7ED9 --working-directory\uFF1B\u7559\u7A7A\u65F6\u4F7F\u7528 FlowDesk \u4ED3\u5E93\u8DEF\u5F84\u3002").addText(
-      (text) => text.setValue(this.plugin.settings.workingDirectory).onChange(async (value) => {
+      (text2) => text2.setValue(this.plugin.settings.workingDirectory).onChange(async (value) => {
         this.plugin.settings.workingDirectory = value.trim();
         await this.plugin.saveSettings();
       })
     );
     new import_obsidian.Setting(containerEl).setName("TaskNotes API \u5730\u5740").setDesc("\u53EF\u9009\uFF1B\u7559\u7A7A\u65F6\u4F7F\u7528 FlowDesk CLI \u9ED8\u8BA4\u503C\u3002").addText(
-      (text) => text.setPlaceholder("http://127.0.0.1:18090").setValue(this.plugin.settings.apiUrl).onChange(async (value) => {
+      (text2) => text2.setPlaceholder("http://127.0.0.1:18090").setValue(this.plugin.settings.apiUrl).onChange(async (value) => {
         this.plugin.settings.apiUrl = value.trim();
         await this.plugin.saveSettings();
       })
@@ -1904,6 +2455,23 @@ function evidenceItem(container, label, health) {
     text: formatEvidenceSummary(label, health).split("\uFF1A").pop() || "\u672A\u77E5"
   });
 }
+function structuredEvidenceItem(container, presentation) {
+  const item = container.createDiv({ cls: "flowdesk-evidence-item" });
+  item.createDiv({
+    cls: `flowdesk-evidence-title is-${presentation.state}`,
+    text: `${statusSymbol(presentation.state)} ${presentation.uid}`
+  });
+  item.createDiv({
+    cls: "flowdesk-evidence-summary",
+    text: presentation.status
+  });
+  const details = item.createDiv({ cls: "flowdesk-evidence-fields" });
+  diagnosticRow(details, "\u65B9\u6CD5", presentation.method);
+  diagnosticRow(details, "\u9884\u671F", presentation.expected);
+  diagnosticRow(details, "\u5B9E\u9645", presentation.actual);
+  diagnosticRow(details, "\u6765\u6E90", presentation.provenance);
+  diagnosticRow(details, "\u590D\u6838", presentation.review);
+}
 function observationField(container, label, value) {
   const cell = container.createDiv({ cls: "flowdesk-observation-cell" });
   cell.createDiv({ cls: "flowdesk-summary-label", text: label });
@@ -1928,11 +2496,11 @@ function statusSymbol(value) {
   return "\u2022";
 }
 function taskTitleFromPath(taskPath) {
-  return path2.basename(taskPath, path2.extname(taskPath));
+  return path3.basename(taskPath, path3.extname(taskPath));
 }
 function expandHomePath(value) {
   if (value === "~") return (0, import_os.homedir)();
-  if (value.startsWith("~/")) return path2.join((0, import_os.homedir)(), value.slice(2));
+  if (value.startsWith("~/")) return path3.join((0, import_os.homedir)(), value.slice(2));
   return value;
 }
 function formatTime(date) {

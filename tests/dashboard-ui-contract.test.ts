@@ -60,6 +60,17 @@ test("CLI 与刷新使用带无障碍名称的图标按钮", () => {
   assert.match(source, /"aria-label": this\.loading \? "刷新中" : "刷新"/);
 });
 
+test("人工复核使用原生 Modal、execFile argv 与冲突刷新", () => {
+  assert.match(source, /class EvidenceReviewModal extends Modal/);
+  assert.match(source, /buildReviewInvocation\(/);
+  assert.match(source, /execFileAsync\(invocation\.executable, invocation\.args/);
+  assert.match(source, /"approved"/);
+  assert.match(source, /"changes_requested"/);
+  assert.match(source, /failure\.code === "review_conflict"/);
+  assert.match(source, /await this\.refreshCurrentTask\(\)/);
+  assert.doesNotMatch(source, /shell:\s*true/);
+});
+
 test("技术诊断使用来源标题和机器详情，不再平铺任务位置字段", () => {
   assert.match(source, /flowdesk-diagnostic-source/);
   assert.match(source, /flowdesk-machine-details/);
@@ -143,6 +154,21 @@ test("完整详情采用合同、验收、证据、观察的原型布局", () =>
   assert.match(styles, /\.flowdesk-evidence-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s);
 });
 
+test("v4 字段嵌入现有 Acceptance 与 Evidence section", () => {
+  assert.match(source, /createDerivedAcceptancePresentation\(/);
+  assert.match(source, /createStructuredEvidencePresentation\(/);
+  assert.match(source, /structuredEvidenceItem\(/);
+  assert.match(source, /presentation\.method/);
+  assert.match(source, /presentation\.expected/);
+  assert.match(source, /presentation\.actual/);
+  assert.match(source, /presentation\.provenance/);
+  assert.match(source, /presentation\.review/);
+  assert.match(
+    source,
+    /"任务合同 v3"[\s\S]*?"验收标准"[\s\S]*?"执行证据"[\s\S]*?"观察与来源"/
+  );
+});
+
 test("技术诊断按当前任务和直接子任务分组并折叠机器字段", () => {
   assert.match(source, /flowdesk-diagnostic-task-group/);
   assert.match(source, /flowdesk-diagnostic-task-link/);
@@ -222,4 +248,25 @@ test("恢复 0.1.2 的可读字号、任务卡片与可信度条边界", () => {
     styles,
     /\.flowdesk-diagnostic-row,[\s\S]*?font-size:\s*12px;/
   );
+});
+
+test("review 与结构化 evidence 只复用现有视觉 token 做最小增量", () => {
+  assert.match(
+    styles,
+    /\.flowdesk-review-button\s*\{[^}]*color:\s*var\(--text-accent\);/s
+  );
+  assert.match(
+    styles,
+    /\.flowdesk-evidence-fields\s*\{[^}]*border-top:\s*1px solid var\(--fd-border\);[^}]*overflow-wrap:\s*anywhere;/s
+  );
+  assert.match(
+    styles,
+    /\.flowdesk-acceptance-evidence\s*\{[^}]*color:\s*var\(--text-muted\);/s
+  );
+  assert.match(
+    styles,
+    /\.flowdesk-review-modal textarea\s*\{[^}]*width:\s*100%;/s
+  );
+  assert.doesNotMatch(source, /registerView\([^)]*review/i);
+  assert.doesNotMatch(source, /addRibbonIcon\([^)]*复核/);
 });

@@ -1,0 +1,293 @@
+{
+  "snapshot_schema_version": 4,
+  "snapshot_model": "task-centric",
+  "source": {
+    "task_id": "Tasks/SDD v4 Example.md",
+    "generated_at": "2026-08-07T09:30:00Z",
+    "working_directory": "/fixture/project",
+    "runtime_origin": "/fixture/flowdesk_execution_snapshot.py",
+    "implementation_digest": "sha256:fixture-producer"
+  },
+  "observation": {
+    "health": "healthy",
+    "current_task": "observed",
+    "parent": "not_applicable",
+    "children": "observed",
+    "descendants": "healthy",
+    "tasknotes_api": "ok",
+    "source_identity_match": true,
+    "stale": false
+  },
+  "contract": {
+    "status": "valid",
+    "task_contract": {
+      "acceptance": [
+        {
+          "label": "全部结构化证据满足并通过复核",
+          "required": true,
+          "uid": "AC-001"
+        },
+        {
+          "label": "诊断可追溯到运行来源",
+          "required": true,
+          "uid": "AC-002"
+        }
+      ],
+      "goal": "以结构化证据和复核记录判定可信完成",
+      "requirements": [
+        {
+          "label": "验证必须由受控 runner 产生",
+          "uid": "REQ-001"
+        }
+      ],
+      "scenarios": [
+        {
+          "covers": [
+            "REQ-001"
+          ],
+          "uid": "SCN-001"
+        }
+      ],
+      "schema": "flowdesk.task-contract/4",
+      "scope": {
+        "excluded": [
+          "密码学身份认证"
+        ],
+        "included": [
+          "Evidence Contract、Record 与 Review"
+        ]
+      },
+      "task_id": "Tasks/SDD v4 Example.md"
+    },
+    "evidence_contract": {
+      "components": [
+        {
+          "semantic_revision": 1,
+          "uid": "component-tests"
+        },
+        {
+          "semantic_revision": 2,
+          "uid": "component-review"
+        }
+      ],
+      "contract_id": "ec_sdd_v4_example",
+      "editorial_amendments": [
+        {
+          "note": "仅修正显示文字，不改变验证语义",
+          "recorded_at": "2026-08-07T08:00:00Z"
+        }
+      ],
+      "requirements": [
+        {
+          "argv": [
+            "bin/test",
+            "tests/runtime/test_evidence_contract.py"
+          ],
+          "component_uid": "component-tests",
+          "cwd": {
+            "base": "project",
+            "path": "."
+          },
+          "expected": {
+            "outcome": "success"
+          },
+          "method": "command",
+          "required": true,
+          "satisfies": [
+            "AC-001"
+          ],
+          "semantic_revision": 1,
+          "timeout_seconds": 900,
+          "uid": "EVR-001"
+        },
+        {
+          "argv": [
+            "python3",
+            "-c",
+            "raise SystemExit(7)"
+          ],
+          "component_uid": "component-review",
+          "cwd": {
+            "base": "project",
+            "path": "."
+          },
+          "expected": {
+            "exit_code": 7
+          },
+          "method": "command",
+          "required": true,
+          "review": {
+            "required": true,
+            "scope": "task"
+          },
+          "satisfies": [
+            "AC-002"
+          ],
+          "semantic_revision": 2,
+          "timeout_seconds": 30,
+          "uid": "EVR-002"
+        }
+      ],
+      "schema": "flowdesk.evidence-contract/1",
+      "task_id": "Tasks/SDD v4 Example.md"
+    },
+    "contract_digest": "sha256:d1d8eb6d21b04242a6905007e5df3bc2f6cacb9cc155b6c31c1d5edec031d244",
+    "mirror_status": "contract_valid"
+  },
+  "current_task": {
+    "id": "Tasks/SDD v4 Example.md",
+    "title": "SDD v4 Example",
+    "status": "done",
+    "priority": "normal",
+    "is_blocked": false,
+    "blocked_by": [],
+    "parent_id": null,
+    "has_children": false,
+    "rollup_state": "done",
+    "completion": {
+      "lifecycle_status": "done",
+      "contract_status": "valid",
+      "evidence_status": "satisfied",
+      "verification_status": "passed",
+      "review_status": "approved",
+      "acceptance_status": "satisfied",
+      "trust_level": "attested_v4",
+      "trusted_done": true
+    },
+    "evidence_requirements": [
+      {
+        "uid": "EVR-001",
+        "component_uid": "component-tests",
+        "semantic_revision": 1,
+        "method": "command",
+        "required": true,
+        "satisfies": [
+          "AC-001"
+        ],
+        "expected": {
+          "outcome": "success"
+        },
+        "review_required": false,
+        "status": "satisfied",
+        "run_id": "run_v4_1",
+        "actual": {
+          "duration_ms": 10,
+          "exit_code": 0,
+          "timed_out": false
+        },
+        "matched_expected": true,
+        "provenance": "runner_cross_checked",
+        "stdout_digest": "sha256:run_v4_1-stdout",
+        "stderr_digest": "sha256:run_v4_1-stderr",
+        "runtime_origin": "/fixture/flowdesk_evidence_runner.py",
+        "implementation_digest": "sha256:fixture-runner"
+      },
+      {
+        "uid": "EVR-002",
+        "component_uid": "component-review",
+        "semantic_revision": 2,
+        "method": "command",
+        "required": true,
+        "satisfies": [
+          "AC-002"
+        ],
+        "expected": {
+          "exit_code": 7
+        },
+        "review_required": true,
+        "status": "satisfied",
+        "run_id": "run_v4_2",
+        "actual": {
+          "duration_ms": 10,
+          "exit_code": 7,
+          "timed_out": false
+        },
+        "matched_expected": true,
+        "provenance": "runner_cross_checked",
+        "stdout_digest": "sha256:run_v4_2-stdout",
+        "stderr_digest": "sha256:run_v4_2-stderr",
+        "runtime_origin": "/fixture/flowdesk_evidence_runner.py",
+        "implementation_digest": "sha256:fixture-runner"
+      }
+    ],
+    "acceptance": [
+      {
+        "uid": "AC-001",
+        "label": "全部结构化证据满足并通过复核",
+        "required": true,
+        "status": "satisfied",
+        "evidence_requirement_uids": [
+          "EVR-001"
+        ]
+      },
+      {
+        "uid": "AC-002",
+        "label": "诊断可追溯到运行来源",
+        "required": true,
+        "status": "satisfied",
+        "evidence_requirement_uids": [
+          "EVR-002"
+        ]
+      }
+    ],
+    "review": {
+      "status": "approved",
+      "requirement_uids": [
+        "EVR-002"
+      ],
+      "component_revisions": {
+        "component-review": 2
+      },
+      "evidence_bundle_digest": "sha256:910955ec690366fea71b6425ada0e2c1e7f5b8c5d562a834d2826ece3e796e9a",
+      "record": {
+        "component_revisions": {
+          "component-review": 2
+        },
+        "decision": "approved",
+        "evidence_bundle_digest": "sha256:910955ec690366fea71b6425ada0e2c1e7f5b8c5d562a834d2826ece3e796e9a",
+        "note": "fixture approval",
+        "requirement_uids": [
+          "EVR-002"
+        ],
+        "review_id": "rev_v4_001",
+        "reviewed_at": "2026-08-07T09:00:00Z",
+        "reviewer": {
+          "kind": "user",
+          "surface": "obsidian-dashboard"
+        },
+        "schema": "flowdesk.review-record/1",
+        "task_id": "Tasks/SDD v4 Example.md",
+        "provenance": "runner_cross_checked"
+      }
+    }
+  },
+  "parent": null,
+  "children": [],
+  "rollup": {
+    "state": "done",
+    "trusted_done": true,
+    "has_children": false,
+    "children_total": 0,
+    "children_trusted_done": 0,
+    "children_complete": true,
+    "blocked_children": [],
+    "incomplete_children": []
+  },
+  "diagnostics": [],
+  "next_actions": [
+    {
+      "kind": "review_done_snapshot",
+      "target": "Tasks/SDD v4 Example.md",
+      "summary": "review the trusted SDD v4 snapshot",
+      "command": "bin/flowdesk-execution-snapshot 'Tasks/SDD v4 Example.md' --working-directory '/fixture/project' --format dashboard"
+    }
+  ],
+  "protocol": {
+    "producer_protocol_version": 4,
+    "task_contract_schema": "flowdesk.task-contract/4",
+    "evidence_contract_schema": "flowdesk.evidence-contract/1",
+    "evidence_record_schema": "flowdesk.evidence-record/1",
+    "review_record_schema": "flowdesk.review-record/1",
+    "legacy_policy": "explicit_legacy_v3"
+  }
+}
