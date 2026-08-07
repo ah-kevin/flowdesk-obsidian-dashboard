@@ -60,6 +60,17 @@ test("CLI 与刷新使用带无障碍名称的图标按钮", () => {
   assert.match(source, /"aria-label": this\.loading \? "刷新中" : "刷新"/);
 });
 
+test("人工复核使用原生 Modal、execFile argv 与冲突刷新", () => {
+  assert.match(source, /class EvidenceReviewModal extends Modal/);
+  assert.match(source, /buildReviewInvocation\(/);
+  assert.match(source, /execFileAsync\(invocation\.executable, invocation\.args/);
+  assert.match(source, /"approved"/);
+  assert.match(source, /"changes_requested"/);
+  assert.match(source, /failure\.code === "review_conflict"/);
+  assert.match(source, /await this\.refreshCurrentTask\(\)/);
+  assert.doesNotMatch(source, /shell:\s*true/);
+});
+
 test("技术诊断使用来源标题和机器详情，不再平铺任务位置字段", () => {
   assert.match(source, /flowdesk-diagnostic-source/);
   assert.match(source, /flowdesk-machine-details/);

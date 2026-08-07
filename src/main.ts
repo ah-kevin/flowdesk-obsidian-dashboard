@@ -1,7 +1,9 @@
 import {
   App,
+  FileSystemAdapter,
   ItemView,
   MarkdownView,
+  Modal,
   Notice,
   Plugin,
   PluginSettingTab,
@@ -35,6 +37,12 @@ import {
   type SnapshotFormat,
   type SnapshotInvocation,
 } from "./snapshot-invocation";
+import {
+  buildReviewInvocation,
+  canReviewEvidence,
+  parseReviewCommandFailure,
+  type ReviewDecision,
+} from "./review-invocation";
 import {
   createContractItemPresentation,
   createDashboardPresentation,
@@ -96,6 +104,16 @@ interface ExecFileFailure extends Error {
   code?: number | string;
   stderr?: string;
   stdout?: string;
+}
+
+class EvidenceReviewCommandError extends Error {
+  constructor(
+    readonly code: string,
+    message: string
+  ) {
+    super(message);
+    this.name = "EvidenceReviewCommandError";
+  }
 }
 
 interface SnapshotDisplayState {
@@ -219,6 +237,42 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     await navigator.clipboard.writeText(
       formatShellCommand(this.createSnapshotInvocation(taskPath, "dashboard"))
     );
+  }
+
+  async submitEvidenceReview(input: {
+    taskPath: string;
+    digest: string;
+    decision: ReviewDecision;
+    requirementUids: string[];
+    note: string;
+  }): Promise<void> {
+    const adapter = this.app.vault.adapter;
+    if (!(adapter instanceof FileSystemAdapter)) {
+      throw new EvidenceReviewCommandError(
+        "review_request_rejected",
+        "人工复核仅支持本地文件系统 Vault。"
+      );
+    }
+    const invocation = buildReviewInvocation({
+      flowdeskRoot: this.resolveFlowDeskRoot(),
+      taskPath: input.taskPath,
+      digest: input.digest,
+      decision: input.decision,
+      requirementUids: input.requirementUids,
+      note: input.note,
+      vaultPath: adapter.getBasePath(),
+      apiUrl: this.settings.apiUrl.trim(),
+    });
+    try {
+      await execFileAsync(invocation.executable, invocation.args, {
+        cwd: invocation.cwd,
+        maxBuffer: 1024 * 1024,
+        timeout: 30_000,
+      });
+    } catch (error) {
+      const failure = parseReviewCommandFailure(error);
+      throw new EvidenceReviewCommandError(failure.code, failure.message);
+    }
   }
 
   async loadSettings() {
@@ -538,7 +592,7 @@ class FlowDeskDashboardView extends ItemView {
       });
     }
     const actions = topRow.createDiv({ cls: "flowdesk-task-meta-actions" });
-    this.renderToolbar(actions, model.currentTask.id);
+    this.renderToolbar(actions, model.currentTask.id, model);
     const heading = header.createDiv({ cls: "flowdesk-task-heading" });
     const title = heading.createDiv({
       cls: "flowdesk-task-title flowdesk-current-task-link",
@@ -565,7 +619,11 @@ class FlowDeskDashboardView extends ItemView {
     });
   }
 
-  private renderToolbar(container: HTMLElement, taskPath: string) {
+  private renderToolbar(
+    container: HTMLElement,
+    taskPath: string,
+    model?: DashboardViewModel
+  ) {
     const toolbar = container.createDiv({ cls: "flowdesk-dashboard-toolbar" });
     const copy = toolbar.createEl("button", {
       cls: "flowdesk-toolbar-button",
@@ -580,6 +638,24 @@ class FlowDeskDashboardView extends ItemView {
         new Notice(`无法复制 CLI 命令：${String(error)}`);
       }
     });
+    if (
+      model &&
+      canReviewEvidence({
+        trustLevel: model.currentTask.trustLevel,
+        observationTrustworthy: model.observation.isTrustworthy,
+        sourceIdentity: model.observation.sourceIdentity,
+        sourceIdentityMatch: model.observation.sourceIdentityMatch,
+        evidenceBundleDigest: model.review.evidenceBundleDigest,
+        requirementUids: model.review.requirementUids,
+      })
+    ) {
+      const review = toolbar.createEl("button", {
+        cls: "flowdesk-toolbar-button flowdesk-review-button",
+        attr: { "aria-label": "复核证据", title: "复核证据" },
+      });
+      setIcon(review, "clipboard-check");
+      review.addEventListener("click", () => this.openEvidenceReview(model));
+    }
     const refresh = toolbar.createEl("button", {
       cls: "flowdesk-toolbar-button",
       attr: {
@@ -590,6 +666,41 @@ class FlowDeskDashboardView extends ItemView {
     setIcon(refresh, "refresh-cw");
     refresh.disabled = this.loading;
     refresh.addEventListener("click", () => void this.refreshCurrentTask());
+  }
+
+  private openEvidenceReview(model: DashboardViewModel) {
+    const digest = model.review.evidenceBundleDigest;
+    if (!digest) {
+      new Notice("当前 snapshot 没有可复核的 evidence bundle digest。");
+      return;
+    }
+    new EvidenceReviewModal(this.app, async (decision, note) => {
+      try {
+        await this.plugin.submitEvidenceReview({
+          taskPath: model.currentTask.id,
+          digest,
+          decision,
+          requirementUids: model.review.requirementUids,
+          note,
+        });
+        new Notice(decision === "approved" ? "复核已确认" : "已要求修改");
+        await this.refreshCurrentTask();
+      } catch (error) {
+        const failure =
+          error instanceof EvidenceReviewCommandError
+            ? error
+            : new EvidenceReviewCommandError(
+                "review_request_rejected",
+                error instanceof Error ? error.message : String(error)
+              );
+        if (failure.code === "review_conflict") {
+          new Notice("证据已变化，已刷新 Dashboard；请复核最新结果。");
+          await this.refreshCurrentTask();
+          return;
+        }
+        new Notice(`复核失败：${failure.message}`);
+      }
+    }).open();
   }
 
   private renderNonTaskState(
@@ -1112,6 +1223,59 @@ class FlowDeskDashboardView extends ItemView {
     await this.app.workspace
       .getLeaf(taskNavigationNewLeaf(origin))
       .openFile(file);
+  }
+}
+
+class EvidenceReviewModal extends Modal {
+  private note = "";
+  private submitted = false;
+
+  constructor(
+    app: App,
+    private onSubmit: (decision: ReviewDecision, note: string) => Promise<void>
+  ) {
+    super(app);
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("flowdesk-review-modal");
+    contentEl.createEl("h2", { text: "复核结构化证据" });
+    contentEl.createDiv({
+      cls: "flowdesk-muted",
+      text: "提交时会按当前 evidence bundle digest 做冲突检查。",
+    });
+    new Setting(contentEl)
+      .setName("复核说明")
+      .setDesc("可选；要求修改时建议说明原因。")
+      .addTextArea((text) =>
+        text.setPlaceholder("补充复核说明").onChange((value) => {
+          this.note = value;
+        })
+      );
+    new Setting(contentEl)
+      .setClass("flowdesk-review-actions")
+      .addButton((button) =>
+        button.setButtonText("要求修改").onClick(() => {
+          void this.submit("changes_requested");
+        })
+      )
+      .addButton((button) =>
+        button.setCta().setButtonText("复核确认").onClick(() => {
+          void this.submit("approved");
+        })
+      );
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+
+  private async submit(decision: ReviewDecision) {
+    if (this.submitted) return;
+    this.submitted = true;
+    this.close();
+    await this.onSubmit(decision, this.note.trim());
   }
 }
 
