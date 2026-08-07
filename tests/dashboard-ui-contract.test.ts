@@ -143,6 +143,21 @@ test("完整详情采用合同、验收、证据、观察的原型布局", () =>
   assert.match(styles, /\.flowdesk-evidence-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s);
 });
 
+test("v4 字段嵌入现有 Acceptance 与 Evidence section", () => {
+  assert.match(source, /createDerivedAcceptancePresentation\(/);
+  assert.match(source, /createStructuredEvidencePresentation\(/);
+  assert.match(source, /structuredEvidenceItem\(/);
+  assert.match(source, /presentation\.method/);
+  assert.match(source, /presentation\.expected/);
+  assert.match(source, /presentation\.actual/);
+  assert.match(source, /presentation\.provenance/);
+  assert.match(source, /presentation\.review/);
+  assert.match(
+    source,
+    /"任务合同 v3"[\s\S]*?"验收标准"[\s\S]*?"执行证据"[\s\S]*?"观察与来源"/
+  );
+});
+
 test("技术诊断按当前任务和直接子任务分组并折叠机器字段", () => {
   assert.match(source, /flowdesk-diagnostic-task-group/);
   assert.match(source, /flowdesk-diagnostic-task-link/);

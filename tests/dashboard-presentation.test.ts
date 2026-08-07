@@ -570,3 +570,26 @@ test("父任务技术诊断按当前任务与直接子任务分组", () => {
     ]
   );
 });
+
+test("v4 合同条目使用稳定 UID、label 与 covers", () => {
+  assert.deepEqual(
+    createContractItemPresentation(
+      { uid: "REQ-001", label: "验证必须由受控 runner 产生" } as any,
+      "requirement"
+    ),
+    {
+      id: "REQ-001",
+      text: "验证必须由受控 runner 产生",
+      requirementIds: [],
+      sourceLabel: "任务文件",
+      steps: null,
+    }
+  );
+  assert.deepEqual(
+    createContractItemPresentation(
+      { uid: "SCN-001", label: "runner 产生验证", covers: ["REQ-001"] } as any,
+      "scenario"
+    ).requirementIds,
+    ["REQ-001"]
+  );
+});

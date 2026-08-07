@@ -29,12 +29,18 @@ export interface SnapshotDiagnostic {
 }
 
 export interface SnapshotAcceptanceItem {
+  uid?: string;
+  label?: string;
+  required?: boolean;
   text?: string;
   checked?: boolean;
   source?: SnapshotSource;
 }
 
 export interface SnapshotContractItem {
+  uid?: string;
+  label?: string;
+  covers?: string[];
   id?: string;
   text?: string;
   requirement_ids?: string[];

@@ -144,13 +144,15 @@ export function createContractItemPresentation(
   item: SnapshotContractItem,
   kind: "requirement" | "scenario"
 ): ContractItemPresentation {
-  const text = String(item.text || "未提供").trim() || "未提供";
+  const text = String(item.label || item.text || "未提供").trim() || "未提供";
   return {
-    id: String(item.id || "未编号").trim() || "未编号",
+    id: String(item.uid || item.id || "未编号").trim() || "未编号",
     text,
-    requirementIds: Array.isArray(item.requirement_ids)
-      ? item.requirement_ids.map(String).filter(Boolean)
-      : [],
+    requirementIds: Array.isArray(item.covers)
+      ? item.covers.map(String).filter(Boolean)
+      : Array.isArray(item.requirement_ids)
+        ? item.requirement_ids.map(String).filter(Boolean)
+        : [],
     sourceLabel: formatContractSource(item),
     steps: kind === "scenario" ? parseScenarioSteps(text) : null,
   };
@@ -547,17 +549,23 @@ function formatTaskReference(taskId: string): string {
 function createContractSummary(
   model: DashboardViewModel
 ): DashboardContractPresentation {
-  const checked = model.contract.acceptance.filter(
-    (item) => item.checked === true
-  ).length;
-  const validEvidence = Object.values(model.evidence).filter(
-    (health) => health === "valid"
-  ).length;
+  const acceptanceTotal = model.acceptance.length || model.contract.acceptance.length;
+  const checked = model.acceptance.length
+    ? model.acceptance.filter((item) => item.status === "satisfied").length
+    : model.contract.acceptance.filter((item) => item.checked === true).length;
+  const evidenceTotal = model.evidenceRequirements.length || 3;
+  const validEvidence = model.evidenceRequirements.length
+    ? model.evidenceRequirements.filter(
+        (item) => item.status === "satisfied" && item.matchedExpected !== false
+      ).length
+    : Object.values(model.evidence).filter((health) => health === "valid").length;
   return {
     goal: model.contract.goal,
     coverage: `REQ ${model.contract.requirements.length} · SCN ${model.contract.scenarios.length}`,
-    acceptance: `验收 ${checked}/${model.contract.acceptance.length}`,
-    evidence: formatEvidence(model.evidence),
+    acceptance: `验收 ${checked}/${acceptanceTotal}`,
+    evidence: model.evidenceRequirements.length
+      ? `结构化证据 ${validEvidence}/${evidenceTotal}`
+      : formatEvidence(model.evidence),
     diagnostics: `${model.diagnostics.length} 个诊断`,
     metrics: [
       {
@@ -566,9 +574,9 @@ function createContractSummary(
       },
       {
         label: "验收",
-        value: `${checked} / ${model.contract.acceptance.length}`,
+        value: `${checked} / ${acceptanceTotal}`,
       },
-      { label: "证据有效", value: `${validEvidence} / 3` },
+      { label: "证据有效", value: `${validEvidence} / ${evidenceTotal}` },
     ],
   };
 }

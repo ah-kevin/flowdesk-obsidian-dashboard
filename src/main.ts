@@ -56,6 +56,8 @@ import {
   type DisclosureState,
 } from "./dashboard-presentation";
 import {
+  createDerivedAcceptancePresentation,
+  createStructuredEvidencePresentation,
   formatEvidenceSummary,
   getEvidenceDisplayState,
 } from "./evidence-presentation";
@@ -767,7 +769,9 @@ class FlowDeskDashboardView extends ItemView {
     const renderedSections = new Map<DetailSection, HTMLElement>();
     const contract = createSection(
       body,
-      "任务合同 v3",
+      model.currentTask.trustLevel === "legacy_v3"
+        ? "任务合同 v3"
+        : "任务合同 v4",
       formatSemanticStatus(model.contract.semanticStatus)
     );
     renderedSections.set("contract", contract);
@@ -814,16 +818,20 @@ class FlowDeskDashboardView extends ItemView {
         this.disclosureState.scenariosOpen = open;
       }
     );
-    const checkedAcceptance = model.contract.acceptance.filter(
-      (item) => item.checked === true
-    ).length;
+    const derivedAcceptance = model.acceptance.map((item) =>
+      createDerivedAcceptancePresentation(item)
+    );
+    const acceptanceTotal = derivedAcceptance.length || model.contract.acceptance.length;
+    const checkedAcceptance = derivedAcceptance.length
+      ? derivedAcceptance.filter((item) => item.state === "done").length
+      : model.contract.acceptance.filter((item) => item.checked === true).length;
     const acceptance = createSection(
       body,
       "验收标准",
-      `${checkedAcceptance} / ${model.contract.acceptance.length} 已通过`
+      `${checkedAcceptance} / ${acceptanceTotal} 已通过`
     );
     renderedSections.set("acceptance", acceptance);
-    if (!model.contract.acceptance.length) {
+    if (!acceptanceTotal) {
       acceptance.createDiv({ cls: "flowdesk-muted", text: "producer 未提供验收项。" });
     } else {
       const progress = acceptance.createDiv({ cls: "flowdesk-acceptance-progress" });
@@ -831,37 +839,67 @@ class FlowDeskDashboardView extends ItemView {
         cls: "flowdesk-acceptance-progress-value",
         attr: {
           style: `width: ${Math.round(
-            (checkedAcceptance / model.contract.acceptance.length) * 100
+            (checkedAcceptance / acceptanceTotal) * 100
           )}%`,
         },
       });
       const acceptanceGrid = acceptance.createDiv({
         cls: "flowdesk-acceptance-grid",
       });
-      for (const item of model.contract.acceptance) {
-        const row = acceptanceGrid.createDiv({ cls: "flowdesk-acceptance-item" });
-        row.createSpan({
-          cls: item.checked
-            ? "flowdesk-acceptance-check is-checked"
-            : "flowdesk-acceptance-check",
-          text: item.checked ? "✓" : "○",
-        });
-        row.createSpan({ text: item.text ?? "未提供" });
+      if (derivedAcceptance.length) {
+        for (const item of derivedAcceptance) {
+          const row = acceptanceGrid.createDiv({ cls: "flowdesk-acceptance-item" });
+          row.createSpan({
+            cls: item.state === "done"
+              ? "flowdesk-acceptance-check is-checked"
+              : "flowdesk-acceptance-check",
+            text: item.state === "done" ? "✓" : "○",
+          });
+          const copy = row.createDiv({ cls: "flowdesk-acceptance-copy" });
+          copy.createDiv({ text: `${item.uid} · ${item.label}` });
+          copy.createDiv({
+            cls: "flowdesk-acceptance-evidence",
+            text: `${item.status} · ${item.evidence}`,
+          });
+        }
+      } else {
+        for (const item of model.contract.acceptance) {
+          const row = acceptanceGrid.createDiv({ cls: "flowdesk-acceptance-item" });
+          row.createSpan({
+            cls: item.checked
+              ? "flowdesk-acceptance-check is-checked"
+              : "flowdesk-acceptance-check",
+            text: item.checked ? "✓" : "○",
+          });
+          row.createSpan({ text: item.text ?? "未提供" });
+        }
       }
     }
-    const validEvidence = Object.values(model.evidence).filter(
-      (health) => health === "valid"
-    ).length;
+    const structuredEvidence = model.evidenceRequirements.map((requirement) =>
+      createStructuredEvidencePresentation(requirement, model.review.status)
+    );
+    const validEvidence = structuredEvidence.length
+      ? structuredEvidence.filter((item) => item.state === "done").length
+      : Object.values(model.evidence).filter((health) => health === "valid").length;
+    const evidenceTotal = structuredEvidence.length || 3;
     const evidence = createSection(
       body,
       "执行证据",
-      validEvidence === 3 ? "全部有效" : `${validEvidence} / 3 有效`
+      validEvidence === evidenceTotal
+        ? "全部有效"
+        : `${validEvidence} / ${evidenceTotal} 有效`
     );
     renderedSections.set("evidence", evidence);
     const evidenceGrid = evidence.createDiv({ cls: "flowdesk-evidence-grid" });
-    evidenceItem(evidenceGrid, "执行结果", model.evidence.execution);
-    evidenceItem(evidenceGrid, "验证结果", model.evidence.verification);
-    evidenceItem(evidenceGrid, "交付记录", model.evidence.delivery);
+    if (structuredEvidence.length) {
+      for (const item of structuredEvidence) {
+        structuredEvidenceItem(evidenceGrid, item);
+      }
+    } else {
+      evidenceItem(evidenceGrid, "执行结果", model.evidence.execution);
+      evidenceItem(evidenceGrid, "验证结果", model.evidence.verification);
+      evidenceItem(evidenceGrid, "交付记录", model.evidence.delivery);
+    }
 
     const observation = createSection(
       body,
@@ -1220,6 +1258,27 @@ function evidenceItem(container: HTMLElement, label: string, health: EvidenceHea
     cls: "flowdesk-evidence-summary",
     text: formatEvidenceSummary(label, health).split("：").pop() || "未知",
   });
+}
+
+function structuredEvidenceItem(
+  container: HTMLElement,
+  presentation: ReturnType<typeof createStructuredEvidencePresentation>
+) {
+  const item = container.createDiv({ cls: "flowdesk-evidence-item" });
+  item.createDiv({
+    cls: `flowdesk-evidence-title is-${presentation.state}`,
+    text: `${statusSymbol(presentation.state)} ${presentation.uid}`,
+  });
+  item.createDiv({
+    cls: "flowdesk-evidence-summary",
+    text: presentation.status,
+  });
+  const details = item.createDiv({ cls: "flowdesk-evidence-fields" });
+  diagnosticRow(details, "方法", presentation.method);
+  diagnosticRow(details, "预期", presentation.expected);
+  diagnosticRow(details, "实际", presentation.actual);
+  diagnosticRow(details, "来源", presentation.provenance);
+  diagnosticRow(details, "复核", presentation.review);
 }
 
 function observationField(container: HTMLElement, label: string, value: string) {
