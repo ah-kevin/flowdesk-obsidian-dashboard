@@ -21,6 +21,15 @@ interface SnapshotEnvelope {
   snapshot_schema_version?: unknown;
   snapshot_model?: unknown;
   source_task_id?: unknown;
+  source?: { task_id?: unknown };
+  protocol?: {
+    producer_protocol_version?: unknown;
+    task_contract_schema?: unknown;
+    evidence_contract_schema?: unknown;
+    evidence_record_schema?: unknown;
+    review_record_schema?: unknown;
+    legacy_policy?: unknown;
+  };
 }
 
 interface ObservedTaskSnapshot {
@@ -149,14 +158,30 @@ export function validateSnapshotEnvelope(
     typeof value === "object" && value !== null && !Array.isArray(value)
       ? (value as SnapshotEnvelope)
       : {};
-  if (snapshot.snapshot_schema_version !== 3) {
-    return `Snapshot schema 不受支持：需要 3；请求 ${requestedTaskPath}，实际 schema ${formatEnvelopeValue(snapshot.snapshot_schema_version)}。`;
+  const schemaVersion = snapshot.snapshot_schema_version;
+  if (schemaVersion !== 3 && schemaVersion !== 4) {
+    return `Snapshot schema 不受支持：需要 3（legacy_v3）或 4；请求 ${requestedTaskPath}，实际 schema ${formatEnvelopeValue(schemaVersion)}。`;
   }
   if (snapshot.snapshot_model !== "task-centric") {
     return `Snapshot model 不受支持：需要 task-centric；请求 ${requestedTaskPath}，实际 model ${formatEnvelopeValue(snapshot.snapshot_model)}。`;
   }
-  if (snapshot.source_task_id !== requestedTaskPath) {
-    return `Snapshot source identity 不匹配：请求 ${requestedTaskPath}，返回 ${formatEnvelopeValue(snapshot.source_task_id)}。`;
+  const sourceTaskId =
+    schemaVersion === 4 ? snapshot.source?.task_id : snapshot.source_task_id;
+  if (sourceTaskId !== requestedTaskPath) {
+    return `Snapshot source identity 不匹配：请求 ${requestedTaskPath}，返回 ${formatEnvelopeValue(sourceTaskId)}。`;
+  }
+  if (schemaVersion === 4) {
+    const protocol = snapshot.protocol;
+    const protocolValid =
+      protocol?.producer_protocol_version === 4 &&
+      protocol.task_contract_schema === "flowdesk.task-contract/4" &&
+      protocol.evidence_contract_schema === "flowdesk.evidence-contract/1" &&
+      protocol.evidence_record_schema === "flowdesk.evidence-record/1" &&
+      protocol.review_record_schema === "flowdesk.review-record/1" &&
+      protocol.legacy_policy === "explicit_legacy_v3";
+    if (!protocolValid) {
+      return `Snapshot protocol 不受支持：请求 ${requestedTaskPath} 必须使用完整 SDD v4 protocol。`;
+    }
   }
   return null;
 }

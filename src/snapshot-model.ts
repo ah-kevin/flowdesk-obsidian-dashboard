@@ -62,6 +62,10 @@ export interface SnapshotTaskSummary {
   evidence_health?: SnapshotEvidenceHealth;
   trusted_done?: boolean;
   primary_diagnostic?: unknown;
+  completion?: SnapshotCompletion;
+  evidence_requirements?: SnapshotStructuredEvidenceRequirement[];
+  acceptance?: SnapshotDerivedAcceptance[];
+  review?: SnapshotReviewSummary;
 }
 
 export interface SnapshotObservation {
@@ -76,6 +80,8 @@ export interface SnapshotObservation {
 }
 
 export interface SnapshotTaskContract {
+  schema?: string;
+  task_id?: string;
   version?: string;
   goal?: string;
   scope?: {
@@ -122,7 +128,137 @@ export interface SnapshotV3 {
   next_actions?: Record<string, unknown>[];
 }
 
-export type ExecutionSnapshot = SnapshotV3;
+export interface SnapshotCompletion {
+  lifecycle_status?: string;
+  contract_status?: string;
+  evidence_status?: string;
+  verification_status?: string;
+  review_status?: string;
+  acceptance_status?: string;
+  trust_level?: string;
+  trusted_done?: boolean;
+}
+
+export interface SnapshotStructuredEvidenceRequirement {
+  uid?: string;
+  component_uid?: string;
+  semantic_revision?: number;
+  method?: string;
+  required?: boolean;
+  satisfies?: string[];
+  expected?: Record<string, unknown>;
+  review_required?: boolean;
+  status?: string;
+  run_id?: string | null;
+  actual?: Record<string, unknown> | null;
+  matched_expected?: boolean | null;
+  provenance?: string;
+  stdout_digest?: string | null;
+  stderr_digest?: string | null;
+  runtime_origin?: string | null;
+  implementation_digest?: string | null;
+}
+
+export interface SnapshotDerivedAcceptance {
+  uid?: string;
+  label?: string;
+  required?: boolean;
+  status?: string;
+  evidence_requirement_uids?: string[];
+}
+
+export interface SnapshotReviewSummary {
+  status?: string;
+  requirement_uids?: string[];
+  component_revisions?: Record<string, number>;
+  evidence_bundle_digest?: string | null;
+  record?: Record<string, unknown> | null;
+}
+
+export interface SnapshotProtocol {
+  producer_protocol_version?: number;
+  task_contract_schema?: string;
+  evidence_contract_schema?: string;
+  evidence_record_schema?: string;
+  review_record_schema?: string;
+  legacy_policy?: string;
+}
+
+export interface SnapshotV4 {
+  snapshot_schema_version?: number;
+  snapshot_model?: string;
+  source?: {
+    task_id?: string;
+    generated_at?: string;
+    working_directory?: string;
+    runtime_origin?: string;
+    implementation_digest?: string;
+  };
+  observation?: SnapshotObservation;
+  contract?: {
+    status?: string;
+    task_contract?: SnapshotTaskContract;
+    evidence_contract?: Record<string, unknown>;
+    contract_digest?: string;
+    mirror_status?: string;
+  };
+  current_task?: SnapshotTaskSummary;
+  parent?: Pick<SnapshotTaskSummary, "id" | "title" | "status"> | null;
+  children?: SnapshotTaskSummary[];
+  rollup?: SnapshotRollup;
+  diagnostics?: unknown[];
+  next_actions?: Record<string, unknown>[];
+  protocol?: SnapshotProtocol;
+}
+
+export type ExecutionSnapshot = SnapshotV3 | SnapshotV4;
+
+export interface CompletionDimensions {
+  lifecycleStatus: string;
+  contractStatus: string;
+  evidenceStatus: string;
+  verificationStatus: string;
+  reviewStatus: string;
+  acceptanceStatus: string;
+  trustLevel: string;
+  trustedDone: boolean;
+}
+
+export interface StructuredEvidenceRequirement {
+  uid: string;
+  componentUid: string;
+  semanticRevision: number;
+  method: string;
+  required: boolean;
+  satisfies: string[];
+  expected: Record<string, unknown>;
+  reviewRequired: boolean;
+  status: string;
+  runId: string | null;
+  actual: Record<string, unknown> | null;
+  matchedExpected: boolean | null;
+  provenance: string;
+  stdoutDigest: string | null;
+  stderrDigest: string | null;
+  runtimeOrigin: string | null;
+  implementationDigest: string | null;
+}
+
+export interface DerivedAcceptance {
+  uid: string;
+  label: string;
+  required: boolean;
+  status: string;
+  evidenceRequirementUids: string[];
+}
+
+export interface ReviewSummary {
+  status: string;
+  requirementUids: string[];
+  componentRevisions: Record<string, number>;
+  evidenceBundleDigest: string | null;
+  record: Record<string, unknown> | null;
+}
 
 export interface DashboardTaskViewModel {
   id: string;
@@ -135,6 +271,8 @@ export interface DashboardTaskViewModel {
   hasChildren: boolean;
   rollupState: string;
   trustedDone: boolean;
+  trustLevel: string;
+  completion: CompletionDimensions;
   evidenceHealth: Required<SnapshotEvidenceHealth>;
 }
 
@@ -158,6 +296,7 @@ export interface DashboardViewModel {
   errorCode:
     | "unsupported_snapshot_schema"
     | "unsupported_snapshot_model"
+    | "unsupported_snapshot_protocol"
     | null;
   schemaSupported: boolean;
   modelSupported: boolean;
@@ -184,6 +323,18 @@ export interface DashboardViewModel {
     requirements: SnapshotContractItem[];
     scenarios: SnapshotContractItem[];
     acceptance: SnapshotAcceptanceItem[];
+  };
+  evidenceRequirements: StructuredEvidenceRequirement[];
+  acceptance: DerivedAcceptance[];
+  review: ReviewSummary;
+  protocol: {
+    supported: boolean;
+    producerProtocolVersion: number;
+    taskContractSchema: string;
+    evidenceContractSchema: string;
+    evidenceRecordSchema: string;
+    reviewRecordSchema: string;
+    legacyPolicy: string;
   };
   evidence: Required<SnapshotEvidenceHealth>;
   observation: {
@@ -217,13 +368,20 @@ export function createDashboardViewModel(
   value: unknown,
   options: DashboardModelOptions = {}
 ): DashboardViewModel {
-  const snapshot = isRecord(value) ? (value as SnapshotV3) : {};
-  const schemaSupported = snapshot.snapshot_schema_version === 3;
+  const snapshot = isRecord(value) ? (value as ExecutionSnapshot) : {};
+  const schemaVersion = snapshot.snapshot_schema_version;
+  const isV4 = schemaVersion === 4;
+  const isV3 = schemaVersion === 3;
+  const v4Snapshot = isV4 ? (snapshot as SnapshotV4) : null;
+  const v3Snapshot = isV3 ? (snapshot as SnapshotV3) : null;
+  const schemaSupported = isV3 || isV4;
   const modelSupported = snapshot.snapshot_model === "task-centric";
+  const protocol = normalizeProtocol(v4Snapshot?.protocol, isV3);
+  const protocolSupported = protocol.supported;
   const currentTask = snapshot.current_task ?? {};
   const currentTaskId = normalizeText(
     currentTask.id,
-    normalizeText(snapshot.source_task_id, "")
+    snapshotSourceTaskId(snapshot)
   );
   const rollup = snapshot.rollup ?? {};
   const staleReason = normalizeText(options.staleReason, "");
@@ -244,6 +402,7 @@ export function createDashboardViewModel(
   const isTrustworthy =
     schemaSupported &&
     modelSupported &&
+    protocolSupported &&
     observationHealth === "healthy" &&
     snapshot.observation?.current_task === "observed" &&
     parentObserved &&
@@ -253,7 +412,23 @@ export function createDashboardViewModel(
     snapshot.observation?.stale === false &&
     sourceIdentity === true &&
     !staleReason;
-  const evidence = normalizeEvidenceHealth(snapshot.evidence);
+  const evidenceRequirements = isV4
+    ? (currentTask.evidence_requirements ?? []).map(
+        normalizeStructuredEvidenceRequirement
+      )
+    : [];
+  const acceptance = isV4
+    ? (currentTask.acceptance ?? []).map(normalizeDerivedAcceptance)
+    : [];
+  const review = isV4
+    ? normalizeReviewSummary(currentTask.review)
+    : emptyReviewSummary("legacy_v3");
+  const completion = isV4
+    ? normalizeCompletion(currentTask.completion, currentTask.status)
+    : legacyCompletion(currentTask, v3Snapshot ?? {});
+  const evidence = isV4
+    ? evidenceHealthFromCompletion(completion)
+    : normalizeEvidenceHealth(v3Snapshot?.evidence);
   const diagnostics = (snapshot.diagnostics ?? []).map((diagnostic) =>
     normalizeDiagnostic(diagnostic, currentTaskId)
   );
@@ -266,12 +441,16 @@ export function createDashboardViewModel(
       ? "unsupported_snapshot_schema"
       : !modelSupported
         ? "unsupported_snapshot_model"
+        : !protocolSupported
+          ? "unsupported_snapshot_protocol"
         : null,
     schemaSupported,
     modelSupported,
     schemaLabel:
-      schemaSupported && modelSupported
-        ? "snapshot v3 · task-centric"
+      schemaSupported && modelSupported && protocolSupported
+        ? isV4
+          ? "snapshot v4 · task-centric"
+          : "snapshot v3 · task-centric · legacy_v3"
         : "不支持的 snapshot 模型",
     currentTask: {
       id: currentTaskId,
@@ -288,7 +467,9 @@ export function createDashboardViewModel(
           : null,
       hasChildren: currentTask.has_children === true,
       rollupState: normalizeText(currentTask.rollup_state, "unknown"),
-      trustedDone: currentTask.trusted_done === true,
+      trustedDone: completion.trustedDone,
+      trustLevel: completion.trustLevel,
+      completion,
       evidenceHealth: evidence,
     },
     parent: normalizeParent(snapshot.parent),
@@ -305,20 +486,42 @@ export function createDashboardViewModel(
       contradictions: rollup.contradictions ?? [],
     },
     contract: {
-      version: normalizeText(snapshot.contract?.version, "未提供"),
-      goal: normalizeText(snapshot.contract?.goal, "未提供"),
+      version: isV4
+        ? normalizeText(v4Snapshot?.contract?.task_contract?.schema, "未提供")
+        : normalizeText(v3Snapshot?.contract?.version, "未提供"),
+      goal: isV4
+        ? normalizeText(v4Snapshot?.contract?.task_contract?.goal, "未提供")
+        : normalizeText(v3Snapshot?.contract?.goal, "未提供"),
       scope: {
-        included: (snapshot.contract?.scope?.included ?? []).map(String),
-        excluded: (snapshot.contract?.scope?.excluded ?? []).map(String),
+        included: (isV4
+          ? v4Snapshot?.contract?.task_contract?.scope?.included
+          : v3Snapshot?.contract?.scope?.included ?? []
+        )?.map(String) ?? [],
+        excluded: (isV4
+          ? v4Snapshot?.contract?.task_contract?.scope?.excluded
+          : v3Snapshot?.contract?.scope?.excluded ?? []
+        )?.map(String) ?? [],
       },
-      semanticStatus: normalizeText(
-        snapshot.contract?.semantic_status,
-        "unknown"
-      ),
-      requirements: snapshot.contract?.requirements ?? [],
-      scenarios: snapshot.contract?.scenarios ?? [],
-      acceptance: snapshot.contract?.acceptance ?? [],
+      semanticStatus: isV4
+        ? normalizeText(v4Snapshot?.contract?.status, "unknown")
+        : normalizeText(
+            v3Snapshot?.contract?.semantic_status,
+            "unknown"
+          ),
+      requirements: isV4
+        ? v4Snapshot?.contract?.task_contract?.requirements ?? []
+        : v3Snapshot?.contract?.requirements ?? [],
+      scenarios: isV4
+        ? v4Snapshot?.contract?.task_contract?.scenarios ?? []
+        : v3Snapshot?.contract?.scenarios ?? [],
+      acceptance: isV4
+        ? v4Snapshot?.contract?.task_contract?.acceptance ?? []
+        : v3Snapshot?.contract?.acceptance ?? [],
     },
+    evidenceRequirements,
+    acceptance,
+    review,
+    protocol,
     evidence,
     observation: {
       health: observationHealth,
@@ -327,8 +530,10 @@ export function createDashboardViewModel(
       children: normalizeText(snapshot.observation?.children, "unknown"),
       tasknotesApi: normalizeText(snapshot.observation?.tasknotes_api, "unknown"),
       sourceIdentityMatch,
-      sourceTaskId: normalizeText(snapshot.source_task_id, ""),
-      generatedAt: normalizeText(snapshot.generated_at, "未提供"),
+      sourceTaskId: snapshotSourceTaskId(snapshot),
+      generatedAt: isV4
+        ? normalizeText(v4Snapshot?.source?.generated_at, "未提供")
+        : normalizeText(v3Snapshot?.generated_at, "未提供"),
       isTrustworthy,
       trustMessage: isTrustworthy
         ? "观测可信"
@@ -348,8 +553,8 @@ export function validateSnapshotSource(
   value: unknown,
   expectedTaskPath: string
 ): true | false | "unknown" {
-  const snapshot = isRecord(value) ? (value as SnapshotV3) : {};
-  const actual = normalizeText(snapshot.source_task_id, "");
+  const snapshot = isRecord(value) ? (value as ExecutionSnapshot) : {};
+  const actual = snapshotSourceTaskId(snapshot);
   const expected = normalizeText(expectedTaskPath, "");
   if (!actual || !expected) {
     return "unknown";
@@ -463,6 +668,204 @@ export function resolveDiagnosticNavigation(
   };
 }
 
+function snapshotSourceTaskId(snapshot: ExecutionSnapshot): string {
+  return snapshot.snapshot_schema_version === 4
+    ? normalizeText((snapshot as SnapshotV4).source?.task_id, "")
+    : normalizeText((snapshot as SnapshotV3).source_task_id, "");
+}
+
+function normalizeProtocol(
+  value: SnapshotProtocol | undefined,
+  isLegacyV3: boolean
+): DashboardViewModel["protocol"] {
+  if (isLegacyV3) {
+    return {
+      supported: true,
+      producerProtocolVersion: 3,
+      taskContractSchema: "flowdesk.task-contract/3",
+      evidenceContractSchema: "legacy_v3",
+      evidenceRecordSchema: "legacy_v3",
+      reviewRecordSchema: "legacy_v3",
+      legacyPolicy: "explicit_legacy_v3",
+    };
+  }
+  const protocol = value ?? {};
+  const normalized = {
+    producerProtocolVersion: finiteNumber(protocol.producer_protocol_version),
+    taskContractSchema: normalizeText(protocol.task_contract_schema, ""),
+    evidenceContractSchema: normalizeText(protocol.evidence_contract_schema, ""),
+    evidenceRecordSchema: normalizeText(protocol.evidence_record_schema, ""),
+    reviewRecordSchema: normalizeText(protocol.review_record_schema, ""),
+    legacyPolicy: normalizeText(protocol.legacy_policy, ""),
+  };
+  return {
+    supported:
+      normalized.producerProtocolVersion === 4 &&
+      normalized.taskContractSchema === "flowdesk.task-contract/4" &&
+      normalized.evidenceContractSchema === "flowdesk.evidence-contract/1" &&
+      normalized.evidenceRecordSchema === "flowdesk.evidence-record/1" &&
+      normalized.reviewRecordSchema === "flowdesk.review-record/1" &&
+      normalized.legacyPolicy === "explicit_legacy_v3",
+    ...normalized,
+  };
+}
+
+function normalizeCompletion(
+  value: SnapshotCompletion | undefined,
+  fallbackStatus: unknown
+): CompletionDimensions {
+  const completion = value ?? {};
+  return {
+    lifecycleStatus: normalizeText(
+      completion.lifecycle_status,
+      normalizeText(fallbackStatus, "unknown")
+    ),
+    contractStatus: normalizeText(completion.contract_status, "unknown"),
+    evidenceStatus: normalizeText(completion.evidence_status, "unknown"),
+    verificationStatus: normalizeText(
+      completion.verification_status,
+      "unknown"
+    ),
+    reviewStatus: normalizeText(completion.review_status, "unknown"),
+    acceptanceStatus: normalizeText(completion.acceptance_status, "unknown"),
+    trustLevel: normalizeText(completion.trust_level, "unknown"),
+    trustedDone: completion.trusted_done === true,
+  };
+}
+
+function legacyCompletion(
+  currentTask: SnapshotTaskSummary,
+  snapshot: SnapshotV3
+): CompletionDimensions {
+  const evidence = normalizeEvidenceHealth(snapshot.evidence);
+  const evidenceValues = [
+    evidence.execution,
+    evidence.verification,
+    evidence.delivery,
+  ];
+  const acceptance = snapshot.contract?.acceptance ?? [];
+  return {
+    lifecycleStatus: normalizeText(currentTask.status, "unknown"),
+    contractStatus: normalizeText(
+      snapshot.contract?.semantic_status,
+      "unknown"
+    ),
+    evidenceStatus: evidenceValues.every((value) => value === "valid")
+      ? "satisfied"
+      : evidenceValues.some((value) => value === "invalid")
+        ? "invalid"
+        : "missing",
+    verificationStatus:
+      evidence.verification === "valid"
+        ? "passed"
+        : evidence.verification === "invalid"
+          ? "failed"
+          : "missing",
+    reviewStatus: "legacy_v3",
+    acceptanceStatus:
+      acceptance.length > 0 && acceptance.every((item) => item.checked === true)
+        ? "satisfied"
+        : "incomplete",
+    trustLevel: "legacy_v3",
+    trustedDone: currentTask.trusted_done === true,
+  };
+}
+
+function evidenceHealthFromCompletion(
+  completion: CompletionDimensions
+): Required<SnapshotEvidenceHealth> {
+  const evidence =
+    completion.evidenceStatus === "satisfied"
+      ? "valid"
+      : completion.evidenceStatus === "failed" ||
+          completion.evidenceStatus === "invalid"
+        ? "invalid"
+        : "missing";
+  const verification =
+    completion.verificationStatus === "passed"
+      ? "valid"
+      : completion.verificationStatus === "failed"
+        ? "invalid"
+        : "missing";
+  const delivery =
+    completion.reviewStatus === "approved" &&
+    completion.acceptanceStatus === "satisfied"
+      ? "valid"
+      : completion.reviewStatus === "changes_requested"
+        ? "invalid"
+        : "missing";
+  return { execution: evidence, verification, delivery };
+}
+
+function normalizeStructuredEvidenceRequirement(
+  value: SnapshotStructuredEvidenceRequirement
+): StructuredEvidenceRequirement {
+  return {
+    uid: normalizeText(value.uid, "未提供"),
+    componentUid: normalizeText(value.component_uid, "未提供"),
+    semanticRevision: finiteNumber(value.semantic_revision),
+    method: normalizeText(value.method, "unknown"),
+    required: value.required === true,
+    satisfies: (value.satisfies ?? []).map(String),
+    expected: isRecord(value.expected) ? value.expected : {},
+    reviewRequired: value.review_required === true,
+    status: normalizeText(value.status, "unknown"),
+    runId: nullableText(value.run_id),
+    actual: isRecord(value.actual) ? value.actual : null,
+    matchedExpected:
+      typeof value.matched_expected === "boolean"
+        ? value.matched_expected
+        : null,
+    provenance: normalizeText(value.provenance, "unknown"),
+    stdoutDigest: nullableText(value.stdout_digest),
+    stderrDigest: nullableText(value.stderr_digest),
+    runtimeOrigin: nullableText(value.runtime_origin),
+    implementationDigest: nullableText(value.implementation_digest),
+  };
+}
+
+function normalizeDerivedAcceptance(
+  value: SnapshotDerivedAcceptance
+): DerivedAcceptance {
+  return {
+    uid: normalizeText(value.uid, "未提供"),
+    label: normalizeText(value.label, "未提供"),
+    required: value.required === true,
+    status: normalizeText(value.status, "unknown"),
+    evidenceRequirementUids: (value.evidence_requirement_uids ?? []).map(String),
+  };
+}
+
+function normalizeReviewSummary(
+  value: SnapshotReviewSummary | undefined
+): ReviewSummary {
+  const review = value ?? {};
+  return {
+    status: normalizeText(review.status, "not_required"),
+    requirementUids: (review.requirement_uids ?? []).map(String),
+    componentRevisions: isRecord(review.component_revisions)
+      ? Object.fromEntries(
+          Object.entries(review.component_revisions).filter(
+            (entry): entry is [string, number] =>
+              typeof entry[1] === "number" && Number.isFinite(entry[1])
+          )
+        )
+      : {},
+    evidenceBundleDigest: nullableText(review.evidence_bundle_digest),
+    record: isRecord(review.record) ? review.record : null,
+  };
+}
+
+function emptyReviewSummary(status: string): ReviewSummary {
+  return {
+    status,
+    requirementUids: [],
+    componentRevisions: {},
+    evidenceBundleDigest: null,
+    record: null,
+  };
+}
+
 function createChildViewModel(
   child: SnapshotTaskSummary
 ): DashboardChildViewModel {
@@ -487,7 +890,7 @@ function createChildViewModel(
 }
 
 function normalizeParent(
-  parent: SnapshotV3["parent"]
+  parent: ExecutionSnapshot["parent"]
 ): { id: string; title: string; status: string } | null {
   if (!parent) {
     return null;
@@ -569,6 +972,11 @@ function normalizeText(value: unknown, fallback: string): string {
     return String(value);
   }
   return fallback;
+}
+
+function nullableText(value: unknown): string | null {
+  const normalized = normalizeText(value, "");
+  return normalized || null;
 }
 
 function finiteNumber(value: unknown): number {

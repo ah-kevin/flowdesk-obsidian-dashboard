@@ -480,7 +480,10 @@ test("健康摘要同时证明观察、来源和检查范围", () => {
     { label: "验收", value: "1 / 2" },
     { label: "证据有效", value: "2 / 3" },
   ]);
-  assert.equal(presentation.trust.sourceLabel, "snapshot v3 · task-centric");
+  assert.equal(
+    presentation.trust.sourceLabel,
+    "snapshot v3 · task-centric · legacy_v3"
+  );
 });
 
 test("合同异常但 diagnostics 为空时不显示健康", () => {
