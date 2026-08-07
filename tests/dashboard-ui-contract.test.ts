@@ -249,3 +249,24 @@ test("恢复 0.1.2 的可读字号、任务卡片与可信度条边界", () => {
     /\.flowdesk-diagnostic-row,[\s\S]*?font-size:\s*12px;/
   );
 });
+
+test("review 与结构化 evidence 只复用现有视觉 token 做最小增量", () => {
+  assert.match(
+    styles,
+    /\.flowdesk-review-button\s*\{[^}]*color:\s*var\(--text-accent\);/s
+  );
+  assert.match(
+    styles,
+    /\.flowdesk-evidence-fields\s*\{[^}]*border-top:\s*1px solid var\(--fd-border\);[^}]*overflow-wrap:\s*anywhere;/s
+  );
+  assert.match(
+    styles,
+    /\.flowdesk-acceptance-evidence\s*\{[^}]*color:\s*var\(--text-muted\);/s
+  );
+  assert.match(
+    styles,
+    /\.flowdesk-review-modal textarea\s*\{[^}]*width:\s*100%;/s
+  );
+  assert.doesNotMatch(source, /registerView\([^)]*review/i);
+  assert.doesNotMatch(source, /addRibbonIcon\([^)]*复核/);
+});
