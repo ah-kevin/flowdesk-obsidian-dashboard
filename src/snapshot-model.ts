@@ -26,6 +26,7 @@ export interface SnapshotDiagnostic {
   reason: string;
   expected: string;
   remediation: string;
+  evidence?: Record<string, unknown> | null;
 }
 
 export interface SnapshotAcceptanceItem {
@@ -981,6 +982,7 @@ function normalizeDiagnostic(
         normalizeText(diagnostic.remediation, "producer 未提供")
       )
     ),
+    evidence,
   };
 }
 

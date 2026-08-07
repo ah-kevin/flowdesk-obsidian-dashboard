@@ -60,6 +60,13 @@ test("CLI 与刷新使用带无障碍名称的图标按钮", () => {
   assert.match(source, /"aria-label": this\.loading \? "刷新中" : "刷新"/);
 });
 
+test("主诊断和逐条诊断都提供复制问题按钮", () => {
+  assert.match(source, /cls: "flowdesk-copy-problem"/);
+  assert.match(source, /text: "复制问题"/);
+  assert.match(source, /new Notice\("问题已复制"\)/);
+  assert.match(source, /event\.stopPropagation\(\)/);
+});
+
 test("人工复核使用原生 Modal、execFile argv 与冲突刷新", () => {
   assert.match(source, /class EvidenceReviewModal extends Modal/);
   assert.match(source, /buildReviewInvocation\(/);

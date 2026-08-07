@@ -14,9 +14,21 @@ const temporaryDirectory = await mkdtemp(
   path.join(tmpdir(), "flowdesk-dashboard-tests-")
 );
 try {
-  const testFiles = (await readdir(path.join(repositoryRoot, "tests")))
+  const discoveredTestFiles = (await readdir(path.join(repositoryRoot, "tests")))
     .filter((file) => file.endsWith(".test.ts"))
     .sort();
+  const requestedTestFiles = process.argv.slice(2);
+  const unknownTestFiles = requestedTestFiles.filter(
+    (file) => !discoveredTestFiles.includes(file)
+  );
+  if (unknownTestFiles.length > 0) {
+    console.error(`未知测试文件：${unknownTestFiles.join(", ")}`);
+    process.exitCode = 2;
+    process.exit();
+  }
+  const testFiles = requestedTestFiles.length > 0
+    ? requestedTestFiles
+    : discoveredTestFiles;
   const testBundles = [];
 
   for (const testFile of testFiles) {

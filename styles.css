@@ -1118,6 +1118,23 @@
   line-height: 1.4;
 }
 
+.flowdesk-dashboard .flowdesk-copy-problem {
+  height: 24px;
+  min-height: 24px;
+  flex: 0 0 auto;
+  border: 1px solid var(--fd-border);
+  border-radius: 6px;
+  padding: 0 8px;
+  background: var(--fd-soft);
+  color: var(--text-muted);
+  box-shadow: none;
+  font-size: 10.5px;
+}
+
+.flowdesk-dashboard .flowdesk-copy-problem:hover {
+  color: var(--text-accent);
+}
+
 .flowdesk-diagnostic-item-body {
   margin: 0 0 10px 19px;
   border-left: 2px solid var(--fd-red);

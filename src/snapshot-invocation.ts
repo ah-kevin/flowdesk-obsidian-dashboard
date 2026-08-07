@@ -6,6 +6,7 @@ export interface SnapshotInvocationInput {
   flowdeskRoot: string;
   taskPath: string;
   workingDirectory: string;
+  vaultPath: string;
   apiUrl: string;
 }
 
@@ -27,6 +28,7 @@ export function buildSnapshotInvocation(
   if (input.apiUrl) {
     args.push("--api-url", input.apiUrl);
   }
+  args.push("--vault", path.resolve(input.vaultPath));
   args.push(
     "--working-directory",
     workingDirectory,

@@ -664,9 +664,11 @@ function createContractSummary(
 
 function diagnosticActionTitle(diagnostic: SnapshotDiagnostic): string {
   if (diagnostic.code === "task_contract_count_invalid") {
-    return /找到\s*0\s*个/.test(diagnostic.reason)
-      ? "缺少 Task Contract v3"
-      : "Task Contract v3 数量不正确";
+    const schema = String(diagnostic.evidence?.schema || "");
+    const version = schema === "flowdesk.task-contract/4" ? "v4" : "v3";
+    return diagnostic.evidence?.actual_count === 0
+      ? `缺少 Task Contract ${version}`
+      : `Task Contract ${version} 数量不正确`;
   }
   const labels: Record<string, string> = {
     review_required: "结构化证据等待人工复核",
@@ -678,7 +680,9 @@ function diagnosticActionTitle(diagnostic: SnapshotDiagnostic): string {
     record_drift: "Evidence Record 已漂移",
     failed_as_observed: "运行结果不符合声明预期",
     protocol_mismatch: "证据协议不匹配",
-    contract_missing: "Evidence Contract 镜像缺失",
+    contract_missing: "Evidence Contract 存储缺失",
+    task_store_missing: "Evidence Contract 存储缺失",
+    inline_v4_migration_required: "旧版 v4 技术数据需要迁移",
     contract_drift: "Evidence Contract 已漂移",
     contract_invalid: "结构化合同无效",
     observation_unavailable: "TaskNotes 观察不可用",

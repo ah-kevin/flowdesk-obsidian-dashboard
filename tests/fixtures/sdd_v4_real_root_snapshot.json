@@ -132,7 +132,7 @@
       "task_id": "Tasks/SDD v4 Example.md"
     },
     "contract_digest": "sha256:d1d8eb6d21b04242a6905007e5df3bc2f6cacb9cc155b6c31c1d5edec031d244",
-    "mirror_status": "contract_valid"
+    "mirror_status": "task_store_valid"
   },
   "current_task": {
     "id": "Tasks/SDD v4 Example.md",

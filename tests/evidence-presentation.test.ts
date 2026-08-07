@@ -59,11 +59,46 @@ test("结构化 evidence 展示 method、expected、actual、provenance 与 revi
     state: "done",
     method: "command",
     expected: "exit_code=7",
-    actual: "exit_code=7 · timed_out=false · duration_ms=10",
+    actual: "退出码 7 · 未超时 · 用时 10 ms",
     provenance: "runner_cross_checked",
     review: "已复核",
     status: "satisfied",
   });
+});
+
+test("artifact 与 experiment 只显示人类摘要而不展开原始 JSON", () => {
+  const createPresentation = evidencePresentation.createStructuredEvidencePresentation;
+  const artifact = createPresentation({
+    uid: "EVR-A",
+    method: "artifact",
+    status: "satisfied",
+    matchedExpected: true,
+    expected: { outcome: "success" },
+    actual: {
+      exists: true,
+      checks_passed: 2,
+      checks_total: 2,
+      sha256: "sha256:1234567890abcdef",
+      checks: [{ kind: "json", matched: true, observed: { count: 51 } }],
+    },
+    provenance: "runner_cross_checked",
+    reviewRequired: false,
+  } as any, "not_required");
+  const experiment = createPresentation({
+    uid: "EVR-E",
+    method: "experiment",
+    status: "satisfied",
+    matchedExpected: true,
+    expected: { outcome: "success" },
+    actual: { trial_count: 6, aggregate_value: "success", source: "adapter:registry" },
+    provenance: "runner_cross_checked",
+    reviewRequired: false,
+  } as any, "not_required");
+
+  assert.equal(artifact.actual, "文件存在 · 检查 2/2 通过 · 摘要 sha256:12345678…");
+  assert.equal(experiment.actual, "实验 6 次 · 汇总 success · 来源 adapter:registry");
+  assert.doesNotMatch(artifact.actual, /\[\{|\{\"/);
+  assert.doesNotMatch(experiment.actual, /\[\{|\{\"/);
 });
 
 test("结构化 acceptance 由 evidence 关系派生，不读取 checkbox", () => {

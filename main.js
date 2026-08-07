@@ -38,7 +38,7 @@ var import_obsidian = require("obsidian");
 var import_child_process = require("child_process");
 var import_fs = require("fs");
 var import_os = require("os");
-var path3 = __toESM(require("path"));
+var path4 = __toESM(require("path"));
 var import_util = require("util");
 
 // src/dashboard-state.ts
@@ -199,6 +199,7 @@ function buildSnapshotInvocation(input, format) {
   if (input.apiUrl) {
     args.push("--api-url", input.apiUrl);
   }
+  args.push("--vault", path.resolve(input.vaultPath));
   args.push(
     "--working-directory",
     workingDirectory,
@@ -685,7 +686,8 @@ function normalizeDiagnostic(value, fallbackTaskId) {
         diagnostic.next_action,
         normalizeText(diagnostic.remediation, "producer \u672A\u63D0\u4F9B")
       )
-    )
+    ),
+    evidence
   };
 }
 function normalizeBlockedBy(value) {
@@ -1167,8 +1169,11 @@ function createContractSummary(model) {
   };
 }
 function diagnosticActionTitle(diagnostic) {
+  var _a, _b;
   if (diagnostic.code === "task_contract_count_invalid") {
-    return /找到\s*0\s*个/.test(diagnostic.reason) ? "\u7F3A\u5C11 Task Contract v3" : "Task Contract v3 \u6570\u91CF\u4E0D\u6B63\u786E";
+    const schema = String(((_a = diagnostic.evidence) == null ? void 0 : _a.schema) || "");
+    const version = schema === "flowdesk.task-contract/4" ? "v4" : "v3";
+    return ((_b = diagnostic.evidence) == null ? void 0 : _b.actual_count) === 0 ? `\u7F3A\u5C11 Task Contract ${version}` : `Task Contract ${version} \u6570\u91CF\u4E0D\u6B63\u786E`;
   }
   const labels = {
     review_required: "\u7ED3\u6784\u5316\u8BC1\u636E\u7B49\u5F85\u4EBA\u5DE5\u590D\u6838",
@@ -1180,7 +1185,9 @@ function diagnosticActionTitle(diagnostic) {
     record_drift: "Evidence Record \u5DF2\u6F02\u79FB",
     failed_as_observed: "\u8FD0\u884C\u7ED3\u679C\u4E0D\u7B26\u5408\u58F0\u660E\u9884\u671F",
     protocol_mismatch: "\u8BC1\u636E\u534F\u8BAE\u4E0D\u5339\u914D",
-    contract_missing: "Evidence Contract \u955C\u50CF\u7F3A\u5931",
+    contract_missing: "Evidence Contract \u5B58\u50A8\u7F3A\u5931",
+    task_store_missing: "Evidence Contract \u5B58\u50A8\u7F3A\u5931",
+    inline_v4_migration_required: "\u65E7\u7248 v4 \u6280\u672F\u6570\u636E\u9700\u8981\u8FC1\u79FB",
     contract_drift: "Evidence Contract \u5DF2\u6F02\u79FB",
     contract_invalid: "\u7ED3\u6784\u5316\u5408\u540C\u65E0\u6548",
     observation_unavailable: "TaskNotes \u89C2\u5BDF\u4E0D\u53EF\u7528",
@@ -1266,16 +1273,55 @@ function createStructuredEvidencePresentation(requirement, reviewStatus) {
       "outcome",
       "exit_code"
     ]),
-    actual: requirement.actual ? formatStructuredRecord(requirement.actual, [
-      "exit_code",
-      "timed_out",
-      "duration_ms",
-      "signal"
-    ]) : "\u5C1A\u65E0\u8FD0\u884C\u7ED3\u679C",
+    actual: requirement.actual ? formatEvidenceActual(requirement.method, requirement.actual) : "\u5C1A\u65E0\u8FD0\u884C\u7ED3\u679C",
     provenance: requirement.provenance,
     review: !requirement.reviewRequired ? "\u65E0\u9700\u590D\u6838" : reviewStatus === "approved" ? "\u5DF2\u590D\u6838" : reviewStatus === "changes_requested" ? "\u8981\u6C42\u4FEE\u6539" : "\u5F85\u590D\u6838",
     status
   };
+}
+function formatEvidenceActual(method, actual) {
+  if (method === "command") {
+    const parts = [];
+    if ("exit_code" in actual) parts.push(`\u9000\u51FA\u7801 ${String(actual.exit_code)}`);
+    if (typeof actual.timed_out === "boolean") {
+      parts.push(actual.timed_out ? "\u5DF2\u8D85\u65F6" : "\u672A\u8D85\u65F6");
+    }
+    if (typeof actual.duration_ms === "number") parts.push(`\u7528\u65F6 ${actual.duration_ms} ms`);
+    if (typeof actual.signal === "number") parts.push(`\u4FE1\u53F7 ${actual.signal}`);
+    return parts.join(" \xB7 ") || "\u547D\u4EE4\u5DF2\u8FD0\u884C";
+  }
+  if (method === "artifact") {
+    const parts = [actual.exists === true ? "\u6587\u4EF6\u5B58\u5728" : "\u6587\u4EF6\u4E0D\u5B58\u5728"];
+    if (typeof actual.checks_passed === "number" && typeof actual.checks_total === "number") {
+      parts.push(`\u68C0\u67E5 ${actual.checks_passed}/${actual.checks_total} \u901A\u8FC7`);
+    }
+    if (typeof actual.sha256 === "string" && actual.sha256) {
+      parts.push(`\u6458\u8981 ${shortDigest(actual.sha256)}`);
+    }
+    return parts.join(" \xB7 ");
+  }
+  if (method === "experiment") {
+    const parts = [];
+    if (typeof actual.trial_count === "number") parts.push(`\u5B9E\u9A8C ${actual.trial_count} \u6B21`);
+    if (actual.aggregate_value !== void 0) parts.push(`\u6C47\u603B ${String(actual.aggregate_value)}`);
+    if (typeof actual.source === "string") parts.push(`\u6765\u6E90 ${actual.source}`);
+    return parts.join(" \xB7 ") || "\u5B9E\u9A8C\u5DF2\u5B8C\u6210";
+  }
+  if (method === "ci") {
+    const parts = [];
+    if (typeof actual.outcome === "string") parts.push(`\u7ED3\u679C ${actual.outcome}`);
+    if (typeof actual.source === "string") parts.push(`\u6765\u6E90 ${actual.source}`);
+    return parts.join(" \xB7 ") || "\u53C2\u8003\u7ED3\u679C\u5DF2\u8BFB\u53D6";
+  }
+  return formatTechnicalActual(actual);
+}
+function formatTechnicalActual(actual) {
+  const scalarEntries = Object.entries(actual).filter(([, value]) => ["string", "number", "boolean"].includes(typeof value)).sort(([left], [right]) => left.localeCompare(right));
+  if (!scalarEntries.length) return "\u5DF2\u751F\u6210\u7ED3\u6784\u5316\u7ED3\u679C";
+  return scalarEntries.map(([key, value]) => `${key}=${String(value)}`).join(" \xB7 ");
+}
+function shortDigest(value) {
+  return value.length > 16 ? `${value.slice(0, 15)}\u2026` : value;
 }
 function createDerivedAcceptancePresentation(acceptance) {
   const state = acceptance.status === "satisfied" ? "done" : ["failed", "invalid"].includes(acceptance.status) ? "error" : "blocked";
@@ -1307,12 +1353,45 @@ function taskNavigationNewLeaf(origin) {
   return origin === "child";
 }
 
+// src/vault-path.ts
+var path3 = __toESM(require("path"));
+var VaultPathResolutionError = class extends Error {
+  constructor() {
+    super("\u672A\u627E\u5230 Evidence Vault \u8DEF\u5F84\uFF0C\u8BF7\u5728\u63D2\u4EF6\u8BBE\u7F6E\u4E2D\u914D\u7F6E\uFF0C\u6216\u4F7F\u7528\u672C\u5730\u6587\u4EF6\u7CFB\u7EDF Vault\u3002");
+    this.name = "VaultPathResolutionError";
+  }
+};
+function resolveVaultPath(input) {
+  const candidate = [
+    input.configuredPath,
+    input.environmentPath || "",
+    input.adapterBasePath || ""
+  ].map((value) => value.trim()).find(Boolean);
+  if (!candidate) throw new VaultPathResolutionError();
+  return path3.resolve(candidate);
+}
+
+// src/diagnostic-clipboard.ts
+function formatDiagnosticClipboard(input) {
+  const location = input.location.trim() || "\u672A\u63D0\u4F9B";
+  return [
+    `\u4EFB\u52A1\uFF1A${input.taskTitle}\uFF08${input.taskId}\uFF09`,
+    `\u95EE\u9898\uFF1A${input.title}`,
+    `\u539F\u56E0\uFF1A${input.reason}`,
+    `\u5EFA\u8BAE\uFF1A${input.remediation}`,
+    `\u9519\u8BEF\u7801\uFF1A${input.code}`,
+    `\u5B57\u6BB5\uFF1A${input.path}`,
+    `\u4F4D\u7F6E\uFF1A${location}`
+  ].join("\n");
+}
+
 // src/main.ts
 var FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
 var execFileAsync = (0, import_util.promisify)(import_child_process.execFile);
 var DEFAULT_SETTINGS = {
   flowdeskRoot: "",
   workingDirectory: "",
+  vaultPath: "",
   apiUrl: ""
 };
 var EvidenceReviewCommandError = class extends Error {
@@ -1417,6 +1496,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
         flowdeskRoot,
         taskPath,
         workingDirectory,
+        vaultPath: this.resolveEvidenceVaultPath(),
         apiUrl: this.settings.apiUrl.trim()
       },
       format
@@ -1428,13 +1508,6 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     );
   }
   async submitEvidenceReview(input) {
-    const adapter = this.app.vault.adapter;
-    if (!(adapter instanceof import_obsidian.FileSystemAdapter)) {
-      throw new EvidenceReviewCommandError(
-        "review_request_rejected",
-        "\u4EBA\u5DE5\u590D\u6838\u4EC5\u652F\u6301\u672C\u5730\u6587\u4EF6\u7CFB\u7EDF Vault\u3002"
-      );
-    }
     const invocation = buildReviewInvocation({
       flowdeskRoot: this.resolveFlowDeskRoot(),
       taskPath: input.taskPath,
@@ -1442,7 +1515,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
       decision: input.decision,
       requirementUids: input.requirementUids,
       note: input.note,
-      vaultPath: adapter.getBasePath(),
+      vaultPath: this.resolveEvidenceVaultPath(),
       apiUrl: this.settings.apiUrl.trim()
     });
     try {
@@ -1473,14 +1546,23 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     const candidates = [
       expandHomePath(this.settings.flowdeskRoot.trim()),
       expandHomePath(process.env.FLOWDESK_PLUGIN_ROOT || ""),
-      path3.resolve(__dirname, "..", "..")
+      path4.resolve(__dirname, "..", "..")
     ].filter(Boolean);
     for (const candidate of candidates) {
-      if ((0, import_fs.existsSync)(path3.join(candidate, "bin", "flowdesk-execution-snapshot"))) {
+      if ((0, import_fs.existsSync)(path4.join(candidate, "bin", "flowdesk-execution-snapshot"))) {
         return candidate;
       }
     }
     throw new Error("\u672A\u627E\u5230 FlowDesk \u4ED3\u5E93\u8DEF\u5F84\uFF0C\u8BF7\u5728\u63D2\u4EF6\u8BBE\u7F6E\u91CC\u914D\u7F6E FlowDesk repo path\u3002");
+  }
+  resolveEvidenceVaultPath() {
+    const adapter = this.app.vault.adapter;
+    const adapterBasePath = adapter instanceof import_obsidian.FileSystemAdapter ? adapter.getBasePath() : "";
+    return resolveVaultPath({
+      configuredPath: expandHomePath(this.settings.vaultPath.trim()),
+      environmentPath: expandHomePath(process.env.OBSIDIAN_VAULT || ""),
+      adapterBasePath
+    });
   }
 };
 var FlowDeskDashboardView = class extends import_obsidian.ItemView {
@@ -1689,7 +1771,12 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     const presentation = createDashboardPresentation(model);
     this.renderHeader(container, model, presentation);
     this.renderTrustStrip(container, presentation.trust);
-    this.renderPrimaryDiagnostic(container, presentation.primaryStatus);
+    this.renderPrimaryDiagnostic(
+      container,
+      presentation.primaryStatus,
+      model.currentTask.title,
+      model.currentTask.id
+    );
     if (presentation.children.length) {
       this.renderChildren(container, model, presentation.children);
     }
@@ -1861,7 +1948,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       text: trust.contractLabel
     });
   }
-  renderPrimaryDiagnostic(container, status) {
+  renderPrimaryDiagnostic(container, status, taskTitle, taskId) {
     const card = container.createDiv({
       cls: `flowdesk-primary-status is-${status.tone}`
     });
@@ -1882,6 +1969,35 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     }
     diagnosticRow(card, "\u539F\u56E0", status.reason);
     diagnosticRow(card, "\u5EFA\u8BAE", status.remediation);
+    if (status.diagnostic) {
+      const copyProblem = card.createEl("button", {
+        cls: "flowdesk-copy-problem",
+        text: "\u590D\u5236\u95EE\u9898",
+        attr: { "aria-label": "\u590D\u5236\u95EE\u9898" }
+      });
+      copyProblem.addEventListener("click", (event) => {
+        var _a, _b;
+        event.stopPropagation();
+        void this.copyDiagnostic({
+          taskTitle,
+          taskId,
+          title: status.title,
+          reason: status.reason,
+          remediation: status.remediation,
+          code: ((_a = status.diagnostic) == null ? void 0 : _a.code) || "unknown_diagnostic",
+          path: ((_b = status.diagnostic) == null ? void 0 : _b.path) || "\u672A\u63D0\u4F9B",
+          location: status.location
+        });
+      });
+    }
+  }
+  async copyDiagnostic(input) {
+    try {
+      await navigator.clipboard.writeText(formatDiagnosticClipboard(input));
+      new import_obsidian.Notice("\u95EE\u9898\u5DF2\u590D\u5236");
+    } catch (error) {
+      new import_obsidian.Notice(`\u65E0\u6CD5\u590D\u5236\u95EE\u9898\uFF1A${String(error)}`);
+    }
   }
   async openDiagnosticLocation(diagnostic) {
     await this.openSnapshotSource(diagnostic.taskId, diagnostic.source, "\u8BCA\u65AD");
@@ -2252,6 +2368,24 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
             event.stopPropagation();
             void this.openDiagnosticLocation(diagnostic.diagnostic);
           });
+          const copyProblem = itemHead.createEl("button", {
+            cls: "flowdesk-copy-problem",
+            text: "\u590D\u5236\u95EE\u9898",
+            attr: { "aria-label": "\u590D\u5236\u95EE\u9898" }
+          });
+          copyProblem.addEventListener("click", (event) => {
+            event.stopPropagation();
+            void this.copyDiagnostic({
+              taskTitle: group.taskTitle,
+              taskId: group.taskId,
+              title: diagnostic.title,
+              reason: diagnostic.actual,
+              remediation: diagnostic.remediation,
+              code: diagnostic.machine.code,
+              path: diagnostic.machine.path,
+              location: diagnostic.machine.location
+            });
+          });
           const itemBody = item.createDiv({ cls: "flowdesk-diagnostic-item-body" });
           diagnosticRow(itemBody, "\u5B9E\u9645", diagnostic.actual);
           diagnosticRow(itemBody, "\u4FEE\u590D", diagnostic.remediation);
@@ -2351,6 +2485,12 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian.PluginSettingTab
     new import_obsidian.Setting(containerEl).setName("FlowDesk \u4ED3\u5E93\u8DEF\u5F84").setDesc("\u672C\u5730 FlowDesk-Plugin \u4ED3\u5E93\u8DEF\u5F84\u3002").addText(
       (text2) => text2.setPlaceholder("/Users/me/workspaces/flowdesk-plugin").setValue(this.plugin.settings.flowdeskRoot).onChange(async (value) => {
         this.plugin.settings.flowdeskRoot = value.trim();
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Evidence Vault \u8DEF\u5F84").setDesc("\u7559\u7A7A\u65F6\u4F9D\u6B21\u4F7F\u7528 OBSIDIAN_VAULT \u548C\u5F53\u524D Obsidian \u672C\u5730 Vault\u3002").addText(
+      (text2) => text2.setPlaceholder("/Users/me/Documents/Vault").setValue(this.plugin.settings.vaultPath).onChange(async (value) => {
+        this.plugin.settings.vaultPath = value.trim();
         await this.plugin.saveSettings();
       })
     );
@@ -2496,11 +2636,11 @@ function statusSymbol(value) {
   return "\u2022";
 }
 function taskTitleFromPath(taskPath) {
-  return path3.basename(taskPath, path3.extname(taskPath));
+  return path4.basename(taskPath, path4.extname(taskPath));
 }
 function expandHomePath(value) {
   if (value === "~") return (0, import_os.homedir)();
-  if (value.startsWith("~/")) return path3.join((0, import_os.homedir)(), value.slice(2));
+  if (value.startsWith("~/")) return path4.join((0, import_os.homedir)(), value.slice(2));
   return value;
 }
 function formatTime(date) {
