@@ -38,7 +38,7 @@ var import_obsidian = require("obsidian");
 var import_child_process = require("child_process");
 var import_fs = require("fs");
 var import_os = require("os");
-var path3 = __toESM(require("path"));
+var path2 = __toESM(require("path"));
 var import_util = require("util");
 
 // src/dashboard-state.ts
@@ -199,7 +199,6 @@ function buildSnapshotInvocation(input, format) {
   if (input.apiUrl) {
     args.push("--api-url", input.apiUrl);
   }
-  args.push("--vault", path.resolve(input.vaultPath));
   args.push(
     "--working-directory",
     workingDirectory,
@@ -1293,24 +1292,6 @@ function taskNavigationNewLeaf(origin) {
   return origin === "child";
 }
 
-// src/vault-path.ts
-var path2 = __toESM(require("path"));
-var VaultPathResolutionError = class extends Error {
-  constructor() {
-    super("\u672A\u627E\u5230 Evidence Vault \u8DEF\u5F84\uFF0C\u8BF7\u5728\u63D2\u4EF6\u8BBE\u7F6E\u4E2D\u914D\u7F6E\uFF0C\u6216\u4F7F\u7528\u672C\u5730\u6587\u4EF6\u7CFB\u7EDF Vault\u3002");
-    this.name = "VaultPathResolutionError";
-  }
-};
-function resolveVaultPath(input) {
-  const candidate = [
-    input.configuredPath,
-    input.environmentPath || "",
-    input.adapterBasePath || ""
-  ].map((value) => value.trim()).find(Boolean);
-  if (!candidate) throw new VaultPathResolutionError();
-  return path2.resolve(candidate);
-}
-
 // src/diagnostic-clipboard.ts
 function formatDiagnosticClipboard(input) {
   const location = input.location.trim() || "\u672A\u63D0\u4F9B";
@@ -1331,7 +1312,6 @@ var execFileAsync = (0, import_util.promisify)(import_child_process.execFile);
 var DEFAULT_SETTINGS = {
   flowdeskRoot: "",
   workingDirectory: "",
-  vaultPath: "",
   apiUrl: ""
 };
 var DEFAULT_TASKNOTES_API_URL = "http://127.0.0.1:18090";
@@ -1437,7 +1417,6 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
         flowdeskRoot,
         taskPath,
         workingDirectory,
-        vaultPath: this.resolveEvidenceVaultPath(),
         apiUrl: this.settings.apiUrl.trim()
       },
       format
@@ -1511,23 +1490,14 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     const candidates = [
       expandHomePath(this.settings.flowdeskRoot.trim()),
       expandHomePath(process.env.FLOWDESK_PLUGIN_ROOT || ""),
-      path3.resolve(__dirname, "..", "..")
+      path2.resolve(__dirname, "..", "..")
     ].filter(Boolean);
     for (const candidate of candidates) {
-      if ((0, import_fs.existsSync)(path3.join(candidate, "bin", "flowdesk-execution-snapshot"))) {
+      if ((0, import_fs.existsSync)(path2.join(candidate, "bin", "flowdesk-execution-snapshot"))) {
         return candidate;
       }
     }
     throw new Error("\u672A\u627E\u5230 FlowDesk \u4ED3\u5E93\u8DEF\u5F84\uFF0C\u8BF7\u5728\u63D2\u4EF6\u8BBE\u7F6E\u91CC\u914D\u7F6E FlowDesk repo path\u3002");
-  }
-  resolveEvidenceVaultPath() {
-    const adapter = this.app.vault.adapter;
-    const adapterBasePath = adapter instanceof import_obsidian.FileSystemAdapter ? adapter.getBasePath() : "";
-    return resolveVaultPath({
-      configuredPath: expandHomePath(this.settings.vaultPath.trim()),
-      environmentPath: expandHomePath(process.env.OBSIDIAN_VAULT || ""),
-      adapterBasePath
-    });
   }
 };
 var FlowDeskDashboardView = class extends import_obsidian.ItemView {
@@ -2367,12 +2337,6 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian.PluginSettingTab
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Evidence Vault \u8DEF\u5F84").setDesc("\u7559\u7A7A\u65F6\u4F9D\u6B21\u4F7F\u7528 OBSIDIAN_VAULT \u548C\u5F53\u524D Obsidian \u672C\u5730 Vault\u3002").addText(
-      (text2) => text2.setPlaceholder("/Users/me/Documents/Vault").setValue(this.plugin.settings.vaultPath).onChange(async (value) => {
-        this.plugin.settings.vaultPath = value.trim();
-        await this.plugin.saveSettings();
-      })
-    );
     new import_obsidian.Setting(containerEl).setName("\u5DE5\u4F5C\u76EE\u5F55").setDesc("\u4F20\u7ED9 --working-directory\uFF1B\u7559\u7A7A\u65F6\u4F7F\u7528 FlowDesk \u4ED3\u5E93\u8DEF\u5F84\u3002").addText(
       (text2) => text2.setValue(this.plugin.settings.workingDirectory).onChange(async (value) => {
         this.plugin.settings.workingDirectory = value.trim();
@@ -2478,11 +2442,11 @@ function formatReviewTimestamp(now) {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 }
 function taskTitleFromPath(taskPath) {
-  return path3.basename(taskPath, path3.extname(taskPath));
+  return path2.basename(taskPath, path2.extname(taskPath));
 }
 function expandHomePath(value) {
   if (value === "~") return (0, import_os.homedir)();
-  if (value.startsWith("~/")) return path3.join((0, import_os.homedir)(), value.slice(2));
+  if (value.startsWith("~/")) return path2.join((0, import_os.homedir)(), value.slice(2));
   return value;
 }
 function formatTime(date) {

@@ -6,7 +6,6 @@ export interface SnapshotInvocationInput {
   flowdeskRoot: string;
   taskPath: string;
   workingDirectory: string;
-  vaultPath: string;
   apiUrl: string;
 }
 
@@ -28,7 +27,7 @@ export function buildSnapshotInvocation(
   if (input.apiUrl) {
     args.push("--api-url", input.apiUrl);
   }
-  args.push("--vault", path.resolve(input.vaultPath));
+  // 判定层拆除后 producer 不再接受 --vault；传它会 unrecognized arguments 退出。
   args.push(
     "--working-directory",
     workingDirectory,
