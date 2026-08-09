@@ -38,7 +38,7 @@ var import_obsidian = require("obsidian");
 var import_child_process = require("child_process");
 var import_fs = require("fs");
 var import_os = require("os");
-var path4 = __toESM(require("path"));
+var path3 = __toESM(require("path"));
 var import_util = require("util");
 
 // src/dashboard-state.ts
@@ -227,54 +227,30 @@ function shellQuote(value) {
 }
 
 // src/review-invocation.ts
-var path2 = __toESM(require("path"));
-function buildReviewInvocation(input) {
-  const flowdeskRoot = path2.resolve(input.flowdeskRoot);
-  const taskPath = input.taskPath.trim();
-  const digest = input.digest.trim();
-  const requirementUids = [
-    ...new Set(input.requirementUids.map((uid) => uid.trim()).filter(Boolean))
-  ];
+var REVIEWED_TAG = "reviewed";
+function buildTaskNotesReviewWrite(request) {
+  const taskPath = request.taskPath.trim();
   if (!taskPath) throw new Error("review task path \u4E0D\u80FD\u4E3A\u7A7A");
-  if (!/^sha256:.+/.test(digest)) {
-    throw new Error("review evidence bundle digest \u5FC5\u987B\u662F sha256 \u503C");
-  }
-  if (!requirementUids.length) {
-    throw new Error("review \u81F3\u5C11\u9700\u8981\u4E00\u4E2A requirement UID");
-  }
-  if (!input.vaultPath.trim()) {
-    throw new Error("review vault path \u4E0D\u80FD\u4E3A\u7A7A");
-  }
-  const args = [
-    "review",
-    "--task-id",
-    taskPath,
-    "--evidence-bundle-digest",
-    digest,
-    "--decision",
-    input.decision
+  const note = request.note.trim();
+  const reviewedAt = request.reviewedAt.trim();
+  if (!reviewedAt) throw new Error("review \u65F6\u95F4\u4E0D\u80FD\u4E3A\u7A7A");
+  const tags = mergeReviewTags(request.existingTags, request.decision);
+  const decisionLabel = request.decision === "approved" ? "\u901A\u8FC7" : "\u8981\u6C42\u4FEE\u6539";
+  const lines = [
+    `- \u590D\u6838\u7ED3\u8BBA\uFF1A${decisionLabel}`,
+    `- \u590D\u6838\u65F6\u95F4\uFF1A${reviewedAt}`,
+    "- \u590D\u6838\u6765\u6E90\uFF1Aobsidian-dashboard",
+    `- \u590D\u6838\u8BF4\u660E\uFF1A${note || "\u672A\u586B\u5199"}`
   ];
-  for (const uid of requirementUids) {
-    args.push("--requirement-uid", uid);
-  }
-  args.push(
-    "--note",
-    input.note,
-    "--reviewer-kind",
-    "user",
-    "--reviewer-surface",
-    "obsidian-dashboard",
-    "--vault",
-    path2.resolve(input.vaultPath)
-  );
-  if (input.apiUrl.trim()) {
-    args.push("--api-url", input.apiUrl.trim());
-  }
   return {
-    executable: path2.join(flowdeskRoot, "bin", "flowdesk-evidence"),
-    args,
-    cwd: flowdeskRoot
+    tags,
+    heading: "## Review Record",
+    detailsAppend: lines.join("\n")
   };
+}
+function mergeReviewTags(existingTags, decision) {
+  const normalized = existingTags.map((tag) => tag.trim()).filter(Boolean).filter((tag) => tag !== REVIEWED_TAG);
+  return decision === "approved" ? [...normalized, REVIEWED_TAG] : normalized;
 }
 function parseReviewCommandFailure(error) {
   const failure = isRecord(error) ? error : {};
@@ -296,8 +272,8 @@ function parseReviewCommandFailure(error) {
     message: text(failure.message, "\u590D\u6838\u8BF7\u6C42\u5931\u8D25")
   };
 }
-function canReviewEvidence(input) {
-  return input.trustLevel === "untrusted_v4" && input.reviewStatus === "pending" && input.observationTrustworthy && input.sourceIdentity === true && input.sourceIdentityMatch === true && typeof input.evidenceBundleDigest === "string" && /^sha256:.+/.test(input.evidenceBundleDigest) && input.requirementUids.some((uid) => Boolean(uid.trim()));
+function canReviewTask(input) {
+  return input.lifecycleStatus === "done" && input.observationTrustworthy && !input.isStale && input.sourceIdentity === true && input.sourceIdentityMatch === true;
 }
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -517,7 +493,7 @@ function normalizeProtocol(value, isLegacyV3) {
     legacyPolicy: normalizeText(protocol.legacy_policy, "")
   };
   return {
-    supported: normalized.producerProtocolVersion === 4 && normalized.taskContractSchema === "flowdesk.task-contract/4" && normalized.evidenceContractSchema === "flowdesk.evidence-contract/1" && normalized.evidenceRecordSchema === "flowdesk.evidence-record/1" && normalized.reviewRecordSchema === "flowdesk.review-record/1" && normalized.legacyPolicy === "explicit_legacy_v3" || normalized.producerProtocolVersion === 4 && normalized.taskContractSchema === "legacy_v3" && protocol.evidence_contract_schema === null && protocol.evidence_record_schema === null && protocol.review_record_schema === null && normalized.legacyPolicy === "explicit_legacy_v3",
+    supported: normalized.producerProtocolVersion === 4 && normalized.taskContractSchema === "flowdesk.task-contract/4" && normalized.evidenceContractSchema === "flowdesk.evidence-contract/1" && normalized.evidenceRecordSchema === "flowdesk.evidence-record/1" && normalized.reviewRecordSchema === "flowdesk.review-record/1" || normalized.producerProtocolVersion === 4 && normalized.taskContractSchema === "legacy_v3" && protocol.evidence_contract_schema === null && protocol.evidence_record_schema === null && protocol.review_record_schema === null && normalized.legacyPolicy === "explicit_legacy_v3",
     ...normalized
   };
 }
@@ -826,12 +802,7 @@ function resolveDiagnosticDisclosureOpen(state, key) {
   return (_a = state.diagnosticOpen[key]) != null ? _a : false;
 }
 function resolveDetailSectionOrder(hasDiagnostics) {
-  const reviewOrder = [
-    "contract",
-    "acceptance",
-    "evidence",
-    "observation"
-  ];
+  const reviewOrder = ["contract", "observation"];
   return hasDiagnostics ? ["diagnostics", ...reviewOrder] : reviewOrder;
 }
 function isActivationKey(key) {
@@ -927,8 +898,9 @@ function taskStatusTone(value, isBlocked = false) {
 }
 function createTrustSummary(model) {
   const isLegacy = model.currentTask.trustLevel === "legacy_v3";
-  const contractLabel = isLegacy ? model.contract.semanticStatus === "valid" ? "v3 \u5386\u53F2\u5408\u540C\u6709\u6548" : "v3 \u5386\u53F2\u5408\u540C\u9700\u68C0\u67E5" : model.contract.semanticStatus === "valid" ? "\u5408\u540C\u6709\u6548" : model.contract.semanticStatus === "invalid" ? "\u5408\u540C\u5B58\u5728\u95EE\u9898" : "\u5408\u540C\u72B6\u6001\u672A\u77E5";
-  const contractTone = model.contract.semanticStatus === "valid" ? "healthy" : model.contract.semanticStatus === "invalid" ? "error" : "muted";
+  const isTasknotesOnly = model.currentTask.completion.contractStatus === "not_applicable";
+  const contractLabel = isTasknotesOnly ? "TaskNotes \u72B6\u6001\u4E3A\u51C6" : isLegacy ? model.contract.semanticStatus === "valid" ? "v3 \u5386\u53F2\u5408\u540C\u6709\u6548" : "v3 \u5386\u53F2\u5408\u540C\u9700\u68C0\u67E5" : model.contract.semanticStatus === "valid" ? "\u5408\u540C\u6709\u6548" : model.contract.semanticStatus === "invalid" ? "\u5408\u540C\u5B58\u5728\u95EE\u9898" : "\u5408\u540C\u72B6\u6001\u672A\u77E5";
+  const contractTone = isTasknotesOnly ? "muted" : model.contract.semanticStatus === "valid" ? "healthy" : model.contract.semanticStatus === "invalid" ? "error" : "muted";
   if (model.observation.isStale) {
     const detail2 = model.observation.staleReason || "snapshot \u5DF2\u6807\u8BB0\u4E3A\u65E7\u6570\u636E";
     return {
@@ -1032,6 +1004,9 @@ function createPrimaryStatus(model) {
   if (model.primaryDiagnostic) {
     return createDiagnosticStatus(model.primaryDiagnostic);
   }
+  if (model.currentTask.completion.contractStatus === "not_applicable") {
+    return createProgressStatus(model);
+  }
   if (model.contract.semanticStatus !== "valid") {
     return {
       tone: "error",
@@ -1070,6 +1045,79 @@ function createPrimaryStatus(model) {
     location: "\u5F53\u524D\u4EFB\u52A1",
     diagnostic: null
   };
+}
+function createProgressStatus(model) {
+  const nextStep = model.nextAction;
+  if (!model.currentTask.hasChildren) {
+    return createLeafProgressStatus(model, nextStep);
+  }
+  const { childrenTrustedDone, childrenTotal } = model.rollup;
+  const progress = `${childrenTrustedDone}/${childrenTotal} \u4E2A\u5B50\u4EFB\u52A1\u53EF\u4FE1\u5B8C\u6210`;
+  const blocked = model.rollup.blockedChildren;
+  if (blocked.length) {
+    return {
+      tone: "error",
+      title: progress,
+      reason: `${blocked.length} \u4E2A\u5B50\u4EFB\u52A1\u88AB\u963B\u585E\uFF1A${formatTaskReferences(blocked)}`,
+      remediation: nextStep || "\u5148\u89E3\u9664\u963B\u585E\u4F9D\u8D56\uFF0C\u518D\u7EE7\u7EED\u6D3E\u53D1\u5B50\u4EFB\u52A1",
+      location: "\u76F4\u63A5\u5B50\u4EFB\u52A1",
+      diagnostic: null
+    };
+  }
+  const incomplete = model.rollup.incompleteChildren;
+  if (incomplete.length) {
+    return {
+      tone: "running",
+      title: progress,
+      reason: `\u8FD8\u6709 ${incomplete.length} \u4E2A\u5B50\u4EFB\u52A1\u672A\u5B8C\u6210\uFF1A${formatTaskReferences(incomplete)}`,
+      remediation: nextStep || "\u6D3E\u53D1\u4E0B\u4E00\u4E2A\u5C31\u7EEA\u5B50\u4EFB\u52A1",
+      location: "\u76F4\u63A5\u5B50\u4EFB\u52A1",
+      diagnostic: null
+    };
+  }
+  const allTrusted = childrenTotal > 0 && childrenTrustedDone === childrenTotal;
+  return {
+    tone: allTrusted && model.currentTask.trustedDone ? "healthy" : "warning",
+    title: progress,
+    reason: allTrusted ? model.currentTask.trustedDone ? "\u5F53\u524D\u4EFB\u52A1\u4E0E\u5168\u90E8\u76F4\u63A5\u5B50\u4EFB\u52A1\u5747\u5DF2\u53EF\u4FE1\u5B8C\u6210" : "\u76F4\u63A5\u5B50\u4EFB\u52A1\u5DF2\u5168\u90E8\u53EF\u4FE1\u5B8C\u6210\uFF0C\u5F53\u524D\u4EFB\u52A1\u672C\u8EAB\u5C1A\u672A\u5199\u56DE\u5B8C\u6210" : "producer \u672A\u62A5\u544A\u963B\u585E\u6216\u672A\u5B8C\u6210\u5B50\u4EFB\u52A1",
+    remediation: nextStep || "\u786E\u8BA4\u5F53\u524D\u4EFB\u52A1\u6536\u53E3",
+    location: "\u76F4\u63A5\u5B50\u4EFB\u52A1",
+    diagnostic: null
+  };
+}
+function createLeafProgressStatus(model, nextStep) {
+  if (model.currentTask.isBlocked) {
+    const blockedBy = model.currentTask.blockedBy;
+    return {
+      tone: "error",
+      title: "\u5F53\u524D\u4EFB\u52A1\u88AB\u963B\u585E",
+      reason: blockedBy.length ? `\u963B\u585E\u4E8E ${blockedBy.map(formatTaskReference).join("\u3001")}` : "TaskNotes \u5C06\u5F53\u524D\u4EFB\u52A1\u6807\u8BB0\u4E3A\u963B\u585E",
+      remediation: nextStep || "\u5148\u5B8C\u6210\u524D\u7F6E\u4EFB\u52A1",
+      location: "\u5F53\u524D\u4EFB\u52A1",
+      diagnostic: null
+    };
+  }
+  if (model.currentTask.trustedDone) {
+    return {
+      tone: "healthy",
+      title: "\u5F53\u524D\u4EFB\u52A1\u5DF2\u53EF\u4FE1\u5B8C\u6210",
+      reason: "TaskNotes \u751F\u547D\u5468\u671F\u4E3A done\uFF0C\u4E14\u89C2\u6D4B\u5065\u5EB7",
+      remediation: nextStep || "\u786E\u8BA4\u6536\u53E3",
+      location: "\u5F53\u524D\u4EFB\u52A1",
+      diagnostic: null
+    };
+  }
+  return {
+    tone: taskStatusTone(model.currentTask.status),
+    title: `\u5F53\u524D\u4EFB\u52A1${formatTaskStatus(model.currentTask.status)}`,
+    reason: "\u65E0\u5B50\u4EFB\u52A1\uFF0C\u8FDB\u5EA6\u4EE5\u5F53\u524D\u4EFB\u52A1\u81EA\u8EAB\u751F\u547D\u5468\u671F\u4E3A\u51C6",
+    remediation: nextStep || "\u7EE7\u7EED\u6267\u884C\u5F53\u524D\u4EFB\u52A1",
+    location: "\u5F53\u524D\u4EFB\u52A1",
+    diagnostic: null
+  };
+}
+function formatTaskReferences(items) {
+  return items.map((item) => item.title || formatTaskReference(item.id || "")).filter(Boolean).join("\u3001");
 }
 function createDiagnosticStatus(diagnostic) {
   return {
@@ -1111,7 +1159,9 @@ function createChildRow(child) {
   if (child.blockedBy.length) {
     meta.push(`\u963B\u585E\u4E8E ${child.blockedBy.map(formatTaskReference).join("\u3001")}`);
   }
-  meta.push(formatChildEvidenceIssues(child.evidenceHealth));
+  if (child.hasChildren) {
+    meta.push("\u542B\u5B50\u4EFB\u52A1");
+  }
   return {
     id: child.id,
     title: child.title,
@@ -1213,15 +1263,6 @@ function diagnosticLocation(diagnostic) {
   if (section) return section;
   return "\u4EFB\u52A1\u6587\u4EF6";
 }
-function formatChildEvidenceIssues(evidence) {
-  const labels = [
-    ["\u6267\u884C", evidence.execution],
-    ["\u9A8C\u8BC1", evidence.verification],
-    ["\u4EA4\u4ED8", evidence.delivery]
-  ];
-  const issues = labels.filter(([, health]) => health !== "valid").map(([label, health]) => `${label}${health === "invalid" ? "\u65E0\u6548" : "\u7F3A\u5931"}`);
-  return issues.length ? issues.join(" \xB7 ") : "\u8BC1\u636E\u5B8C\u6574";
-}
 function formatEvidence(evidence) {
   const healthLabel = {
     valid: "\u6709\u6548",
@@ -1247,114 +1288,13 @@ function normalizeToken(value) {
   return String(value || "unknown").toLowerCase().replace(/_/g, "-");
 }
 
-// src/evidence-presentation.ts
-function getEvidenceDisplayState(health) {
-  if (health === "valid") {
-    return "done";
-  }
-  return health === "invalid" ? "error" : "blocked";
-}
-function formatEvidenceSummary(label, health) {
-  const labels = {
-    missing: "\u7F3A\u5931",
-    invalid: "\u65E0\u6548",
-    valid: "\u6709\u6548"
-  };
-  return `${label}\uFF1A${labels[health]}`;
-}
-function createStructuredEvidencePresentation(requirement, reviewStatus) {
-  const status = requirement.status;
-  const state = status === "satisfied" && requirement.matchedExpected !== false ? "done" : ["failed", "invalid", "record_drift", "stale"].includes(status) || requirement.matchedExpected === false ? "error" : "blocked";
-  return {
-    uid: requirement.uid,
-    state,
-    method: requirement.method,
-    expected: formatStructuredRecord(requirement.expected, [
-      "outcome",
-      "exit_code"
-    ]),
-    actual: requirement.actual ? formatEvidenceActual(requirement.method, requirement.actual) : "\u5C1A\u65E0\u8FD0\u884C\u7ED3\u679C",
-    provenance: requirement.provenance,
-    review: !requirement.reviewRequired ? "\u65E0\u9700\u590D\u6838" : reviewStatus === "approved" ? "\u5DF2\u590D\u6838" : reviewStatus === "changes_requested" ? "\u8981\u6C42\u4FEE\u6539" : "\u5F85\u590D\u6838",
-    status
-  };
-}
-function formatEvidenceActual(method, actual) {
-  if (method === "command") {
-    const parts = [];
-    if ("exit_code" in actual) parts.push(`\u9000\u51FA\u7801 ${String(actual.exit_code)}`);
-    if (typeof actual.timed_out === "boolean") {
-      parts.push(actual.timed_out ? "\u5DF2\u8D85\u65F6" : "\u672A\u8D85\u65F6");
-    }
-    if (typeof actual.duration_ms === "number") parts.push(`\u7528\u65F6 ${actual.duration_ms} ms`);
-    if (typeof actual.signal === "number") parts.push(`\u4FE1\u53F7 ${actual.signal}`);
-    return parts.join(" \xB7 ") || "\u547D\u4EE4\u5DF2\u8FD0\u884C";
-  }
-  if (method === "artifact") {
-    const parts = [actual.exists === true ? "\u6587\u4EF6\u5B58\u5728" : "\u6587\u4EF6\u4E0D\u5B58\u5728"];
-    if (typeof actual.checks_passed === "number" && typeof actual.checks_total === "number") {
-      parts.push(`\u68C0\u67E5 ${actual.checks_passed}/${actual.checks_total} \u901A\u8FC7`);
-    }
-    if (typeof actual.sha256 === "string" && actual.sha256) {
-      parts.push(`\u6458\u8981 ${shortDigest(actual.sha256)}`);
-    }
-    return parts.join(" \xB7 ");
-  }
-  if (method === "experiment") {
-    const parts = [];
-    if (typeof actual.trial_count === "number") parts.push(`\u5B9E\u9A8C ${actual.trial_count} \u6B21`);
-    if (actual.aggregate_value !== void 0) parts.push(`\u6C47\u603B ${String(actual.aggregate_value)}`);
-    if (typeof actual.source === "string") parts.push(`\u6765\u6E90 ${actual.source}`);
-    return parts.join(" \xB7 ") || "\u5B9E\u9A8C\u5DF2\u5B8C\u6210";
-  }
-  if (method === "ci") {
-    const parts = [];
-    if (typeof actual.outcome === "string") parts.push(`\u7ED3\u679C ${actual.outcome}`);
-    if (typeof actual.source === "string") parts.push(`\u6765\u6E90 ${actual.source}`);
-    return parts.join(" \xB7 ") || "\u53C2\u8003\u7ED3\u679C\u5DF2\u8BFB\u53D6";
-  }
-  return formatTechnicalActual(actual);
-}
-function formatTechnicalActual(actual) {
-  const scalarEntries = Object.entries(actual).filter(([, value]) => ["string", "number", "boolean"].includes(typeof value)).sort(([left], [right]) => left.localeCompare(right));
-  if (!scalarEntries.length) return "\u5DF2\u751F\u6210\u7ED3\u6784\u5316\u7ED3\u679C";
-  return scalarEntries.map(([key, value]) => `${key}=${String(value)}`).join(" \xB7 ");
-}
-function shortDigest(value) {
-  return value.length > 16 ? `${value.slice(0, 15)}\u2026` : value;
-}
-function createDerivedAcceptancePresentation(acceptance) {
-  const state = acceptance.status === "satisfied" ? "done" : ["failed", "invalid"].includes(acceptance.status) ? "error" : "blocked";
-  return {
-    uid: acceptance.uid,
-    label: acceptance.label,
-    state,
-    status: acceptance.status,
-    evidence: acceptance.evidenceRequirementUids.join("\u3001") || "\u672A\u5173\u8054\u8BC1\u636E"
-  };
-}
-function formatStructuredRecord(value, preferredKeys) {
-  const keys = [
-    ...preferredKeys.filter((key) => key in value),
-    ...Object.keys(value).filter((key) => !preferredKeys.includes(key)).sort()
-  ];
-  if (!keys.length) return "\u672A\u63D0\u4F9B";
-  return keys.map((key) => `${key}=${formatStructuredValue(value[key])}`).join(" \xB7 ");
-}
-function formatStructuredValue(value) {
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  return JSON.stringify(value);
-}
-
 // src/task-navigation.ts
 function taskNavigationNewLeaf(origin) {
   return origin === "child";
 }
 
 // src/vault-path.ts
-var path3 = __toESM(require("path"));
+var path2 = __toESM(require("path"));
 var VaultPathResolutionError = class extends Error {
   constructor() {
     super("\u672A\u627E\u5230 Evidence Vault \u8DEF\u5F84\uFF0C\u8BF7\u5728\u63D2\u4EF6\u8BBE\u7F6E\u4E2D\u914D\u7F6E\uFF0C\u6216\u4F7F\u7528\u672C\u5730\u6587\u4EF6\u7CFB\u7EDF Vault\u3002");
@@ -1368,7 +1308,7 @@ function resolveVaultPath(input) {
     input.adapterBasePath || ""
   ].map((value) => value.trim()).find(Boolean);
   if (!candidate) throw new VaultPathResolutionError();
-  return path3.resolve(candidate);
+  return path2.resolve(candidate);
 }
 
 // src/diagnostic-clipboard.ts
@@ -1394,6 +1334,7 @@ var DEFAULT_SETTINGS = {
   vaultPath: "",
   apiUrl: ""
 };
+var DEFAULT_TASKNOTES_API_URL = "http://127.0.0.1:18090";
 var EvidenceReviewCommandError = class extends Error {
   constructor(code, message) {
     super(message);
@@ -1507,27 +1448,51 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
       formatShellCommand(this.createSnapshotInvocation(taskPath, "dashboard"))
     );
   }
-  async submitEvidenceReview(input) {
-    const invocation = buildReviewInvocation({
-      flowdeskRoot: this.resolveFlowDeskRoot(),
-      taskPath: input.taskPath,
-      digest: input.digest,
-      decision: input.decision,
-      requirementUids: input.requirementUids,
-      note: input.note,
-      vaultPath: this.resolveEvidenceVaultPath(),
-      apiUrl: this.settings.apiUrl.trim()
-    });
+  /**
+   * 以 TaskNotes 为底座提交复核：tags 加 reviewed，并向 details 追加复核记录。
+   * 不依赖 evidence bundle digest，也不做 CAS 冲突检测。
+   */
+  async submitTaskReview(input) {
     try {
-      await execFileAsync(invocation.executable, invocation.args, {
-        cwd: invocation.cwd,
-        maxBuffer: 1024 * 1024,
-        timeout: 3e4
+      const task = await this.requestTaskNotes("GET", `/api/tasks/${encodeURIComponent(input.taskPath)}`);
+      const existingTags = Array.isArray(task == null ? void 0 : task.tags) ? task.tags.filter((tag) => typeof tag === "string") : [];
+      const write = buildTaskNotesReviewWrite({
+        taskPath: input.taskPath,
+        decision: input.decision,
+        note: input.note,
+        reviewedAt: formatReviewTimestamp(/* @__PURE__ */ new Date()),
+        existingTags
+      });
+      await this.requestTaskNotes("PATCH", `/api/tasks/${encodeURIComponent(input.taskPath)}`, {
+        tags: write.tags
+      });
+      await this.requestTaskNotes("POST", `/api/tasks/${encodeURIComponent(input.taskPath)}/details/append`, {
+        heading: write.heading,
+        content: write.detailsAppend
       });
     } catch (error) {
       const failure = parseReviewCommandFailure(error);
       throw new EvidenceReviewCommandError(failure.code, failure.message);
     }
+  }
+  async requestTaskNotes(method, endpoint, body) {
+    const baseUrl = (this.settings.apiUrl.trim() || DEFAULT_TASKNOTES_API_URL).replace(
+      /\/+$/,
+      ""
+    );
+    const response = await fetch(`${baseUrl}${endpoint}`, {
+      method,
+      headers: body ? { "Content-Type": "application/json" } : void 0,
+      body: body ? JSON.stringify(body) : void 0
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw Object.assign(
+        new Error(`TaskNotes API ${response.status}: ${detail || response.statusText}`),
+        { stdout: detail }
+      );
+    }
+    return await response.json().catch(() => ({}));
   }
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -1546,10 +1511,10 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     const candidates = [
       expandHomePath(this.settings.flowdeskRoot.trim()),
       expandHomePath(process.env.FLOWDESK_PLUGIN_ROOT || ""),
-      path4.resolve(__dirname, "..", "..")
+      path3.resolve(__dirname, "..", "..")
     ].filter(Boolean);
     for (const candidate of candidates) {
-      if ((0, import_fs.existsSync)(path4.join(candidate, "bin", "flowdesk-execution-snapshot"))) {
+      if ((0, import_fs.existsSync)(path3.join(candidate, "bin", "flowdesk-execution-snapshot"))) {
         return candidate;
       }
     }
@@ -1869,18 +1834,16 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         new import_obsidian.Notice(`\u65E0\u6CD5\u590D\u5236 CLI \u547D\u4EE4\uFF1A${String(error)}`);
       }
     });
-    if (model && canReviewEvidence({
-      trustLevel: model.currentTask.trustLevel,
-      reviewStatus: model.review.status,
+    if (model && canReviewTask({
+      lifecycleStatus: model.currentTask.completion.lifecycleStatus,
       observationTrustworthy: model.observation.isTrustworthy,
       sourceIdentity: model.observation.sourceIdentity,
       sourceIdentityMatch: model.observation.sourceIdentityMatch,
-      evidenceBundleDigest: model.review.evidenceBundleDigest,
-      requirementUids: model.review.requirementUids
+      isStale: model.observation.isStale
     })) {
       const review = toolbar.createEl("button", {
         cls: "flowdesk-toolbar-button flowdesk-review-button",
-        attr: { "aria-label": "\u590D\u6838\u8BC1\u636E", title: "\u590D\u6838\u8BC1\u636E" }
+        attr: { "aria-label": "\u590D\u6838\u4EFB\u52A1", title: "\u590D\u6838\u4EFB\u52A1" }
       });
       (0, import_obsidian.setIcon)(review, "clipboard-check");
       review.addEventListener("click", () => this.openEvidenceReview(model));
@@ -1897,18 +1860,11 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     refresh.addEventListener("click", () => void this.refreshCurrentTask());
   }
   openEvidenceReview(model) {
-    const digest = model.review.evidenceBundleDigest;
-    if (!digest) {
-      new import_obsidian.Notice("\u5F53\u524D snapshot \u6CA1\u6709\u53EF\u590D\u6838\u7684 evidence bundle digest\u3002");
-      return;
-    }
     new EvidenceReviewModal(this.app, async (decision, note) => {
       try {
-        await this.plugin.submitEvidenceReview({
+        await this.plugin.submitTaskReview({
           taskPath: model.currentTask.id,
-          digest,
           decision,
-          requirementUids: model.review.requirementUids,
           note
         });
         new import_obsidian.Notice(decision === "approved" ? "\u590D\u6838\u5DF2\u786E\u8BA4" : "\u5DF2\u8981\u6C42\u4FEE\u6539");
@@ -1918,11 +1874,6 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
           "review_request_rejected",
           error instanceof Error ? error.message : String(error)
         );
-        if (failure.code === "review_conflict") {
-          new import_obsidian.Notice("\u8BC1\u636E\u5DF2\u53D8\u5316\uFF0C\u5DF2\u5237\u65B0 Dashboard\uFF1B\u8BF7\u590D\u6838\u6700\u65B0\u7ED3\u679C\u3002");
-          await this.refreshCurrentTask();
-          return;
-        }
         new import_obsidian.Notice(`\u590D\u6838\u5931\u8D25\uFF1A${failure.message}`);
       }
     }).open();
@@ -2068,7 +2019,6 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     }
   }
   renderDetails(container, model, summary, diagnosticGroups) {
-    var _a;
     const diagnosticCount = diagnosticGroups.reduce(
       (total, group) => total + group.diagnostics.length,
       0
@@ -2151,78 +2101,6 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         this.disclosureState.scenariosOpen = open;
       }
     );
-    const derivedAcceptance = model.acceptance.map(
-      (item) => createDerivedAcceptancePresentation(item)
-    );
-    const acceptanceTotal = derivedAcceptance.length || model.contract.acceptance.length;
-    const checkedAcceptance = derivedAcceptance.length ? derivedAcceptance.filter((item) => item.state === "done").length : model.contract.acceptance.filter((item) => item.checked === true).length;
-    const acceptance = createSection(
-      body,
-      "\u9A8C\u6536\u6807\u51C6",
-      `${checkedAcceptance} / ${acceptanceTotal} \u5DF2\u901A\u8FC7`
-    );
-    renderedSections.set("acceptance", acceptance);
-    if (!acceptanceTotal) {
-      acceptance.createDiv({ cls: "flowdesk-muted", text: "producer \u672A\u63D0\u4F9B\u9A8C\u6536\u9879\u3002" });
-    } else {
-      const progress = acceptance.createDiv({ cls: "flowdesk-acceptance-progress" });
-      progress.createDiv({
-        cls: "flowdesk-acceptance-progress-value",
-        attr: {
-          style: `width: ${Math.round(
-            checkedAcceptance / acceptanceTotal * 100
-          )}%`
-        }
-      });
-      const acceptanceGrid = acceptance.createDiv({
-        cls: "flowdesk-acceptance-grid"
-      });
-      if (derivedAcceptance.length) {
-        for (const item of derivedAcceptance) {
-          const row = acceptanceGrid.createDiv({ cls: "flowdesk-acceptance-item" });
-          row.createSpan({
-            cls: item.state === "done" ? "flowdesk-acceptance-check is-checked" : "flowdesk-acceptance-check",
-            text: item.state === "done" ? "\u2713" : "\u25CB"
-          });
-          const copy = row.createDiv({ cls: "flowdesk-acceptance-copy" });
-          copy.createDiv({ text: `${item.uid} \xB7 ${item.label}` });
-          copy.createDiv({
-            cls: "flowdesk-acceptance-evidence",
-            text: `${item.status} \xB7 ${item.evidence}`
-          });
-        }
-      } else {
-        for (const item of model.contract.acceptance) {
-          const row = acceptanceGrid.createDiv({ cls: "flowdesk-acceptance-item" });
-          row.createSpan({
-            cls: item.checked ? "flowdesk-acceptance-check is-checked" : "flowdesk-acceptance-check",
-            text: item.checked ? "\u2713" : "\u25CB"
-          });
-          row.createSpan({ text: (_a = item.text) != null ? _a : "\u672A\u63D0\u4F9B" });
-        }
-      }
-    }
-    const structuredEvidence = model.evidenceRequirements.map(
-      (requirement) => createStructuredEvidencePresentation(requirement, model.review.status)
-    );
-    const validEvidence = structuredEvidence.length ? structuredEvidence.filter((item) => item.state === "done").length : Object.values(model.evidence).filter((health) => health === "valid").length;
-    const evidenceTotal = structuredEvidence.length || 3;
-    const evidence = createSection(
-      body,
-      "\u6267\u884C\u8BC1\u636E",
-      validEvidence === evidenceTotal ? "\u5168\u90E8\u6709\u6548" : `${validEvidence} / ${evidenceTotal} \u6709\u6548`
-    );
-    renderedSections.set("evidence", evidence);
-    const evidenceGrid = evidence.createDiv({ cls: "flowdesk-evidence-grid" });
-    if (structuredEvidence.length) {
-      for (const item of structuredEvidence) {
-        structuredEvidenceItem(evidenceGrid, item);
-      }
-    } else {
-      evidenceItem(evidenceGrid, "\u6267\u884C\u7ED3\u679C", model.evidence.execution);
-      evidenceItem(evidenceGrid, "\u9A8C\u8BC1\u7ED3\u679C", model.evidence.verification);
-      evidenceItem(evidenceGrid, "\u4EA4\u4ED8\u8BB0\u5F55", model.evidence.delivery);
-    }
     const observation = createSection(
       body,
       "\u89C2\u5BDF\u4E0E\u6765\u6E90",
@@ -2331,12 +2209,12 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
           text: `${group.status} \xB7 ${group.diagnostics.length} \u9879`
         });
         group.diagnostics.forEach((diagnostic) => {
-          var _a2, _b;
+          var _a, _b;
           const baseKey = createDiagnosticDisclosureKey(
             group.taskId,
             diagnostic.diagnostic
           );
-          const occurrence = (_a2 = diagnosticKeyOccurrences.get(baseKey)) != null ? _a2 : 0;
+          const occurrence = (_a = diagnosticKeyOccurrences.get(baseKey)) != null ? _a : 0;
           diagnosticKeyOccurrences.set(baseKey, occurrence + 1);
           const disclosureKey = occurrence ? `${baseKey}#${occurrence + 1}` : baseKey;
           activeDiagnosticKeys.push(disclosureKey);
@@ -2444,10 +2322,10 @@ var EvidenceReviewModal = class extends import_obsidian.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("flowdesk-review-modal");
-    contentEl.createEl("h2", { text: "\u590D\u6838\u7ED3\u6784\u5316\u8BC1\u636E" });
+    contentEl.createEl("h2", { text: "\u590D\u6838\u5F53\u524D\u4EFB\u52A1" });
     contentEl.createDiv({
       cls: "flowdesk-muted",
-      text: "\u63D0\u4EA4\u65F6\u4F1A\u6309\u5F53\u524D evidence bundle digest \u505A\u51B2\u7A81\u68C0\u67E5\u3002"
+      text: "\u7ED3\u8BBA\u5199\u56DE TaskNotes\uFF1A\u901A\u8FC7\u4F1A\u52A0 reviewed \u6807\u7B7E\uFF0C\u5E76\u5728\u6B63\u6587\u8FFD\u52A0\u590D\u6838\u8BB0\u5F55\u3002"
     });
     new import_obsidian.Setting(contentEl).setName("\u590D\u6838\u8BF4\u660E").setDesc("\u53EF\u9009\uFF1B\u8981\u6C42\u4FEE\u6539\u65F6\u5EFA\u8BAE\u8BF4\u660E\u539F\u56E0\u3002").addTextArea(
       (text2) => text2.setPlaceholder("\u8865\u5145\u590D\u6838\u8BF4\u660E").onChange((value) => {
@@ -2584,35 +2462,6 @@ function diagnosticRow(container, label, value) {
   row.createSpan({ cls: "flowdesk-summary-label", text: `${label}\uFF1A` });
   row.createSpan({ text: value });
 }
-function evidenceItem(container, label, health) {
-  const state = getEvidenceDisplayState(health);
-  const item = container.createDiv({ cls: "flowdesk-evidence-item" });
-  item.createDiv({
-    cls: `flowdesk-evidence-title is-${state}`,
-    text: `${statusSymbol(state)} ${label}`
-  });
-  item.createDiv({
-    cls: "flowdesk-evidence-summary",
-    text: formatEvidenceSummary(label, health).split("\uFF1A").pop() || "\u672A\u77E5"
-  });
-}
-function structuredEvidenceItem(container, presentation) {
-  const item = container.createDiv({ cls: "flowdesk-evidence-item" });
-  item.createDiv({
-    cls: `flowdesk-evidence-title is-${presentation.state}`,
-    text: `${statusSymbol(presentation.state)} ${presentation.uid}`
-  });
-  item.createDiv({
-    cls: "flowdesk-evidence-summary",
-    text: presentation.status
-  });
-  const details = item.createDiv({ cls: "flowdesk-evidence-fields" });
-  diagnosticRow(details, "\u65B9\u6CD5", presentation.method);
-  diagnosticRow(details, "\u9884\u671F", presentation.expected);
-  diagnosticRow(details, "\u5B9E\u9645", presentation.actual);
-  diagnosticRow(details, "\u6765\u6E90", presentation.provenance);
-  diagnosticRow(details, "\u590D\u6838", presentation.review);
-}
 function observationField(container, label, value) {
   const cell = container.createDiv({ cls: "flowdesk-observation-cell" });
   cell.createDiv({ cls: "flowdesk-summary-label", text: label });
@@ -2621,27 +2470,19 @@ function observationField(container, label, value) {
 function formatSemanticStatus(value) {
   if (value === "valid") return "\u8BED\u4E49\u6709\u6548";
   if (value === "invalid") return "\u8BED\u4E49\u65E0\u6548";
+  if (value === "not_applicable") return "\u65E0\u7ED3\u6784\u5316\u5408\u540C";
   return "\u8BED\u4E49\u5F85\u786E\u8BA4";
 }
-function normalizeStatus(value) {
-  const status = String(value || "unknown").toLowerCase().replace(/_/g, "-");
-  if (status === "in-progress") return "running";
-  if (status === "complete" || status === "completed") return "done";
-  return ["done", "running", "open", "blocked", "error", "valid", "invalid", "unknown"].includes(status) ? status : "unknown";
-}
-function statusSymbol(value) {
-  const status = normalizeStatus(value);
-  if (status === "done" || status === "valid") return "\u2713";
-  if (status === "running") return "\u25C9";
-  if (status === "blocked" || status === "error" || status === "invalid") return "!";
-  return "\u2022";
+function formatReviewTimestamp(now) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 }
 function taskTitleFromPath(taskPath) {
-  return path4.basename(taskPath, path4.extname(taskPath));
+  return path3.basename(taskPath, path3.extname(taskPath));
 }
 function expandHomePath(value) {
   if (value === "~") return (0, import_os.homedir)();
-  if (value.startsWith("~/")) return path4.join((0, import_os.homedir)(), value.slice(2));
+  if (value.startsWith("~/")) return path3.join((0, import_os.homedir)(), value.slice(2));
   return value;
 }
 function formatTime(date) {

@@ -269,7 +269,7 @@ test("Parent 只生成 direct child 紧凑行，Leaf 不生成空 child 区域",
     status: "进行中",
     tone: "running",
     summary: "等待当前任务验证",
-    meta: "验证无效",
+    meta: "",
   });
 
   const leafSnapshot = createSnapshot();
@@ -318,7 +318,7 @@ test("子任务已完成但未可信时优先显示需处理而不是绿色完�
   assert.equal(child.status, "需处理");
   assert.equal(child.tone, "error");
   assert.equal(child.summary, "找到 0 个 ## Task Contract v3");
-  assert.equal(child.meta, "TaskNotes 已完成 · 执行无效 · 验证无效");
+  assert.equal(child.meta, "TaskNotes 已完成");
 });
 
 test("child 只有真实阻塞关系存在时才在紧凑行显示", () => {
@@ -331,7 +331,7 @@ test("child 只有真实阻塞关系存在时才在紧凑行显示", () => {
 
   const child = createDashboardPresentation(model).children[0];
 
-  assert.equal(child.meta, "阻塞于 Dependency · 验证无效");
+  assert.equal(child.meta, "阻塞于 Dependency");
 });
 
 test("合同摘要默认展开，完整详情默认关闭，同 task 刷新保持选择", () => {
@@ -472,16 +472,9 @@ test("详情存在诊断时优先展示诊断，否则保持合同审阅顺序",
   assert.deepEqual(resolveOrder(true), [
     "diagnostics",
     "contract",
-    "acceptance",
-    "evidence",
     "observation",
   ]);
-  assert.deepEqual(resolveOrder(false), [
-    "contract",
-    "acceptance",
-    "evidence",
-    "observation",
-  ]);
+  assert.deepEqual(resolveOrder(false), ["contract", "observation"]);
 });
 
 test("legacy 摘要同时证明观察、来源和历史验证边界", () => {
@@ -524,6 +517,201 @@ test("合同异常但 diagnostics 为空时不显示健康", () => {
   );
   assert.equal(presentation.trust.tone, "warning");
   assert.equal(presentation.trust.contractTone, "error");
+});
+
+function createTasknotesOnlySnapshot() {
+  return {
+    snapshot_schema_version: 4,
+    snapshot_model: "task-centric",
+    source: { task_id: taskId, generated_at: "2026-08-08T15:00:00Z" },
+    observation: {
+      health: "healthy",
+      current_task: "observed",
+      parent: "not_applicable",
+      children: "observed",
+      descendants: "healthy",
+      tasknotes_api: "ok",
+      source_identity_match: true,
+      stale: false,
+    },
+    contract: { status: "not_applicable", task_contract: null },
+    current_task: {
+      id: taskId,
+      title: "Parent",
+      status: "in-progress",
+      has_children: true,
+      rollup_state: "running",
+      completion: {
+        lifecycle_status: "in-progress",
+        contract_status: "not_applicable",
+        evidence_status: "not_applicable",
+        verification_status: "not_applicable",
+        review_status: "not_applicable",
+        acceptance_status: "not_applicable",
+        trust_level: "tasknotes_only",
+        trusted_done: false,
+      },
+      evidence_requirements: [],
+      acceptance: [],
+      review: { status: "not_applicable" },
+    },
+    parent: null,
+    children: [
+      {
+        id: "Tasks/Child A.md",
+        title: "Child A",
+        status: "done",
+        is_blocked: false,
+        blocked_by: [],
+        has_children: false,
+        rollup_state: "done",
+        completion: {
+          lifecycle_status: "done",
+          trust_level: "tasknotes_only",
+          trusted_done: true,
+        },
+        evidence_requirements: [],
+        acceptance: [],
+        review: { status: "not_applicable" },
+        primary_diagnostic: null,
+      },
+      {
+        id: "Tasks/Child B.md",
+        title: "Child B",
+        status: "open",
+        is_blocked: true,
+        blocked_by: ["Tasks/Child A.md"],
+        has_children: false,
+        rollup_state: "blocked",
+        completion: {
+          lifecycle_status: "open",
+          trust_level: "tasknotes_only",
+          trusted_done: false,
+        },
+        evidence_requirements: [],
+        acceptance: [],
+        review: { status: "not_applicable" },
+        primary_diagnostic: null,
+      },
+    ],
+    rollup: {
+      state: "running",
+      trusted_done: false,
+      has_children: true,
+      children_total: 2,
+      children_trusted_done: 1,
+      children_complete: false,
+      blocked_children: [{ id: "Tasks/Child B.md", title: "Child B" }],
+      incomplete_children: [{ id: "Tasks/Child B.md", title: "Child B" }],
+    },
+    diagnostics: [],
+    next_actions: [
+      {
+        kind: "dispatch_ready_child",
+        summary: "派发 Child B",
+        command: "flow-spawn 'Tasks/Child B.md'",
+      },
+    ],
+    protocol: {
+      producer_protocol_version: 4,
+      task_contract_schema: "flowdesk.task-contract/4",
+      evidence_contract_schema: "flowdesk.evidence-contract/1",
+      evidence_record_schema: "flowdesk.evidence-record/1",
+      review_record_schema: "flowdesk.review-record/1",
+    },
+  };
+}
+
+test("tasknotes_only 父任务把父子进度作为主状态，不误报合同问题", () => {
+  const model = createDashboardViewModel(createTasknotesOnlySnapshot(), {
+    expectedTaskPath: taskId,
+  });
+  const presentation = createDashboardPresentation(model);
+
+  // contract.status=not_applicable 不是合同异常，不得再走「任务合同存在问题」。
+  assert.notEqual(presentation.primaryStatus.title, "任务合同存在问题");
+  assert.equal(presentation.primaryStatus.location, "直接子任务");
+  assert.match(presentation.primaryStatus.title, /1\s*\/\s*2/);
+  // 有阻塞子任务时必须点名，并把 next_actions 作为下一步。
+  assert.match(presentation.primaryStatus.reason, /Child B/);
+  assert.equal(presentation.primaryStatus.remediation, "派发 Child B");
+  assert.equal(presentation.primaryStatus.tone, "error");
+});
+
+test("tasknotes_only 全部子任务可信完成时主状态为健康收口", () => {
+  const snapshot = createTasknotesOnlySnapshot();
+  snapshot.current_task.status = "done";
+  snapshot.current_task.completion.lifecycle_status = "done";
+  snapshot.current_task.completion.trusted_done = true;
+  snapshot.children[1].status = "done";
+  snapshot.children[1].is_blocked = false;
+  snapshot.children[1].blocked_by = [];
+  snapshot.children[1].completion.lifecycle_status = "done";
+  snapshot.children[1].completion.trusted_done = true;
+  snapshot.rollup.trusted_done = true;
+  snapshot.rollup.children_trusted_done = 2;
+  snapshot.rollup.children_complete = true;
+  snapshot.rollup.blocked_children = [];
+  snapshot.rollup.incomplete_children = [];
+
+  const model = createDashboardViewModel(snapshot, { expectedTaskPath: taskId });
+  const presentation = createDashboardPresentation(model);
+
+  assert.equal(presentation.primaryStatus.tone, "healthy");
+  assert.match(presentation.primaryStatus.title, /2\s*\/\s*2/);
+  assert.equal(presentation.primaryStatus.location, "直接子任务");
+});
+
+test("has_children 但 rollup 计数为 0 时不谎报可信完成", () => {
+  const snapshot = createTasknotesOnlySnapshot();
+  snapshot.children = [];
+  snapshot.rollup.children_total = 0;
+  snapshot.rollup.children_trusted_done = 0;
+  snapshot.rollup.blocked_children = [];
+  snapshot.rollup.incomplete_children = [];
+
+  const model = createDashboardViewModel(snapshot, { expectedTaskPath: taskId });
+  const presentation = createDashboardPresentation(model);
+
+  assert.equal(presentation.primaryStatus.tone, "warning");
+  assert.match(presentation.primaryStatus.title, /0\s*\/\s*0/);
+});
+
+test("tasknotes_only trust strip 讲 TaskNotes 底座而非未知合同", () => {
+  const model = createDashboardViewModel(createTasknotesOnlySnapshot(), {
+    expectedTaskPath: taskId,
+  });
+  const presentation = createDashboardPresentation(model);
+
+  // not_applicable 不是「未知」，不得再显示合同状态未知这类空壳文案。
+  assert.notEqual(presentation.trust.contractLabel, "合同状态未知");
+  assert.equal(presentation.trust.contractLabel, "TaskNotes 状态为准");
+  assert.equal(presentation.trust.contractTone, "muted");
+  assert.equal(presentation.trust.label, "观察可信");
+});
+
+test("tasknotes_only leaf 任务主状态讲自身进度而非子任务", () => {
+  const snapshot = createTasknotesOnlySnapshot();
+  snapshot.current_task.has_children = false;
+  snapshot.children = [];
+  snapshot.rollup = {
+    state: "running",
+    trusted_done: false,
+    has_children: false,
+    children_total: 0,
+    children_trusted_done: 0,
+    children_complete: true,
+    blocked_children: [],
+    incomplete_children: [],
+  };
+
+  const model = createDashboardViewModel(snapshot, { expectedTaskPath: taskId });
+  const presentation = createDashboardPresentation(model);
+
+  assert.equal(presentation.kind, "leaf");
+  assert.equal(presentation.primaryStatus.location, "当前任务");
+  assert.notEqual(presentation.primaryStatus.title, "任务合同存在问题");
+  assert.equal(presentation.primaryStatus.remediation, "派发 Child B");
 });
 
 test("整行导航只响应 Enter 与 Space 键", () => {

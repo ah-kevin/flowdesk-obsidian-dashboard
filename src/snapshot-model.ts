@@ -723,14 +723,15 @@ function normalizeProtocol(
     reviewRecordSchema: normalizeText(protocol.review_record_schema, ""),
     legacyPolicy: normalizeText(protocol.legacy_policy, ""),
   };
+  // 判定层拆除后 producer 不再产 legacy_policy，因此它只作为显式 legacy 路径的
+  // 附加标记，不能作为标准 v4 protocol 的必要条件——否则 supported 恒为 false。
   return {
     supported:
       (normalized.producerProtocolVersion === 4 &&
         normalized.taskContractSchema === "flowdesk.task-contract/4" &&
         normalized.evidenceContractSchema === "flowdesk.evidence-contract/1" &&
         normalized.evidenceRecordSchema === "flowdesk.evidence-record/1" &&
-        normalized.reviewRecordSchema === "flowdesk.review-record/1" &&
-        normalized.legacyPolicy === "explicit_legacy_v3") ||
+        normalized.reviewRecordSchema === "flowdesk.review-record/1") ||
       (normalized.producerProtocolVersion === 4 &&
         normalized.taskContractSchema === "legacy_v3" &&
         protocol.evidence_contract_schema === null &&

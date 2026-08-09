@@ -38,8 +38,8 @@ import {
   type SnapshotInvocation,
 } from "./snapshot-invocation";
 import {
-  buildReviewInvocation,
-  canReviewEvidence,
+  buildTaskNotesReviewWrite,
+  canReviewTask,
   parseReviewCommandFailure,
   type ReviewDecision,
 } from "./review-invocation";
@@ -65,16 +65,9 @@ import {
   type DisclosureState,
 } from "./dashboard-presentation";
 import {
-  createDerivedAcceptancePresentation,
-  createStructuredEvidencePresentation,
-  formatEvidenceSummary,
-  getEvidenceDisplayState,
-} from "./evidence-presentation";
-import {
   createDashboardViewModel,
   resolveDiagnosticNavigation,
   type DashboardViewModel,
-  type EvidenceHealth,
   type ExecutionSnapshot,
   type SnapshotContractItem,
   type SnapshotDiagnostic,
@@ -104,6 +97,8 @@ const DEFAULT_SETTINGS: FlowDeskDashboardSettings = {
   vaultPath: "",
   apiUrl: "",
 };
+
+const DEFAULT_TASKNOTES_API_URL = "http://127.0.0.1:18090";
 
 interface ExecFileFailure extends Error {
   code?: number | string;
@@ -245,33 +240,64 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     );
   }
 
-  async submitEvidenceReview(input: {
+  /**
+   * 以 TaskNotes 为底座提交复核：tags 加 reviewed，并向 details 追加复核记录。
+   * 不依赖 evidence bundle digest，也不做 CAS 冲突检测。
+   */
+  async submitTaskReview(input: {
     taskPath: string;
-    digest: string;
     decision: ReviewDecision;
-    requirementUids: string[];
     note: string;
   }): Promise<void> {
-    const invocation = buildReviewInvocation({
-      flowdeskRoot: this.resolveFlowDeskRoot(),
-      taskPath: input.taskPath,
-      digest: input.digest,
-      decision: input.decision,
-      requirementUids: input.requirementUids,
-      note: input.note,
-      vaultPath: this.resolveEvidenceVaultPath(),
-      apiUrl: this.settings.apiUrl.trim(),
-    });
     try {
-      await execFileAsync(invocation.executable, invocation.args, {
-        cwd: invocation.cwd,
-        maxBuffer: 1024 * 1024,
-        timeout: 30_000,
+      const task = await this.requestTaskNotes<{
+        tags?: unknown;
+      }>("GET", `/api/tasks/${encodeURIComponent(input.taskPath)}`);
+      const existingTags = Array.isArray(task?.tags)
+        ? task.tags.filter((tag): tag is string => typeof tag === "string")
+        : [];
+      const write = buildTaskNotesReviewWrite({
+        taskPath: input.taskPath,
+        decision: input.decision,
+        note: input.note,
+        reviewedAt: formatReviewTimestamp(new Date()),
+        existingTags,
+      });
+      await this.requestTaskNotes("PATCH", `/api/tasks/${encodeURIComponent(input.taskPath)}`, {
+        tags: write.tags,
+      });
+      await this.requestTaskNotes("POST", `/api/tasks/${encodeURIComponent(input.taskPath)}/details/append`, {
+        heading: write.heading,
+        content: write.detailsAppend,
       });
     } catch (error) {
       const failure = parseReviewCommandFailure(error);
       throw new EvidenceReviewCommandError(failure.code, failure.message);
     }
+  }
+
+  private async requestTaskNotes<T>(
+    method: "GET" | "PATCH" | "POST",
+    endpoint: string,
+    body?: unknown
+  ): Promise<T> {
+    const baseUrl = (this.settings.apiUrl.trim() || DEFAULT_TASKNOTES_API_URL).replace(
+      /\/+$/,
+      ""
+    );
+    const response = await fetch(`${baseUrl}${endpoint}`, {
+      method,
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw Object.assign(
+        new Error(`TaskNotes API ${response.status}: ${detail || response.statusText}`),
+        { stdout: detail }
+      );
+    }
+    return (await response.json().catch(() => ({}))) as T;
   }
 
   async loadSettings() {
@@ -653,19 +679,17 @@ class FlowDeskDashboardView extends ItemView {
     });
     if (
       model &&
-      canReviewEvidence({
-        trustLevel: model.currentTask.trustLevel,
-        reviewStatus: model.review.status,
+      canReviewTask({
+        lifecycleStatus: model.currentTask.completion.lifecycleStatus,
         observationTrustworthy: model.observation.isTrustworthy,
         sourceIdentity: model.observation.sourceIdentity,
         sourceIdentityMatch: model.observation.sourceIdentityMatch,
-        evidenceBundleDigest: model.review.evidenceBundleDigest,
-        requirementUids: model.review.requirementUids,
+        isStale: model.observation.isStale,
       })
     ) {
       const review = toolbar.createEl("button", {
         cls: "flowdesk-toolbar-button flowdesk-review-button",
-        attr: { "aria-label": "复核证据", title: "复核证据" },
+        attr: { "aria-label": "复核任务", title: "复核任务" },
       });
       setIcon(review, "clipboard-check");
       review.addEventListener("click", () => this.openEvidenceReview(model));
@@ -683,18 +707,11 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   private openEvidenceReview(model: DashboardViewModel) {
-    const digest = model.review.evidenceBundleDigest;
-    if (!digest) {
-      new Notice("当前 snapshot 没有可复核的 evidence bundle digest。");
-      return;
-    }
     new EvidenceReviewModal(this.app, async (decision, note) => {
       try {
-        await this.plugin.submitEvidenceReview({
+        await this.plugin.submitTaskReview({
           taskPath: model.currentTask.id,
-          digest,
           decision,
-          requirementUids: model.review.requirementUids,
           note,
         });
         new Notice(decision === "approved" ? "复核已确认" : "已要求修改");
@@ -707,11 +724,6 @@ class FlowDeskDashboardView extends ItemView {
                 "review_request_rejected",
                 error instanceof Error ? error.message : String(error)
               );
-        if (failure.code === "review_conflict") {
-          new Notice("证据已变化，已刷新 Dashboard；请复核最新结果。");
-          await this.refreshCurrentTask();
-          return;
-        }
         new Notice(`复核失败：${failure.message}`);
       }
     }).open();
@@ -974,89 +986,6 @@ class FlowDeskDashboardView extends ItemView {
         this.disclosureState.scenariosOpen = open;
       }
     );
-    const derivedAcceptance = model.acceptance.map((item) =>
-      createDerivedAcceptancePresentation(item)
-    );
-    const acceptanceTotal = derivedAcceptance.length || model.contract.acceptance.length;
-    const checkedAcceptance = derivedAcceptance.length
-      ? derivedAcceptance.filter((item) => item.state === "done").length
-      : model.contract.acceptance.filter((item) => item.checked === true).length;
-    const acceptance = createSection(
-      body,
-      "验收标准",
-      `${checkedAcceptance} / ${acceptanceTotal} 已通过`
-    );
-    renderedSections.set("acceptance", acceptance);
-    if (!acceptanceTotal) {
-      acceptance.createDiv({ cls: "flowdesk-muted", text: "producer 未提供验收项。" });
-    } else {
-      const progress = acceptance.createDiv({ cls: "flowdesk-acceptance-progress" });
-      progress.createDiv({
-        cls: "flowdesk-acceptance-progress-value",
-        attr: {
-          style: `width: ${Math.round(
-            (checkedAcceptance / acceptanceTotal) * 100
-          )}%`,
-        },
-      });
-      const acceptanceGrid = acceptance.createDiv({
-        cls: "flowdesk-acceptance-grid",
-      });
-      if (derivedAcceptance.length) {
-        for (const item of derivedAcceptance) {
-          const row = acceptanceGrid.createDiv({ cls: "flowdesk-acceptance-item" });
-          row.createSpan({
-            cls: item.state === "done"
-              ? "flowdesk-acceptance-check is-checked"
-              : "flowdesk-acceptance-check",
-            text: item.state === "done" ? "✓" : "○",
-          });
-          const copy = row.createDiv({ cls: "flowdesk-acceptance-copy" });
-          copy.createDiv({ text: `${item.uid} · ${item.label}` });
-          copy.createDiv({
-            cls: "flowdesk-acceptance-evidence",
-            text: `${item.status} · ${item.evidence}`,
-          });
-        }
-      } else {
-        for (const item of model.contract.acceptance) {
-          const row = acceptanceGrid.createDiv({ cls: "flowdesk-acceptance-item" });
-          row.createSpan({
-            cls: item.checked
-              ? "flowdesk-acceptance-check is-checked"
-              : "flowdesk-acceptance-check",
-            text: item.checked ? "✓" : "○",
-          });
-          row.createSpan({ text: item.text ?? "未提供" });
-        }
-      }
-    }
-    const structuredEvidence = model.evidenceRequirements.map((requirement) =>
-      createStructuredEvidencePresentation(requirement, model.review.status)
-    );
-    const validEvidence = structuredEvidence.length
-      ? structuredEvidence.filter((item) => item.state === "done").length
-      : Object.values(model.evidence).filter((health) => health === "valid").length;
-    const evidenceTotal = structuredEvidence.length || 3;
-    const evidence = createSection(
-      body,
-      "执行证据",
-      validEvidence === evidenceTotal
-        ? "全部有效"
-        : `${validEvidence} / ${evidenceTotal} 有效`
-    );
-    renderedSections.set("evidence", evidence);
-    const evidenceGrid = evidence.createDiv({ cls: "flowdesk-evidence-grid" });
-    if (structuredEvidence.length) {
-      for (const item of structuredEvidence) {
-        structuredEvidenceItem(evidenceGrid, item);
-      }
-    } else {
-      evidenceItem(evidenceGrid, "执行结果", model.evidence.execution);
-      evidenceItem(evidenceGrid, "验证结果", model.evidence.verification);
-      evidenceItem(evidenceGrid, "交付记录", model.evidence.delivery);
-    }
-
     const observation = createSection(
       body,
       "观察与来源",
@@ -1303,10 +1232,10 @@ class EvidenceReviewModal extends Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.addClass("flowdesk-review-modal");
-    contentEl.createEl("h2", { text: "复核结构化证据" });
+    contentEl.createEl("h2", { text: "复核当前任务" });
     contentEl.createDiv({
       cls: "flowdesk-muted",
-      text: "提交时会按当前 evidence bundle digest 做冲突检查。",
+      text: "结论写回 TaskNotes：通过会加 reviewed 标签，并在正文追加复核记录。",
     });
     new Setting(contentEl)
       .setName("复核说明")
@@ -1483,40 +1412,6 @@ function diagnosticRow(container: HTMLElement, label: string, value: string) {
   row.createSpan({ text: value });
 }
 
-function evidenceItem(container: HTMLElement, label: string, health: EvidenceHealth) {
-  const state = getEvidenceDisplayState(health);
-  const item = container.createDiv({ cls: "flowdesk-evidence-item" });
-  item.createDiv({
-    cls: `flowdesk-evidence-title is-${state}`,
-    text: `${statusSymbol(state)} ${label}`,
-  });
-  item.createDiv({
-    cls: "flowdesk-evidence-summary",
-    text: formatEvidenceSummary(label, health).split("：").pop() || "未知",
-  });
-}
-
-function structuredEvidenceItem(
-  container: HTMLElement,
-  presentation: ReturnType<typeof createStructuredEvidencePresentation>
-) {
-  const item = container.createDiv({ cls: "flowdesk-evidence-item" });
-  item.createDiv({
-    cls: `flowdesk-evidence-title is-${presentation.state}`,
-    text: `${statusSymbol(presentation.state)} ${presentation.uid}`,
-  });
-  item.createDiv({
-    cls: "flowdesk-evidence-summary",
-    text: presentation.status,
-  });
-  const details = item.createDiv({ cls: "flowdesk-evidence-fields" });
-  diagnosticRow(details, "方法", presentation.method);
-  diagnosticRow(details, "预期", presentation.expected);
-  diagnosticRow(details, "实际", presentation.actual);
-  diagnosticRow(details, "来源", presentation.provenance);
-  diagnosticRow(details, "复核", presentation.review);
-}
-
 function observationField(container: HTMLElement, label: string, value: string) {
   const cell = container.createDiv({ cls: "flowdesk-observation-cell" });
   cell.createDiv({ cls: "flowdesk-summary-label", text: label });
@@ -1526,24 +1421,17 @@ function observationField(container: HTMLElement, label: string, value: string) 
 function formatSemanticStatus(value: string): string {
   if (value === "valid") return "语义有效";
   if (value === "invalid") return "语义无效";
+  // 判定层拆除后 producer 不再产结构化合同，事实以 TaskNotes 为准。
+  if (value === "not_applicable") return "无结构化合同";
   return "语义待确认";
 }
 
-function normalizeStatus(value: unknown) {
-  const status = String(value || "unknown").toLowerCase().replace(/_/g, "-");
-  if (status === "in-progress") return "running";
-  if (status === "complete" || status === "completed") return "done";
-  return ["done", "running", "open", "blocked", "error", "valid", "invalid", "unknown"].includes(status)
-    ? status
-    : "unknown";
-}
-
-function statusSymbol(value: unknown) {
-  const status = normalizeStatus(value);
-  if (status === "done" || status === "valid") return "✓";
-  if (status === "running") return "◉";
-  if (status === "blocked" || status === "error" || status === "invalid") return "!";
-  return "•";
+function formatReviewTimestamp(now: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return (
+    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ` +
+    `${pad(now.getHours())}:${pad(now.getMinutes())}`
+  );
 }
 
 function taskTitleFromPath(taskPath: string) {
