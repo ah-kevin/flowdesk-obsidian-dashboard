@@ -858,7 +858,6 @@ test("v4 review_required 与缺失证据使用增量 trust/diagnostic 文案", (
     evidence_contract_schema: "flowdesk.evidence-contract/1",
     evidence_record_schema: "flowdesk.evidence-record/1",
     review_record_schema: "flowdesk.review-record/1",
-    legacy_policy: "explicit_legacy_v3",
   };
   base.contract = {
     status: "valid",

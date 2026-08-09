@@ -171,14 +171,16 @@ export function validateSnapshotEnvelope(
     return `Snapshot source identity 不匹配：请求 ${requestedTaskPath}，返回 ${formatEnvelopeValue(sourceTaskId)}。`;
   }
   if (schemaVersion === 4) {
+    // 判定层拆除后 producer 不再产 legacy_policy，因此它只作为显式 legacy 路径的
+    // 附加标记，不能作为标准 v4 protocol 的必要条件——否则任何 v4 任务都打不开。
+    // 本判定必须与 snapshot-model.ts 的 normalizeProtocol 语义保持一致。
     const protocol = snapshot.protocol;
     const v4ProtocolValid =
       protocol?.producer_protocol_version === 4 &&
       protocol.task_contract_schema === "flowdesk.task-contract/4" &&
       protocol.evidence_contract_schema === "flowdesk.evidence-contract/1" &&
       protocol.evidence_record_schema === "flowdesk.evidence-record/1" &&
-      protocol.review_record_schema === "flowdesk.review-record/1" &&
-      protocol.legacy_policy === "explicit_legacy_v3";
+      protocol.review_record_schema === "flowdesk.review-record/1";
     const legacyProtocolValid =
       protocol?.producer_protocol_version === 4 &&
       protocol.task_contract_schema === "legacy_v3" &&
