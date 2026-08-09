@@ -5,6 +5,10 @@ import test from "node:test";
 
 const source = readFileSync(path.join(process.cwd(), "src/main.ts"), "utf8");
 const styles = readFileSync(path.join(process.cwd(), "styles.css"), "utf8");
+const presentationSource = readFileSync(
+  path.join(process.cwd(), "src/dashboard-presentation.ts"),
+  "utf8"
+);
 
 test("任务标题独占一行，元信息与工具栏使用独立容器", () => {
   assert.match(source, /flowdesk-task-title/);
@@ -67,15 +71,19 @@ test("主诊断和逐条诊断都提供复制问题按钮", () => {
   assert.match(source, /event\.stopPropagation\(\)/);
 });
 
-test("人工复核使用原生 Modal、execFile argv 与冲突刷新", () => {
+test("人工复核复用原生 Modal 并以 TaskNotes 为写入底座", () => {
   assert.match(source, /class EvidenceReviewModal extends Modal/);
-  assert.match(source, /buildReviewInvocation\(/);
-  assert.match(source, /execFileAsync\(invocation\.executable, invocation\.args/);
+  assert.match(source, /buildTaskNotesReviewWrite\(/);
+  assert.match(source, /canReviewTask\(/);
   assert.match(source, /"approved"/);
   assert.match(source, /"changes_requested"/);
-  assert.match(source, /failure\.code === "review_conflict"/);
+  assert.match(source, /details\/append/);
   assert.match(source, /await this\.refreshCurrentTask\(\)/);
   assert.doesNotMatch(source, /shell:\s*true/);
+  // 不再依赖 evidence CLI 与 digest CAS。
+  assert.doesNotMatch(source, /flowdesk-evidence/);
+  assert.doesNotMatch(source, /evidenceBundleDigest/);
+  assert.doesNotMatch(source, /review_conflict/);
 });
 
 test("技术诊断使用来源标题和机器详情，不再平铺任务位置字段", () => {
@@ -141,39 +149,38 @@ test("REQ 与 SCN 使用独立详情，并为场景保留结构和来源入口",
   assert.match(source, /onToggle\(section\.open\)/);
 });
 
-test("完整详情采用合同、验收、证据、观察的原型布局", () => {
+test("完整详情保留合同与观察的原型布局", () => {
   assert.match(source, /text: "合同与交付详情"/);
   assert.match(source, /flowdesk-contract-section-head/);
-  assert.match(source, /flowdesk-acceptance-progress/);
-  assert.match(source, /flowdesk-acceptance-grid/);
-  assert.match(source, /flowdesk-evidence-grid/);
   assert.match(source, /flowdesk-observation-summary/);
   assert.match(source, /flowdesk-observation-details/);
-  assert.match(
-    source,
-    /"任务合同 v3"[\s\S]*?"验收标准"[\s\S]*?"执行证据"[\s\S]*?"观察与来源"/
-  );
+  assert.match(source, /"任务合同 v4"[\s\S]*?"观察与来源"/);
   assert.match(
     source,
     /const body = full\.createDiv[\s\S]*?resolveDetailSectionOrder\(diagnosticCount > 0\)/
   );
-  assert.match(styles, /\.flowdesk-acceptance-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,/s);
-  assert.match(styles, /\.flowdesk-evidence-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s);
 });
 
-test("v4 字段嵌入现有 Acceptance 与 Evidence section", () => {
-  assert.match(source, /createDerivedAcceptancePresentation\(/);
-  assert.match(source, /createStructuredEvidencePresentation\(/);
-  assert.match(source, /structuredEvidenceItem\(/);
-  assert.match(source, /presentation\.method/);
-  assert.match(source, /presentation\.expected/);
-  assert.match(source, /presentation\.actual/);
-  assert.match(source, /presentation\.provenance/);
-  assert.match(source, /presentation\.review/);
-  assert.match(
-    source,
-    /"任务合同 v3"[\s\S]*?"验收标准"[\s\S]*?"执行证据"[\s\S]*?"观察与来源"/
-  );
+test("判定层拆除后不再渲染 Evidence 与 Acceptance 空壳区块", () => {
+  // producer 不再产出 evidence_requirements / acceptance，这些区块只会显示 0/0。
+  assert.doesNotMatch(source, /"验收标准"/);
+  assert.doesNotMatch(source, /"执行证据"/);
+  assert.doesNotMatch(source, /flowdesk-acceptance-grid/);
+  assert.doesNotMatch(source, /flowdesk-evidence-grid/);
+  assert.doesNotMatch(source, /createStructuredEvidencePresentation/);
+  assert.doesNotMatch(source, /createDerivedAcceptancePresentation/);
+  assert.doesNotMatch(source, /producer 未提供验收项/);
+});
+
+test("父子进度在主区展示可信完成计数、阻塞与下一步", () => {
+  assert.match(source, /flowdesk-child-section/);
+  assert.match(source, /直接子任务 · \$\{children\.length\}/);
+  assert.match(source, /childrenTrustedDone\}\/\$\{model\.rollup\.childrenTotal\}/);
+  // 主状态卡必须消费 rollup 与 next_actions，而不是只讲合同状态。
+  assert.match(presentationSource, /createProgressStatus/);
+  assert.match(presentationSource, /blockedChildren/);
+  assert.match(presentationSource, /incompleteChildren/);
+  assert.match(presentationSource, /个子任务可信完成/);
 });
 
 test("技术诊断按当前任务和直接子任务分组并折叠机器字段", () => {

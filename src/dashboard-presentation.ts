@@ -3,6 +3,7 @@ import {
   type DashboardChildViewModel,
   type DashboardViewModel,
   type EvidenceHealth,
+  type RollupTaskReference,
   type SnapshotContractItem,
   type SnapshotDiagnostic,
 } from "./snapshot-model";
@@ -25,12 +26,7 @@ export interface DisclosureState {
   diagnosticSupportingOpen: Record<string, boolean>;
 }
 
-export type DetailSection =
-  | "diagnostics"
-  | "contract"
-  | "acceptance"
-  | "evidence"
-  | "observation";
+export type DetailSection = "diagnostics" | "contract" | "observation";
 
 export class DisclosureStateCache {
   private states = new Map<string, DisclosureState>();
@@ -248,12 +244,7 @@ export function resolveDiagnosticDisclosureOpen(
 export function resolveDetailSectionOrder(
   hasDiagnostics: boolean
 ): DetailSection[] {
-  const reviewOrder: DetailSection[] = [
-    "contract",
-    "acceptance",
-    "evidence",
-    "observation",
-  ];
+  const reviewOrder: DetailSection[] = ["contract", "observation"];
   return hasDiagnostics ? ["diagnostics", ...reviewOrder] : reviewOrder;
 }
 
@@ -371,17 +362,24 @@ function createTrustSummary(
   model: DashboardViewModel
 ): DashboardTrustPresentation {
   const isLegacy = model.currentTask.trustLevel === "legacy_v3";
-  const contractLabel = isLegacy
-    ? model.contract.semanticStatus === "valid"
-      ? "v3 历史合同有效"
-      : "v3 历史合同需检查"
+  // contract.status=not_applicable 是判定层拆除后的常态：事实以 TaskNotes 为准，
+  // 既不是「有效」也不是「未知」。
+  const isTasknotesOnly =
+    model.currentTask.completion.contractStatus === "not_applicable";
+  const contractLabel = isTasknotesOnly
+    ? "TaskNotes 状态为准"
+    : isLegacy
+      ? model.contract.semanticStatus === "valid"
+        ? "v3 历史合同有效"
+        : "v3 历史合同需检查"
+      : model.contract.semanticStatus === "valid"
+        ? "合同有效"
+        : model.contract.semanticStatus === "invalid"
+          ? "合同存在问题"
+          : "合同状态未知";
+  const contractTone: PresentationTone = isTasknotesOnly
+    ? "muted"
     : model.contract.semanticStatus === "valid"
-      ? "合同有效"
-      : model.contract.semanticStatus === "invalid"
-        ? "合同存在问题"
-        : "合同状态未知";
-  const contractTone: PresentationTone =
-    model.contract.semanticStatus === "valid"
       ? "healthy"
       : model.contract.semanticStatus === "invalid"
         ? "error"
@@ -498,6 +496,11 @@ function createPrimaryStatus(
   if (model.primaryDiagnostic) {
     return createDiagnosticStatus(model.primaryDiagnostic);
   }
+  // 判定层拆除后 contract.status=not_applicable 是常态，不是合同异常。
+  // 这一支改为回答「做到哪了 / 下一步 / 卡在哪」。
+  if (model.currentTask.completion.contractStatus === "not_applicable") {
+    return createProgressStatus(model);
+  }
   if (model.contract.semanticStatus !== "valid") {
     return {
       tone: "error",
@@ -536,6 +539,101 @@ function createPrimaryStatus(
     location: "当前任务",
     diagnostic: null,
   };
+}
+
+/**
+ * tasknotes_only 下的主状态：直接回答「整体做到哪了、下一个做什么、有没有卡住」。
+ * 父任务讲 direct children 的 rollup，leaf 讲自身生命周期。
+ */
+function createProgressStatus(
+  model: DashboardViewModel
+): DashboardPrimaryStatusPresentation {
+  const nextStep = model.nextAction;
+  if (!model.currentTask.hasChildren) {
+    return createLeafProgressStatus(model, nextStep);
+  }
+  const { childrenTrustedDone, childrenTotal } = model.rollup;
+  const progress = `${childrenTrustedDone}/${childrenTotal} 个子任务可信完成`;
+  const blocked = model.rollup.blockedChildren;
+  if (blocked.length) {
+    return {
+      tone: "error",
+      title: progress,
+      reason: `${blocked.length} 个子任务被阻塞：${formatTaskReferences(blocked)}`,
+      remediation: nextStep || "先解除阻塞依赖，再继续派发子任务",
+      location: "直接子任务",
+      diagnostic: null,
+    };
+  }
+  const incomplete = model.rollup.incompleteChildren;
+  if (incomplete.length) {
+    return {
+      tone: "running",
+      title: progress,
+      reason: `还有 ${incomplete.length} 个子任务未完成：${formatTaskReferences(incomplete)}`,
+      remediation: nextStep || "派发下一个就绪子任务",
+      location: "直接子任务",
+      diagnostic: null,
+    };
+  }
+  const allTrusted =
+    childrenTotal > 0 && childrenTrustedDone === childrenTotal;
+  return {
+    tone: allTrusted && model.currentTask.trustedDone ? "healthy" : "warning",
+    title: progress,
+    reason: allTrusted
+      ? model.currentTask.trustedDone
+        ? "当前任务与全部直接子任务均已可信完成"
+        : "直接子任务已全部可信完成，当前任务本身尚未写回完成"
+      : "producer 未报告阻塞或未完成子任务",
+    remediation: nextStep || "确认当前任务收口",
+    location: "直接子任务",
+    diagnostic: null,
+  };
+}
+
+function createLeafProgressStatus(
+  model: DashboardViewModel,
+  nextStep: string | null
+): DashboardPrimaryStatusPresentation {
+  if (model.currentTask.isBlocked) {
+    const blockedBy = model.currentTask.blockedBy;
+    return {
+      tone: "error",
+      title: "当前任务被阻塞",
+      reason: blockedBy.length
+        ? `阻塞于 ${blockedBy.map(formatTaskReference).join("、")}`
+        : "TaskNotes 将当前任务标记为阻塞",
+      remediation: nextStep || "先完成前置任务",
+      location: "当前任务",
+      diagnostic: null,
+    };
+  }
+  if (model.currentTask.trustedDone) {
+    return {
+      tone: "healthy",
+      title: "当前任务已可信完成",
+      reason: "TaskNotes 生命周期为 done，且观测健康",
+      remediation: nextStep || "确认收口",
+      location: "当前任务",
+      diagnostic: null,
+    };
+  }
+  return {
+    tone: taskStatusTone(model.currentTask.status),
+    title: `当前任务${formatTaskStatus(model.currentTask.status)}`,
+    reason: "无子任务，进度以当前任务自身生命周期为准",
+    remediation: nextStep || "继续执行当前任务",
+    location: "当前任务",
+    diagnostic: null,
+  };
+}
+
+function formatTaskReferences(items: RollupTaskReference[]): string {
+  return items
+    .map((item) => item.title || formatTaskReference(item.id || ""))
+    .filter(Boolean)
+    .join("、");
 }
 
 function createDiagnosticStatus(
@@ -591,7 +689,10 @@ function createChildRow(
   if (child.blockedBy.length) {
     meta.push(`阻塞于 ${child.blockedBy.map(formatTaskReference).join("、")}`);
   }
-  meta.push(formatChildEvidenceIssues(child.evidenceHealth));
+  // 判定层拆除后 child 不再有 evidence 健康度，改为提示它自身是否还有下一层。
+  if (child.hasChildren) {
+    meta.push("含子任务");
+  }
   return {
     id: child.id,
     title: child.title,
@@ -707,20 +808,6 @@ function diagnosticLocation(diagnostic: SnapshotDiagnostic): string {
   }
   if (section) return section;
   return "任务文件";
-}
-
-function formatChildEvidenceIssues(
-  evidence: Record<"execution" | "verification" | "delivery", EvidenceHealth>
-): string {
-  const labels = [
-    ["执行", evidence.execution],
-    ["验证", evidence.verification],
-    ["交付", evidence.delivery],
-  ] as const;
-  const issues = labels
-    .filter(([, health]) => health !== "valid")
-    .map(([label, health]) => `${label}${health === "invalid" ? "无效" : "缺失"}`);
-  return issues.length ? issues.join(" · ") : "证据完整";
 }
 
 function formatEvidence(

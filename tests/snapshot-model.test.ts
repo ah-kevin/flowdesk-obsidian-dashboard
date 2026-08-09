@@ -409,7 +409,7 @@ test("source identity 只接受 task-centric 顶层 source_task_id", () => {
   assert.equal(model.observation.isTrustworthy, false);
 });
 
-test("schema 4 canonical fixture 映射 completion、evidence、acceptance 与 review", () => {
+test("真实 producer fixture 映射 tasknotes_only completion 与父子 rollup", () => {
   const fixturePath = path.join(
     process.cwd(),
     "tests/fixtures/sdd_v4_real_root_snapshot.json"
@@ -423,40 +423,46 @@ test("schema 4 canonical fixture 映射 completion、evidence、acceptance 与 r
   assert.equal(model.schemaLabel, "snapshot v4 · task-centric");
   assert.equal(model.currentTask.id, snapshot.current_task.id);
   assert.equal(model.currentTask.completion.trustedDone, true);
-  assert.equal(model.currentTask.trustLevel, "attested_v4");
-  assert.equal(model.contract.version, "flowdesk.task-contract/4");
-  assert.equal(model.contract.semanticStatus, "valid");
-  assert.equal(model.evidenceRequirements[1].uid, "EVR-002");
-  assert.deepEqual(model.evidenceRequirements[1].expected, { exit_code: 7 });
-  assert.equal(model.evidenceRequirements[1].actual?.exit_code, 7);
-  assert.equal(model.evidenceRequirements[1].provenance, "runner_cross_checked");
-  assert.equal(model.acceptance[1].uid, "AC-002");
-  assert.equal(model.review.status, "approved");
-  assert.equal(model.review.record?.decision, "approved");
+  assert.equal(model.currentTask.trustLevel, "tasknotes_only");
+  assert.equal(model.currentTask.completion.contractStatus, "not_applicable");
   assert.equal(model.protocol.supported, true);
   assert.equal(model.observation.isTrustworthy, true);
+  // 判定层拆除后 evidence 与 acceptance 不再由 producer 产出。
+  assert.deepEqual(model.evidenceRequirements, []);
+  assert.deepEqual(model.acceptance, []);
+  // 父子进度是本版本 dashboard 的主信息，必须完整映射。
+  assert.equal(model.currentTask.hasChildren, true);
+  assert.equal(model.rollup.childrenTotal, 4);
+  assert.equal(model.rollup.childrenTrustedDone, 4);
+  assert.equal(model.children.length, 4);
+  assert.equal(model.diagnostics.length, 0);
 });
 
-test("schema 4 待复核场景保持 trusted false 且不伪装为 attested", () => {
+test("child 未可信完成与阻塞关系在 tasknotes_only 下不被伪装为完成", () => {
   const fixturePath = path.join(
     process.cwd(),
     "tests/fixtures/sdd_v4_real_root_snapshot.json"
   );
   const snapshot = JSON.parse(readFileSync(fixturePath, "utf8"));
-  snapshot.current_task.completion.review_status = "pending";
-  snapshot.current_task.completion.trust_level = "review_required";
   snapshot.current_task.completion.trusted_done = false;
-  snapshot.current_task.review.status = "pending";
-  snapshot.current_task.review.record = null;
   snapshot.rollup.trusted_done = false;
+  snapshot.rollup.children_trusted_done = 3;
+  snapshot.rollup.children_complete = false;
+  snapshot.children[3].status = "open";
+  snapshot.children[3].completion.lifecycle_status = "open";
+  snapshot.children[3].completion.trusted_done = false;
+  snapshot.children[3].is_blocked = true;
 
   const model = createDashboardViewModel(snapshot, {
     expectedTaskPath: snapshot.source.task_id,
   });
 
   assert.equal(model.currentTask.completion.trustedDone, false);
-  assert.equal(model.currentTask.trustLevel, "review_required");
-  assert.equal(model.review.status, "pending");
+  assert.equal(model.currentTask.trustLevel, "tasknotes_only");
+  assert.equal(model.rollup.childrenTrustedDone, 3);
+  assert.equal(model.children[3].trustedDone, false);
+  assert.equal(model.children[3].isBlocked, true);
+  assert.deepEqual(model.children[3].blockedBy, ["Tasks/删除 evidence 层.md"]);
 });
 
 test("schema 3 只作为 explicit legacy_v3，schema 4 不回退到 v3 source", () => {
@@ -567,35 +573,98 @@ test("schema 4 explicit legacy_v3 保留历史 trusted done 与证据健康", ()
   assert.equal(model.nextAction, "复核历史 snapshot");
 });
 
-test("v4 diagnostic 映射 evidence 与 next_action，不丢失可行动信息", () => {
+test("判定层拆除后的 producer protocol 不带 legacy_policy 时仍受支持", () => {
+  const snapshot = {
+    snapshot_schema_version: 4,
+    snapshot_model: "task-centric",
+    source: { task_id: rootId, generated_at: "2026-08-08T15:00:00Z" },
+    observation: {
+      health: "healthy",
+      current_task: "observed",
+      parent: "not_applicable",
+      children: "observed",
+      descendants: "healthy",
+      tasknotes_api: "ok",
+      source_identity_match: true,
+      stale: false,
+    },
+    contract: { status: "not_applicable", task_contract: null },
+    current_task: {
+      id: rootId,
+      title: "Root",
+      status: "done",
+      has_children: true,
+      rollup_state: "done",
+      completion: {
+        lifecycle_status: "done",
+        contract_status: "not_applicable",
+        evidence_status: "not_applicable",
+        verification_status: "not_applicable",
+        review_status: "not_applicable",
+        acceptance_status: "not_applicable",
+        trust_level: "tasknotes_only",
+        trusted_done: true,
+      },
+      evidence_requirements: [],
+      acceptance: [],
+      review: { status: "not_applicable" },
+    },
+    parent: null,
+    children: [],
+    rollup: {
+      state: "done",
+      trusted_done: true,
+      has_children: true,
+      children_total: 4,
+      children_trusted_done: 4,
+    },
+    diagnostics: [],
+    next_actions: [],
+    // 判定层拆除后 producer 只产这五个字段，不再产 legacy_policy。
+    protocol: {
+      producer_protocol_version: 4,
+      task_contract_schema: "flowdesk.task-contract/4",
+      evidence_contract_schema: "flowdesk.evidence-contract/1",
+      evidence_record_schema: "flowdesk.evidence-record/1",
+      review_record_schema: "flowdesk.review-record/1",
+    },
+  };
+
+  const model = createDashboardViewModel(snapshot, { expectedTaskPath: rootId });
+  assert.equal(model.errorCode, null);
+  assert.equal(model.protocol.supported, true);
+  assert.equal(model.currentTask.trustLevel, "tasknotes_only");
+  assert.equal(model.currentTask.trustedDone, true);
+});
+
+test("v4 diagnostic 映射 reason 与 next_action，不丢失可行动信息", () => {
   const fixturePath = path.join(
     process.cwd(),
     "tests/fixtures/sdd_v4_real_root_snapshot.json"
   );
   const snapshot = JSON.parse(readFileSync(fixturePath, "utf8"));
-  snapshot.current_task.completion.review_status = "pending";
-  snapshot.current_task.completion.trust_level = "review_required";
   snapshot.current_task.completion.trusted_done = false;
   snapshot.diagnostics = [
     {
-      code: "review_required",
+      code: "tasknotes_observation_failed",
       severity: "error",
       blocking: true,
       task_id: snapshot.source.task_id,
-      path: "reviews",
-      reason: "current evidence bundle requires review",
-      evidence: { requirement_uids: ["EVR-002"] },
-      next_action: "approve or request changes from the Dashboard review action",
+      path: "observation",
+      reason: "TaskNotes API 未返回 direct children",
+      next_action: "确认 TaskNotes 插件已启动后重新读取 snapshot",
     },
   ];
 
   const model = createDashboardViewModel(snapshot, {
     expectedTaskPath: snapshot.source.task_id,
   });
-  assert.equal(model.primaryDiagnostic?.reason, "current evidence bundle requires review");
-  assert.equal(model.primaryDiagnostic?.expected, '{"requirement_uids":["EVR-002"]}');
+  assert.equal(
+    model.primaryDiagnostic?.reason,
+    "TaskNotes API 未返回 direct children"
+  );
   assert.equal(
     model.primaryDiagnostic?.remediation,
-    "approve or request changes from the Dashboard review action"
+    "确认 TaskNotes 插件已启动后重新读取 snapshot"
   );
 });
