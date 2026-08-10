@@ -1267,3 +1267,297 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Work Case Dashboard：业务样式必须保持在 flowdesk-case 作用域内。 */
+.flowdesk-case-dashboard {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-header,
+.flowdesk-case-dashboard .flowdesk-case-section,
+.flowdesk-case-dashboard .flowdesk-case-diagnostics {
+  min-width: 0;
+  border: 1px solid var(--fd-border);
+  border-radius: 8px;
+  background: var(--background-primary-alt);
+  padding: 10px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-header-top,
+.flowdesk-case-dashboard .flowdesk-case-metadata,
+.flowdesk-case-dashboard .flowdesk-case-status-list,
+.flowdesk-case-dashboard .flowdesk-case-related-links {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-header-top {
+  justify-content: space-between;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-kicker,
+.flowdesk-case-dashboard .flowdesk-case-label {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-title {
+  min-width: 0;
+  margin: 7px 0 9px;
+  font-size: 17px;
+  font-weight: 750;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-refresh,
+.flowdesk-case-dashboard .flowdesk-case-related-link {
+  min-width: 0;
+  height: auto;
+  border: 0;
+  background: transparent;
+  color: var(--text-accent);
+  padding: 2px 0;
+  box-shadow: none;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-status,
+.flowdesk-case-dashboard .flowdesk-case-badge,
+.flowdesk-case-dashboard .flowdesk-case-status-chip,
+.flowdesk-case-dashboard .flowdesk-case-task-status {
+  display: inline-flex;
+  min-width: 0;
+  border: 1px solid var(--fd-border);
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-date,
+.flowdesk-case-dashboard .flowdesk-case-muted,
+.flowdesk-case-dashboard .flowdesk-case-task-meta {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-recovery {
+  min-width: 0;
+  margin-top: 9px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-recovery-row,
+.flowdesk-case-dashboard .flowdesk-case-related-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(64px, auto) minmax(0, 1fr);
+  gap: 8px;
+  padding-top: 6px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-long-value,
+.flowdesk-case-dashboard .flowdesk-case-current-value,
+.flowdesk-case-dashboard .flowdesk-case-task-title,
+.flowdesk-case-dashboard .flowdesk-case-progress-text,
+.flowdesk-case-dashboard .flowdesk-case-record-text,
+.flowdesk-case-dashboard .flowdesk-case-diagnostic-message {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-section-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-short-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 8px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-current-card,
+.flowdesk-case-dashboard .flowdesk-case-record-entry,
+.flowdesk-case-dashboard .flowdesk-case-progress-item,
+.flowdesk-case-dashboard .flowdesk-case-task-row {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  border: 1px solid var(--fd-border);
+  border-radius: 7px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  padding: 8px;
+  box-shadow: none;
+  text-align: left;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-current-card:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-current-value {
+  margin-top: 5px;
+  font-size: 12.5px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-summary {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 8px 12px;
+  align-items: end;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-completion-value,
+.flowdesk-case-dashboard .flowdesk-case-count-value {
+  font-size: 17px;
+  font-weight: 750;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-bar {
+  width: 100%;
+  min-width: 0;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-observation {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-count-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(62px, 1fr));
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-count {
+  min-width: 0;
+  border-radius: 6px;
+  background: var(--background-secondary);
+  padding: 6px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-status-list,
+.flowdesk-case-dashboard .flowdesk-case-task-list,
+.flowdesk-case-dashboard .flowdesk-case-task-history,
+.flowdesk-case-dashboard .flowdesk-case-drift {
+  min-width: 0;
+  margin-top: 8px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 5px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-content {
+  min-width: 0;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-title {
+  font-weight: 650;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-drift,
+.flowdesk-case-dashboard .flowdesk-case-stale-warning,
+.flowdesk-case-dashboard .flowdesk-case-error {
+  min-width: 0;
+  border-left: 3px solid var(--fd-yellow);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--fd-yellow) 10%, transparent);
+  padding: 7px 8px;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-error {
+  border-left-color: var(--fd-red);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-item,
+.flowdesk-case-dashboard .flowdesk-case-record-entry {
+  margin-top: 6px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-time {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-section-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 7px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-group,
+.flowdesk-case-dashboard .flowdesk-case-related-row,
+.flowdesk-case-dashboard .flowdesk-case-diagnostic {
+  min-width: 0;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-heading,
+.flowdesk-case-dashboard .flowdesk-case-diagnostic-code {
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-diagnostic {
+  border-top: 1px solid var(--fd-border);
+  padding: 7px 0;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-diagnostic-path {
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-empty {
+  min-width: 0;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+@container (max-width: 420px) {
+  .flowdesk-case-dashboard .flowdesk-case-short-grid,
+  .flowdesk-case-dashboard .flowdesk-case-section-grid,
+  .flowdesk-case-dashboard .flowdesk-case-task-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .flowdesk-case-dashboard .flowdesk-case-task-row,
+  .flowdesk-case-dashboard .flowdesk-case-recovery-row,
+  .flowdesk-case-dashboard .flowdesk-case-related-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

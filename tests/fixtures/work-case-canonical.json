@@ -1,0 +1,69 @@
+{
+  "snapshot_schema_version": 1,
+  "snapshot_model": "work-case-centric",
+  "protocol": {"producer_protocol_version": 1},
+  "source": {
+    "path": "Notes/Sessions/2026-08-10-demo.md",
+    "type": "work-case",
+    "archived": false,
+    "identity_match": true
+  },
+  "work_case": {
+    "title": "Demo Case",
+    "status": "active",
+    "date": "2026-08-10",
+    "project": "[[Notes/Projects/FlowDesk]]",
+    "agent": "codex-app",
+    "workspace": "Demo Workspace",
+    "agent_session_id": "demo-thread",
+    "device": "mac",
+    "cwd": "/tmp/demo",
+    "branch": "demo",
+    "summary_last_updated": "2026-08-10T12:00:00+08:00"
+  },
+  "current": {
+    "progress_summary": "producer 已开始",
+    "next": "完成 contract",
+    "blockers": null,
+    "pending": "尚未提交",
+    "raw": {
+      "heading": "Current",
+      "level": 2,
+      "text": "> **做到哪了**: producer 已开始\n> **下一步**: 完成 contract\n> **当前风险/阻塞**: 无\n> **未提交/待处理**: 尚未提交",
+      "source": {"line_start": 31, "line_end": 36}
+    }
+  },
+  "tasks": {
+    "observation_health": "healthy",
+    "context_tag": "@2026-08-10-demo",
+    "coverage": {"complete": true, "pages": 1},
+    "counts": {"total": 0, "active": 0, "blocked": 0, "completed": 0, "archived": 0, "by_status": {}},
+    "items": [],
+    "legacy_links": ["Tasks/Legacy.md"]
+  },
+  "recent_progress": [
+    {"text": "2026-08-10 11:00：第二条", "timestamp": "2026-08-10 11:00", "source": {"line_start": 73, "line_end": 73}},
+    {"text": "2026-08-10 12:00：第三条", "timestamp": "2026-08-10 12:00", "source": {"line_start": 74, "line_end": 74}},
+    {"text": "2026-08-10 13:00：第四条", "timestamp": "2026-08-10 13:00", "source": {"line_start": 75, "line_end": 75}}
+  ],
+  "sections": {
+    "goal": [{"heading": "Goal", "level": 2, "text": "提供独立 producer。", "source": {"line_start": 27, "line_end": 29}}],
+    "decisions": [{"heading": "Decisions", "level": 3, "text": "- 保持 producer 隔离。", "source": {"line_start": 53, "line_end": 55}}],
+    "discoveries": [],
+    "blockers": [],
+    "outcome": [
+      {"heading": "Outcome", "level": 3, "text": "第一个 Outcome。", "source": {"line_start": 57, "line_end": 59}},
+      {"heading": "Outcome", "level": 3, "text": "第二个 Outcome。", "source": {"line_start": 61, "line_end": 63}}
+    ],
+    "candidate_patterns": [{"heading": "Candidate Patterns", "level": 2, "text": "- Adapter 隔离。", "source": {"line_start": 65, "line_end": 67}}],
+    "definition_of_done": [{"heading": "Definition of Done", "level": 2, "text": "- [ ] producer contract 稳定", "source": {"line_start": 77, "line_end": 79}}]
+  },
+  "related": {
+    "project": "[[Notes/Projects/FlowDesk]]",
+    "plans": ["[[Notes/Plans/Demo]]"],
+    "docs": ["[[Notes/Docs/Demo]]"],
+    "sessions": ["[[Notes/Sessions/Previous]]"],
+    "related": ["[[Tasks/Related.md]]"]
+  },
+  "diagnostics": []
+}

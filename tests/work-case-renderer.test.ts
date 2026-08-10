@@ -1,0 +1,172 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import test from "node:test";
+
+import { WorkCaseDashboardRenderer } from "../src/work-case-renderer";
+import { createWorkCaseViewModel } from "../src/work-case-model";
+
+const canonical = JSON.parse(
+  readFileSync(
+    path.join(process.cwd(), "tests", "fixtures", "work-case-canonical.json"),
+    "utf8"
+  )
+);
+
+class FakeElement {
+  children: FakeElement[] = [];
+  classes = new Set<string>();
+  listeners = new Map<string, Array<() => void>>();
+  text = "";
+  disabled = false;
+  value = 0;
+
+  constructor(
+    readonly tag = "div",
+    options: { cls?: string; text?: string } = {}
+  ) {
+    for (const name of options.cls?.split(/\s+/).filter(Boolean) ?? []) {
+      this.classes.add(name);
+    }
+    this.text = options.text ?? "";
+  }
+
+  addClass(name: string): void {
+    this.classes.add(name);
+  }
+
+  removeClass(name: string): void {
+    this.classes.delete(name);
+  }
+
+  createDiv(options: { cls?: string; text?: string } = {}): FakeElement {
+    return this.append(new FakeElement("div", options));
+  }
+
+  createSpan(options: { cls?: string; text?: string } = {}): FakeElement {
+    return this.append(new FakeElement("span", options));
+  }
+
+  createEl(
+    tag: string,
+    options: { cls?: string; text?: string } = {}
+  ): FakeElement {
+    return this.append(new FakeElement(tag, options));
+  }
+
+  addEventListener(name: string, listener: () => void): void {
+    const listeners = this.listeners.get(name) ?? [];
+    listeners.push(listener);
+    this.listeners.set(name, listeners);
+  }
+
+  click(): void {
+    for (const listener of this.listeners.get("click") ?? []) listener();
+  }
+
+  findByClass(name: string): FakeElement[] {
+    return [
+      ...(this.classes.has(name) ? [this] : []),
+      ...this.children.flatMap((child) => child.findByClass(name)),
+    ];
+  }
+
+  allText(): string[] {
+    return [this.text, ...this.children.flatMap((child) => child.allText())].filter(Boolean);
+  }
+
+  private append(child: FakeElement): FakeElement {
+    this.children.push(child);
+    return child;
+  }
+}
+
+test("renderer 用 canonical model 渲染三层驾驶舱并接通只读导航", () => {
+  const snapshot = structuredClone(canonical);
+  snapshot.tasks.counts = {
+    total: 1,
+    active: 1,
+    blocked: 0,
+    completed: 0,
+    archived: 0,
+    by_status: { open: 1 },
+  };
+  snapshot.tasks.items = [
+    {
+      id: "Tasks/Long.md",
+      title: "连续英文路径/" + "A".repeat(180),
+      status: "open",
+      status_is_completed: false,
+      archived: false,
+      is_blocked: false,
+      association_source: "canonical",
+    },
+  ];
+  snapshot.current.next = "很长的中文内容".repeat(60);
+  const model = createWorkCaseViewModel(snapshot, snapshot.source.path);
+  const openedTasks: string[] = [];
+  const openedSources: number[] = [];
+  const openedRelated: string[] = [];
+  const renderer = new WorkCaseDashboardRenderer({
+    refresh: () => {},
+    openTask: (taskPath) => openedTasks.push(taskPath),
+    openCaseSource: (_casePath, source) => openedSources.push(source.lineStart),
+    openRelated: (target) => openedRelated.push(target),
+  });
+  const root = new FakeElement();
+
+  renderer.render(root as unknown as HTMLElement, {
+    casePath: snapshot.source.path,
+    model,
+    loadedAt: "12:00:00",
+    staleReason: "",
+    error: "",
+    loading: false,
+  });
+
+  assert.equal(root.classes.has("flowdesk-case-dashboard"), true);
+  for (const text of ["WORK CASE", "Current", "关联任务", "最近 Progress", "案卷内容", "关联导航"]) {
+    assert.ok(root.allText().includes(text), text);
+  }
+  root.findByClass("flowdesk-case-task-row")[0].click();
+  root.findByClass("flowdesk-case-current-card")[0].click();
+  root.findByClass("flowdesk-case-related-link")[0].click();
+  assert.deepEqual(openedTasks, ["Tasks/Long.md"]);
+  assert.deepEqual(openedSources, [31]);
+  assert.deepEqual(openedRelated, ["[[Notes/Projects/FlowDesk]]"]);
+
+  renderer.reset(root as unknown as HTMLElement);
+  assert.equal(root.classes.has("flowdesk-case-dashboard"), false);
+});
+
+test("任务观察 unavailable 时正文仍渲染，任务区不伪装成零任务", () => {
+  const snapshot = structuredClone(canonical);
+  snapshot.tasks.observation_health = "unavailable";
+  snapshot.tasks.coverage.complete = false;
+  snapshot.tasks.counts = {
+    total: null,
+    active: null,
+    blocked: null,
+    completed: null,
+    archived: null,
+    by_status: {},
+  };
+  const root = new FakeElement();
+  new WorkCaseDashboardRenderer({
+    refresh: () => {},
+    openTask: () => {},
+    openCaseSource: () => {},
+    openRelated: () => {},
+  }).render(root as unknown as HTMLElement, {
+    casePath: snapshot.source.path,
+    model: createWorkCaseViewModel(snapshot, snapshot.source.path),
+    loadedAt: "12:00:00",
+    staleReason: "",
+    error: "",
+    loading: false,
+  });
+
+  assert.ok(root.allText().includes("Demo Case"));
+  assert.ok(root.allText().includes("任务数据暂不可用，Case 主体仍可阅读。"));
+  assert.equal(root.allText().includes("没有关联任务。"), false);
+});

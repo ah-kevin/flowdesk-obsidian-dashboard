@@ -1,0 +1,17 @@
+{
+  "source_commit": "4b0568a",
+  "loaded_at": "12:34:56",
+  "stale_reason": "",
+  "fixtures": {
+    "sdd_v3_real_root_snapshot.json": {
+      "view_model_sha256": "16f1a7a41da2ef9268c7fd81b7ea7567ead676173a85323dca2e36a617cbd1e3",
+      "presentation_sha256": "d35d93c7ce3b603d17c643af524d4b334cfc44e5f6b062fa0c8dea440620a14c"
+    },
+    "sdd_v4_real_root_snapshot.json": {
+      "view_model_sha256": "6ff1524d034174a9eba8c5eaffc11f8c3ad3353ac6c11998759c2cd8c9907e60",
+      "presentation_sha256": "41ff075d3a1dae873af93182959880ba0725a7bfc5fa5f662cd1b0929f96fb94"
+    }
+  },
+  "task_dom_classes_sha256": "6f481af0b5f82c02f1f7d04bd408b4c1596c8fc94d2dac0bbd76d587b158d3f6",
+  "task_dom_class_count": 94
+}

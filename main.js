@@ -38,7 +38,7 @@ var import_obsidian = require("obsidian");
 var import_child_process = require("child_process");
 var import_fs = require("fs");
 var import_os = require("os");
-var path2 = __toESM(require("path"));
+var path3 = __toESM(require("path"));
 var import_util = require("util");
 
 // src/dashboard-state.ts
@@ -86,18 +86,6 @@ function registerInitialDashboardSync(registerLayoutReady, sync) {
 }
 function isTaskPath(filePath) {
   return filePath.endsWith(".md") && (filePath.startsWith("Tasks/") || filePath.startsWith("TaskNotes/"));
-}
-function resolveDashboardContext(activePath, previousTaskPath) {
-  if (!activePath) {
-    return { kind: "empty" };
-  }
-  if (isTaskPath(activePath)) {
-    return { kind: "task", taskPath: activePath };
-  }
-  return { kind: "non-task", activePath, previousTaskPath };
-}
-function isCurrentSnapshotRequest(request, context, selectionRevision) {
-  return context.kind === "task" && request.taskPath === context.taskPath && request.selectionRevision === selectionRevision;
 }
 function collectObservedTaskPaths(currentTaskPath, snapshot) {
   var _a;
@@ -190,101 +178,10 @@ var TrailingRefreshScheduler = class {
   }
 };
 
-// src/snapshot-invocation.ts
-var path = __toESM(require("path"));
-function buildSnapshotInvocation(input, format) {
-  const flowdeskRoot = path.resolve(input.flowdeskRoot);
-  const workingDirectory = path.isAbsolute(input.workingDirectory) ? input.workingDirectory : path.resolve(flowdeskRoot, input.workingDirectory);
-  const args = [input.taskPath];
-  if (input.apiUrl) {
-    args.push("--api-url", input.apiUrl);
-  }
-  args.push(
-    "--working-directory",
-    workingDirectory,
-    "--format",
-    format
-  );
-  return {
-    executable: path.join(
-      flowdeskRoot,
-      "bin",
-      "flowdesk-execution-snapshot"
-    ),
-    args,
-    cwd: flowdeskRoot
-  };
-}
-function formatShellCommand(invocation) {
-  return [invocation.executable, ...invocation.args].map(shellQuote).join(" ");
-}
-function shellQuote(value) {
-  if (/^[A-Za-z0-9_@%+=:,./-]+$/.test(value)) {
-    return value;
-  }
-  return `'${value.replace(/'/g, `'"'"'`)}'`;
-}
-
-// src/review-invocation.ts
-var REVIEWED_TAG = "reviewed";
-function buildTaskNotesReviewWrite(request) {
-  const taskPath = request.taskPath.trim();
-  if (!taskPath) throw new Error("review task path \u4E0D\u80FD\u4E3A\u7A7A");
-  const note = request.note.trim();
-  const reviewedAt = request.reviewedAt.trim();
-  if (!reviewedAt) throw new Error("review \u65F6\u95F4\u4E0D\u80FD\u4E3A\u7A7A");
-  const tags = mergeReviewTags(request.existingTags, request.decision);
-  const decisionLabel = request.decision === "approved" ? "\u901A\u8FC7" : "\u8981\u6C42\u4FEE\u6539";
-  const lines = [
-    `- \u590D\u6838\u7ED3\u8BBA\uFF1A${decisionLabel}`,
-    `- \u590D\u6838\u65F6\u95F4\uFF1A${reviewedAt}`,
-    "- \u590D\u6838\u6765\u6E90\uFF1Aobsidian-dashboard",
-    `- \u590D\u6838\u8BF4\u660E\uFF1A${note || "\u672A\u586B\u5199"}`
-  ];
-  return {
-    tags,
-    heading: "## Review Record",
-    detailsAppend: lines.join("\n")
-  };
-}
-function mergeReviewTags(existingTags, decision) {
-  const normalized = existingTags.map((tag) => tag.trim()).filter(Boolean).filter((tag) => tag !== REVIEWED_TAG);
-  return decision === "approved" ? [...normalized, REVIEWED_TAG] : normalized;
-}
-function parseReviewCommandFailure(error) {
-  const failure = isRecord(error) ? error : {};
-  for (const output of [failure.stdout, failure.stderr]) {
-    if (typeof output !== "string" || !output.trim()) continue;
-    try {
-      const payload = JSON.parse(output);
-      if (isRecord(payload)) {
-        return {
-          code: text(payload.code, "review_request_rejected"),
-          message: text(payload.error, text(payload.message, "\u590D\u6838\u8BF7\u6C42\u5931\u8D25"))
-        };
-      }
-    } catch (e) {
-    }
-  }
-  return {
-    code: "review_request_rejected",
-    message: text(failure.message, "\u590D\u6838\u8BF7\u6C42\u5931\u8D25")
-  };
-}
-function canReviewTask(input) {
-  return input.lifecycleStatus === "done" && input.observationTrustworthy && !input.isStale && input.sourceIdentity === true && input.sourceIdentityMatch === true;
-}
-function isRecord(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function text(value, fallback) {
-  return typeof value === "string" && value.trim() ? value.trim() : fallback;
-}
-
 // src/snapshot-model.ts
 function createDashboardViewModel(value, options = {}) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, __, _$, _aa, _ba, _ca, _da, _ea, _fa, _ga, _ha, _ia, _ja, _ka, _la, _ma, _na, _oa, _pa, _qa, _ra, _sa;
-  const snapshot = isRecord2(value) ? value : {};
+  const snapshot = isRecord(value) ? value : {};
   const schemaVersion = snapshot.snapshot_schema_version;
   const isV4 = schemaVersion === 4;
   const isV3 = schemaVersion === 3;
@@ -413,7 +310,7 @@ function createDashboardViewModel(value, options = {}) {
   };
 }
 function validateSnapshotSource(value, expectedTaskPath) {
-  const snapshot = isRecord2(value) ? value : {};
+  const snapshot = isRecord(value) ? value : {};
   const actual = snapshotSourceTaskId(snapshot);
   const expected = normalizeText(expectedTaskPath, "");
   if (!actual || !expected) {
@@ -558,11 +455,11 @@ function normalizeStructuredEvidenceRequirement(value) {
     method: normalizeText(value.method, "unknown"),
     required: value.required === true,
     satisfies: ((_a = value.satisfies) != null ? _a : []).map(String),
-    expected: isRecord2(value.expected) ? value.expected : {},
+    expected: isRecord(value.expected) ? value.expected : {},
     reviewRequired: value.review_required === true,
     status: normalizeText(value.status, "unknown"),
     runId: nullableText(value.run_id),
-    actual: isRecord2(value.actual) ? value.actual : null,
+    actual: isRecord(value.actual) ? value.actual : null,
     matchedExpected: typeof value.matched_expected === "boolean" ? value.matched_expected : null,
     provenance: normalizeText(value.provenance, "unknown"),
     stdoutDigest: nullableText(value.stdout_digest),
@@ -587,13 +484,13 @@ function normalizeReviewSummary(value) {
   return {
     status: normalizeText(review.status, "not_required"),
     requirementUids: ((_a = review.requirement_uids) != null ? _a : []).map(String),
-    componentRevisions: isRecord2(review.component_revisions) ? Object.fromEntries(
+    componentRevisions: isRecord(review.component_revisions) ? Object.fromEntries(
       Object.entries(review.component_revisions).filter(
         (entry) => typeof entry[1] === "number" && Number.isFinite(entry[1])
       )
     ) : {},
     evidenceBundleDigest: nullableText(review.evidence_bundle_digest),
-    record: isRecord2(review.record) ? review.record : null
+    record: isRecord(review.record) ? review.record : null
   };
 }
 function emptyReviewSummary(status) {
@@ -639,16 +536,16 @@ function normalizeParent(parent) {
   };
 }
 function normalizeDiagnostic(value, fallbackTaskId) {
-  const diagnostic = isRecord2(value) ? value : {};
-  const reason = isRecord2(diagnostic.reason) ? diagnostic.reason : {};
-  const remediation = isRecord2(diagnostic.remediation) ? diagnostic.remediation : {};
-  const evidence = isRecord2(diagnostic.evidence) ? diagnostic.evidence : null;
+  const diagnostic = isRecord(value) ? value : {};
+  const reason = isRecord(diagnostic.reason) ? diagnostic.reason : {};
+  const remediation = isRecord(diagnostic.remediation) ? diagnostic.remediation : {};
+  const evidence = isRecord(diagnostic.evidence) ? diagnostic.evidence : null;
   return {
     code: normalizeText(diagnostic.code, "unknown_diagnostic"),
     severity: normalizeText(diagnostic.severity, "error"),
     taskId: normalizeText(diagnostic.task_id, fallbackTaskId),
     path: normalizeText(diagnostic.path, "\u672A\u63D0\u4F9B"),
-    source: isRecord2(diagnostic.source) ? diagnostic.source : void 0,
+    source: isRecord(diagnostic.source) ? diagnostic.source : void 0,
     reason: normalizeText(
       reason.actual,
       normalizeText(diagnostic.reason, "producer \u672A\u63D0\u4F9B")
@@ -674,7 +571,7 @@ function normalizeBlockedBy(value) {
   if (typeof value === "string") {
     return value;
   }
-  if (isRecord2(value)) {
+  if (isRecord(value)) {
     return normalizeText(value.uid, normalizeText(value.id, ""));
   }
   return "";
@@ -708,7 +605,7 @@ function nullableText(value) {
 function finiteNumber(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
-function isRecord2(value) {
+function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -750,9 +647,9 @@ function createContractItemPresentation(item, kind) {
 }
 function formatContractSource(item) {
   var _a, _b, _c;
-  const section = ((_a = item.source) == null ? void 0 : _a.section) || ((_b = item.source) == null ? void 0 : _b.after_section) || "\u4EFB\u52A1\u6587\u4EF6";
+  const section2 = ((_a = item.source) == null ? void 0 : _a.section) || ((_b = item.source) == null ? void 0 : _b.after_section) || "\u4EFB\u52A1\u6587\u4EF6";
   const line = (_c = item.source) == null ? void 0 : _c.line_start;
-  return typeof line === "number" && line > 0 ? `${section} \xB7 \u7B2C ${line} \u884C` : section;
+  return typeof line === "number" && line > 0 ? `${section2} \xB7 \u7B2C ${line} \u884C` : section2;
 }
 function parseScenarioSteps(text2) {
   const match = text2.match(
@@ -782,13 +679,13 @@ function resolveDisclosureState(previous, taskChanged) {
 }
 function createDiagnosticDisclosureKey(taskPath, diagnostic) {
   var _a, _b, _c, _d;
-  const section = ((_a = diagnostic.source) == null ? void 0 : _a.section) || ((_b = diagnostic.source) == null ? void 0 : _b.after_section) || "";
+  const section2 = ((_a = diagnostic.source) == null ? void 0 : _a.section) || ((_b = diagnostic.source) == null ? void 0 : _b.after_section) || "";
   const line = (_d = (_c = diagnostic.source) == null ? void 0 : _c.line_start) != null ? _d : "";
   return JSON.stringify([
     taskPath,
     diagnostic.code,
     diagnostic.path,
-    section,
+    section2,
     line
   ]);
 }
@@ -1259,12 +1156,12 @@ function diagnosticActionTitle(diagnostic) {
 }
 function diagnosticLocation(diagnostic) {
   var _a, _b, _c;
-  const section = ((_a = diagnostic.source) == null ? void 0 : _a.section) || ((_b = diagnostic.source) == null ? void 0 : _b.after_section);
+  const section2 = ((_a = diagnostic.source) == null ? void 0 : _a.section) || ((_b = diagnostic.source) == null ? void 0 : _b.after_section);
   const line = (_c = diagnostic.source) == null ? void 0 : _c.line_start;
-  if (section && typeof line === "number" && line > 0) {
-    return `${section} \xB7 \u7B2C ${line} \u884C`;
+  if (section2 && typeof line === "number" && line > 0) {
+    return `${section2} \xB7 \u7B2C ${line} \u884C`;
   }
-  if (section) return section;
+  if (section2) return section2;
   return "\u4EFB\u52A1\u6587\u4EF6";
 }
 function formatEvidence(evidence) {
@@ -1292,6 +1189,340 @@ function normalizeToken(value) {
   return String(value || "unknown").toLowerCase().replace(/_/g, "-");
 }
 
+// src/frozen-task-adapter.ts
+var FrozenTaskAdapter = class {
+  constructor(dependencies) {
+    this.dependencies = dependencies;
+    this.kind = "task";
+    this.selection = null;
+    this.displayState = null;
+    this.error = "";
+    this.loading = false;
+    this.queuedRequest = null;
+    this.refreshPromise = null;
+    this.abortCoordinator = new SnapshotRequestAbortCoordinator();
+    this.disclosureStateCache = new DisclosureStateCache(20);
+    this.disclosureState = resolveDisclosureState(void 0, true);
+    this.refreshScheduler = new TrailingRefreshScheduler(() => {
+      void this.refresh();
+    });
+  }
+  async activate(selection) {
+    var _a;
+    if (selection.adapterKind !== this.kind) {
+      throw new Error(`Frozen Task Adapter \u65E0\u6CD5\u5904\u7406\uFF1A${selection.adapterKind}`);
+    }
+    const sameTask = ((_a = this.selection) == null ? void 0 : _a.resourcePath) === selection.resourcePath;
+    this.selection = selection;
+    if (!sameTask) {
+      this.displayState = null;
+      this.error = "";
+      this.loading = true;
+      this.refreshScheduler.cancel();
+      this.abortCoordinator.cancel();
+      this.disclosureState = this.disclosureStateCache.forTask(
+        selection.resourcePath
+      );
+      this.dependencies.requestRender();
+    }
+    this.queuedRequest = selection;
+    if (this.refreshPromise) return this.refreshPromise;
+    this.refreshPromise = this.drainRefreshQueue();
+    try {
+      await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
+    }
+  }
+  deactivate() {
+    this.selection = null;
+    this.displayState = null;
+    this.queuedRequest = null;
+    this.refreshScheduler.cancel();
+    this.abortCoordinator.cancel();
+    this.loading = false;
+    this.error = "";
+  }
+  shouldReactivate(selection) {
+    var _a;
+    const state = this.getRenderState();
+    return ((_a = this.selection) == null ? void 0 : _a.revision) === selection.revision && this.selection.resourcePath === selection.resourcePath && state !== null && state.snapshot === null && !state.loading;
+  }
+  close() {
+    this.deactivate();
+    this.disclosureStateCache.clear();
+  }
+  async refresh() {
+    this.refreshScheduler.cancel();
+    if (this.selection) {
+      await this.activate(this.selection);
+    }
+  }
+  scheduleRefresh() {
+    if (this.selection) {
+      this.refreshScheduler.schedule();
+    }
+  }
+  observesTaskFile(filePath) {
+    var _a, _b;
+    const taskPath = (_a = this.selection) == null ? void 0 : _a.resourcePath;
+    return taskPath ? collectObservedTaskPaths(taskPath, (_b = this.displayState) == null ? void 0 : _b.snapshot).has(filePath) : false;
+  }
+  render(container) {
+    const state = this.getRenderState();
+    if (state) {
+      this.dependencies.render(container, state);
+    }
+  }
+  getRenderState() {
+    var _a, _b, _c, _d, _e;
+    const taskPath = (_a = this.selection) == null ? void 0 : _a.resourcePath;
+    if (!taskPath) return null;
+    const displayState = ((_b = this.displayState) == null ? void 0 : _b.taskPath) === taskPath ? this.displayState : null;
+    return {
+      taskPath,
+      snapshot: (_c = displayState == null ? void 0 : displayState.snapshot) != null ? _c : null,
+      loadedAt: (_d = displayState == null ? void 0 : displayState.loadedAt) != null ? _d : "",
+      staleReason: (_e = displayState == null ? void 0 : displayState.staleReason) != null ? _e : "",
+      error: this.error,
+      loading: this.loading,
+      disclosureState: this.disclosureState
+    };
+  }
+  async drainRefreshQueue() {
+    while (this.queuedRequest) {
+      const request = this.queuedRequest;
+      this.queuedRequest = null;
+      await this.loadTaskNow(request);
+    }
+  }
+  async loadTaskNow(request) {
+    const signal = this.abortCoordinator.begin();
+    this.loading = true;
+    this.error = "";
+    this.dependencies.requestRender();
+    try {
+      const snapshot = await this.dependencies.loadSnapshot(
+        request.resourcePath,
+        signal
+      );
+      if (!this.dependencies.shell().isCurrent(request)) return;
+      const envelopeFailure = resolveSnapshotEnvelopeFailure(
+        this.displayState,
+        request.resourcePath,
+        snapshot
+      );
+      if (envelopeFailure.error) {
+        this.error = envelopeFailure.error;
+        this.displayState = envelopeFailure.displayState;
+        return;
+      }
+      this.displayState = {
+        taskPath: request.resourcePath,
+        snapshot,
+        loadedAt: this.dependencies.nowLabel(),
+        staleReason: ""
+      };
+    } catch (error) {
+      if (!this.dependencies.shell().isCurrent(request)) return;
+      this.error = error instanceof Error ? error.message : String(error);
+      this.displayState = resolveRefreshFailureDisplay(
+        this.displayState,
+        request.resourcePath,
+        this.error
+      );
+    } finally {
+      this.abortCoordinator.finish(signal);
+      if (this.dependencies.shell().isCurrent(request)) {
+        this.loading = false;
+        this.dependencies.requestRender();
+      }
+    }
+  }
+};
+
+// src/view-shell.ts
+function resolveViewShellContext(activePath, previousResourcePath, frontmatterType = "") {
+  if (!activePath) return { kind: "empty" };
+  if (isTaskPath(activePath)) {
+    return { kind: "task", resourcePath: activePath };
+  }
+  if (frontmatterType === "work-case" || frontmatterType === "session") {
+    return { kind: "case", resourcePath: activePath };
+  }
+  return {
+    kind: "unsupported",
+    activePath,
+    previousResourcePath
+  };
+}
+var ViewShellController = class {
+  constructor(adapters) {
+    this.adapters = /* @__PURE__ */ new Map();
+    this.activeAdapter = null;
+    this.revision = 0;
+    this.context = { kind: "empty" };
+    for (const adapter of adapters) {
+      if (this.adapters.has(adapter.kind)) {
+        throw new Error(`View adapter \u91CD\u590D\u6CE8\u518C\uFF1A${adapter.kind}`);
+      }
+      this.adapters.set(adapter.kind, adapter);
+    }
+  }
+  async select(context, options = {}) {
+    var _a, _b;
+    const nextAdapter = this.resolveAdapter(context);
+    const unchanged = sameContext(this.context, context);
+    const currentSelection = unchanged && nextAdapter && isActiveContext(context) ? {
+      adapterKind: context.kind,
+      resourcePath: context.resourcePath,
+      revision: this.revision
+    } : null;
+    const shouldReactivate = Boolean(
+      currentSelection && ((_a = nextAdapter == null ? void 0 : nextAdapter.shouldReactivate) == null ? void 0 : _a.call(nextAdapter, currentSelection))
+    );
+    if (unchanged && !options.force && !shouldReactivate) {
+      return;
+    }
+    if (!unchanged) {
+      this.revision += 1;
+      (_b = this.activeAdapter) == null ? void 0 : _b.deactivate();
+      this.activeAdapter = nextAdapter;
+      this.context = context;
+    }
+    if (!nextAdapter || !isActiveContext(context)) {
+      return;
+    }
+    await nextAdapter.activate({
+      adapterKind: context.kind,
+      resourcePath: context.resourcePath,
+      revision: this.revision
+    });
+  }
+  isCurrent(selection) {
+    var _a;
+    return isActiveContext(this.context) && ((_a = this.activeAdapter) == null ? void 0 : _a.kind) === selection.adapterKind && this.context.kind === selection.adapterKind && this.context.resourcePath === selection.resourcePath && this.revision === selection.revision;
+  }
+  close() {
+    var _a;
+    this.revision += 1;
+    (_a = this.activeAdapter) == null ? void 0 : _a.deactivate();
+    this.activeAdapter = null;
+    this.context = { kind: "empty" };
+  }
+  resolveAdapter(context) {
+    var _a;
+    return isActiveContext(context) ? (_a = this.adapters.get(context.kind)) != null ? _a : null : null;
+  }
+};
+function isActiveContext(context) {
+  return "resourcePath" in context;
+}
+function isUnsupportedContext(context) {
+  return "activePath" in context;
+}
+function sameContext(left, right) {
+  if (left.kind !== right.kind) return false;
+  if (isActiveContext(left) && isActiveContext(right)) {
+    return left.resourcePath === right.resourcePath;
+  }
+  if (isUnsupportedContext(left) && isUnsupportedContext(right)) {
+    return left.activePath === right.activePath && left.previousResourcePath === right.previousResourcePath;
+  }
+  return left.kind === "empty" && right.kind === "empty";
+}
+
+// src/snapshot-invocation.ts
+var path = __toESM(require("path"));
+function buildSnapshotInvocation(input, format) {
+  const flowdeskRoot = path.resolve(input.flowdeskRoot);
+  const workingDirectory = path.isAbsolute(input.workingDirectory) ? input.workingDirectory : path.resolve(flowdeskRoot, input.workingDirectory);
+  const args = [input.taskPath];
+  if (input.apiUrl) {
+    args.push("--api-url", input.apiUrl);
+  }
+  args.push(
+    "--working-directory",
+    workingDirectory,
+    "--format",
+    format
+  );
+  return {
+    executable: path.join(
+      flowdeskRoot,
+      "bin",
+      "flowdesk-execution-snapshot"
+    ),
+    args,
+    cwd: flowdeskRoot
+  };
+}
+function formatShellCommand(invocation) {
+  return [invocation.executable, ...invocation.args].map(shellQuote).join(" ");
+}
+function shellQuote(value) {
+  if (/^[A-Za-z0-9_@%+=:,./-]+$/.test(value)) {
+    return value;
+  }
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+// src/review-invocation.ts
+var REVIEWED_TAG = "reviewed";
+function buildTaskNotesReviewWrite(request) {
+  const taskPath = request.taskPath.trim();
+  if (!taskPath) throw new Error("review task path \u4E0D\u80FD\u4E3A\u7A7A");
+  const note = request.note.trim();
+  const reviewedAt = request.reviewedAt.trim();
+  if (!reviewedAt) throw new Error("review \u65F6\u95F4\u4E0D\u80FD\u4E3A\u7A7A");
+  const tags = mergeReviewTags(request.existingTags, request.decision);
+  const decisionLabel = request.decision === "approved" ? "\u901A\u8FC7" : "\u8981\u6C42\u4FEE\u6539";
+  const lines = [
+    `- \u590D\u6838\u7ED3\u8BBA\uFF1A${decisionLabel}`,
+    `- \u590D\u6838\u65F6\u95F4\uFF1A${reviewedAt}`,
+    "- \u590D\u6838\u6765\u6E90\uFF1Aobsidian-dashboard",
+    `- \u590D\u6838\u8BF4\u660E\uFF1A${note || "\u672A\u586B\u5199"}`
+  ];
+  return {
+    tags,
+    heading: "## Review Record",
+    detailsAppend: lines.join("\n")
+  };
+}
+function mergeReviewTags(existingTags, decision) {
+  const normalized = existingTags.map((tag) => tag.trim()).filter(Boolean).filter((tag) => tag !== REVIEWED_TAG);
+  return decision === "approved" ? [...normalized, REVIEWED_TAG] : normalized;
+}
+function parseReviewCommandFailure(error) {
+  const failure = isRecord2(error) ? error : {};
+  for (const output of [failure.stdout, failure.stderr]) {
+    if (typeof output !== "string" || !output.trim()) continue;
+    try {
+      const payload = JSON.parse(output);
+      if (isRecord2(payload)) {
+        return {
+          code: text(payload.code, "review_request_rejected"),
+          message: text(payload.error, text(payload.message, "\u590D\u6838\u8BF7\u6C42\u5931\u8D25"))
+        };
+      }
+    } catch (e) {
+    }
+  }
+  return {
+    code: "review_request_rejected",
+    message: text(failure.message, "\u590D\u6838\u8BF7\u6C42\u5931\u8D25")
+  };
+}
+function canReviewTask(input) {
+  return input.lifecycleStatus === "done" && input.observationTrustworthy && !input.isStale && input.sourceIdentity === true && input.sourceIdentityMatch === true;
+}
+function isRecord2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function text(value, fallback) {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
 // src/task-navigation.ts
 function taskNavigationNewLeaf(origin) {
   return origin === "child";
@@ -1309,6 +1540,723 @@ function formatDiagnosticClipboard(input) {
     `\u5B57\u6BB5\uFF1A${input.path}`,
     `\u4F4D\u7F6E\uFF1A${location}`
   ].join("\n");
+}
+
+// src/work-case-model.ts
+var WorkCaseSnapshotCompatibilityError = class extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+    this.name = "WorkCaseSnapshotCompatibilityError";
+  }
+};
+var SECTION_KEYS = [
+  "goal",
+  "decisions",
+  "discoveries",
+  "blockers",
+  "outcome",
+  "candidate_patterns",
+  "definition_of_done"
+];
+function createWorkCaseViewModel(snapshot, expectedPath) {
+  const root = record(snapshot, "snapshot");
+  if (root.snapshot_schema_version !== 1) {
+    throw new WorkCaseSnapshotCompatibilityError(
+      "unsupported_snapshot_schema",
+      `\u4E0D\u652F\u6301\u7684 Work Case snapshot schema\uFF1A${String(root.snapshot_schema_version)}`
+    );
+  }
+  if (root.snapshot_model !== "work-case-centric") {
+    throw new WorkCaseSnapshotCompatibilityError(
+      "unsupported_snapshot_model",
+      `\u4E0D\u652F\u6301\u7684 Work Case snapshot model\uFF1A${String(root.snapshot_model)}`
+    );
+  }
+  const protocol = record(root.protocol, "protocol");
+  if (protocol.producer_protocol_version !== 1) {
+    throw new WorkCaseSnapshotCompatibilityError(
+      "unsupported_producer_protocol",
+      `\u4E0D\u652F\u6301\u7684 Work Case producer protocol\uFF1A${String(protocol.producer_protocol_version)}`
+    );
+  }
+  const source = record(root.source, "source");
+  const sourcePath = string(source.path, "source.path");
+  if (source.identity_match !== true || sourcePath !== expectedPath) {
+    throw new WorkCaseSnapshotCompatibilityError(
+      "source_identity_mismatch",
+      `Work Case \u6765\u6E90\u8EAB\u4EFD\u4E0D\u5339\u914D\uFF1A\u8BF7\u6C42 ${expectedPath}\uFF0C\u5B9E\u9645 ${sourcePath}`
+    );
+  }
+  if (source.type !== "work-case" && source.type !== "session") {
+    throw new WorkCaseSnapshotCompatibilityError(
+      "unsupported_source_type",
+      `\u4E0D\u652F\u6301\u7684 Work Case type\uFF1A${String(source.type || "(missing)")}`
+    );
+  }
+  const workCase = record(root.work_case, "work_case");
+  const current = record(root.current, "current");
+  const tasks = record(root.tasks, "tasks");
+  const coverage = record(tasks.coverage, "tasks.coverage");
+  const counts = record(tasks.counts, "tasks.counts");
+  const sections = record(root.sections, "sections");
+  const related = record(root.related, "related");
+  const observationHealth = string(
+    tasks.observation_health,
+    "tasks.observation_health"
+  );
+  if (!isObservationHealth(observationHealth)) {
+    invalid(`tasks.observation_health \u65E0\u6548\uFF1A${observationHealth}`);
+  }
+  for (const key of SECTION_KEYS) array(sections[key], `sections.${key}`);
+  return {
+    source: {
+      path: sourcePath,
+      type: source.type,
+      archived: boolean(source.archived, "source.archived")
+    },
+    workCase: {
+      title: string(workCase.title, "work_case.title"),
+      status: nullableString(workCase.status, "work_case.status"),
+      date: nullableString(workCase.date, "work_case.date"),
+      project: nullableString(workCase.project, "work_case.project"),
+      agent: nullableString(workCase.agent, "work_case.agent"),
+      workspace: nullableString(workCase.workspace, "work_case.workspace"),
+      agentSessionId: nullableString(
+        workCase.agent_session_id,
+        "work_case.agent_session_id"
+      ),
+      device: nullableString(workCase.device, "work_case.device"),
+      cwd: nullableString(workCase.cwd, "work_case.cwd"),
+      branch: nullableString(workCase.branch, "work_case.branch"),
+      summaryLastUpdated: nullableString(
+        workCase.summary_last_updated,
+        "work_case.summary_last_updated"
+      )
+    },
+    current: {
+      progressSummary: nullableString(current.progress_summary, "current.progress_summary"),
+      next: nullableString(current.next, "current.next"),
+      blockers: nullableString(current.blockers, "current.blockers"),
+      pending: nullableString(current.pending, "current.pending"),
+      raw: current.raw === null ? null : section(current.raw, "current.raw")
+    },
+    tasks: {
+      observationHealth,
+      contextTag: string(tasks.context_tag, "tasks.context_tag"),
+      coverage: {
+        complete: boolean(coverage.complete, "tasks.coverage.complete"),
+        pages: number(coverage.pages, "tasks.coverage.pages")
+      },
+      counts: {
+        total: nullableNumber(counts.total, "tasks.counts.total"),
+        active: nullableNumber(counts.active, "tasks.counts.active"),
+        blocked: nullableNumber(counts.blocked, "tasks.counts.blocked"),
+        completed: nullableNumber(counts.completed, "tasks.counts.completed"),
+        archived: nullableNumber(counts.archived, "tasks.counts.archived"),
+        byStatus: numberRecord(counts.by_status, "tasks.counts.by_status")
+      },
+      items: array(tasks.items, "tasks.items").map(
+        (item, index) => taskItem(item, `tasks.items[${index}]`)
+      ),
+      legacyLinks: stringArray(tasks.legacy_links, "tasks.legacy_links")
+    },
+    recentProgress: array(root.recent_progress, "recent_progress").map(
+      (item, index) => {
+        const value = record(item, `recent_progress[${index}]`);
+        return {
+          text: string(value.text, `recent_progress[${index}].text`),
+          timestamp: nullableString(
+            value.timestamp,
+            `recent_progress[${index}].timestamp`
+          ),
+          source: sourceRange(value.source, `recent_progress[${index}].source`)
+        };
+      }
+    ),
+    sections: {
+      goal: sectionArray(sections.goal, "sections.goal"),
+      decisions: sectionArray(sections.decisions, "sections.decisions"),
+      discoveries: sectionArray(sections.discoveries, "sections.discoveries"),
+      blockers: sectionArray(sections.blockers, "sections.blockers"),
+      outcome: sectionArray(sections.outcome, "sections.outcome"),
+      candidatePatterns: sectionArray(
+        sections.candidate_patterns,
+        "sections.candidate_patterns"
+      ),
+      definitionOfDone: sectionArray(
+        sections.definition_of_done,
+        "sections.definition_of_done"
+      )
+    },
+    related: {
+      project: nullableString(related.project, "related.project"),
+      plans: stringArray(related.plans, "related.plans"),
+      docs: stringArray(related.docs, "related.docs"),
+      sessions: stringArray(related.sessions, "related.sessions"),
+      related: stringArray(related.related, "related.related")
+    },
+    diagnostics: array(root.diagnostics, "diagnostics").map((item, index) => {
+      const value = record(item, `diagnostics[${index}]`);
+      return {
+        code: string(value.code, `diagnostics[${index}].code`),
+        severity: string(value.severity, `diagnostics[${index}].severity`),
+        path: string(value.path, `diagnostics[${index}].path`),
+        message: string(value.message, `diagnostics[${index}].message`)
+      };
+    })
+  };
+}
+function taskItem(value, at) {
+  const item = record(value, at);
+  const associationSource = string(item.association_source, `${at}.association_source`);
+  if (associationSource !== "canonical" && associationSource !== "legacy") {
+    invalid(`${at}.association_source \u65E0\u6548`);
+  }
+  const completed = item.status_is_completed;
+  if (completed !== null && typeof completed !== "boolean") {
+    invalid(`${at}.status_is_completed \u5FC5\u987B\u4E3A boolean \u6216 null`);
+  }
+  return {
+    id: string(item.id, `${at}.id`),
+    title: string(item.title, `${at}.title`),
+    status: string(item.status, `${at}.status`),
+    statusIsCompleted: completed,
+    archived: boolean(item.archived, `${at}.archived`),
+    isBlocked: boolean(item.is_blocked, `${at}.is_blocked`),
+    associationSource
+  };
+}
+function sectionArray(value, at) {
+  return array(value, at).map((item, index) => section(item, `${at}[${index}]`));
+}
+function section(value, at) {
+  const item = record(value, at);
+  return {
+    heading: string(item.heading, `${at}.heading`),
+    level: number(item.level, `${at}.level`),
+    text: string(item.text, `${at}.text`),
+    source: sourceRange(item.source, `${at}.source`)
+  };
+}
+function sourceRange(value, at) {
+  const range = record(value, at);
+  return {
+    lineStart: number(range.line_start, `${at}.line_start`),
+    lineEnd: number(range.line_end, `${at}.line_end`)
+  };
+}
+function record(value, at) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    invalid(`${at} \u5FC5\u987B\u4E3A object`);
+  }
+  return value;
+}
+function array(value, at) {
+  if (!Array.isArray(value)) invalid(`${at} \u5FC5\u987B\u4E3A array`);
+  return value;
+}
+function string(value, at) {
+  if (typeof value !== "string") invalid(`${at} \u5FC5\u987B\u4E3A string`);
+  return value;
+}
+function nullableString(value, at) {
+  if (value === null) return null;
+  return string(value, at);
+}
+function boolean(value, at) {
+  if (typeof value !== "boolean") invalid(`${at} \u5FC5\u987B\u4E3A boolean`);
+  return value;
+}
+function number(value, at) {
+  if (typeof value !== "number" || !Number.isFinite(value)) invalid(`${at} \u5FC5\u987B\u4E3A number`);
+  return value;
+}
+function nullableNumber(value, at) {
+  if (value === null) return null;
+  return number(value, at);
+}
+function stringArray(value, at) {
+  return array(value, at).map((item, index) => string(item, `${at}[${index}]`));
+}
+function numberRecord(value, at) {
+  const input = record(value, at);
+  return Object.fromEntries(
+    Object.entries(input).map(([key, item]) => [key, number(item, `${at}.${key}`)])
+  );
+}
+function isObservationHealth(value) {
+  return value === "healthy" || value === "degraded" || value === "unavailable";
+}
+function invalid(message) {
+  throw new WorkCaseSnapshotCompatibilityError(
+    "invalid_snapshot_envelope",
+    `Work Case snapshot envelope \u65E0\u6548\uFF1A${message}`
+  );
+}
+
+// src/work-case-adapter.ts
+var WorkCaseAdapter = class {
+  constructor(dependencies) {
+    this.dependencies = dependencies;
+    this.kind = "case";
+    this.selection = null;
+    this.displayState = null;
+    this.error = "";
+    this.loading = false;
+    this.controller = null;
+  }
+  async activate(selection) {
+    var _a, _b, _c;
+    if (selection.adapterKind !== this.kind) {
+      throw new Error(`Work Case Adapter \u65E0\u6CD5\u5904\u7406\uFF1A${selection.adapterKind}`);
+    }
+    const sameCase = ((_a = this.selection) == null ? void 0 : _a.resourcePath) === selection.resourcePath;
+    this.selection = selection;
+    if (!sameCase) {
+      this.displayState = null;
+      this.error = "";
+    }
+    (_b = this.controller) == null ? void 0 : _b.abort();
+    const controller = new AbortController();
+    this.controller = controller;
+    this.loading = true;
+    this.error = "";
+    this.dependencies.requestRender();
+    try {
+      const snapshot = await this.dependencies.loadSnapshot(
+        selection.resourcePath,
+        controller.signal
+      );
+      if (!this.dependencies.shell().isCurrent(selection)) return;
+      const model = createWorkCaseViewModel(snapshot, selection.resourcePath);
+      this.displayState = {
+        casePath: selection.resourcePath,
+        model,
+        loadedAt: this.dependencies.nowLabel(),
+        staleReason: ""
+      };
+    } catch (error) {
+      if (!this.dependencies.shell().isCurrent(selection)) return;
+      this.error = formatWorkCaseError(error);
+      if (error instanceof WorkCaseSnapshotCompatibilityError) {
+        this.displayState = null;
+      } else if (sameCase && ((_c = this.displayState) == null ? void 0 : _c.casePath) === selection.resourcePath) {
+        this.displayState = {
+          ...this.displayState,
+          staleReason: this.error
+        };
+      } else {
+        this.displayState = null;
+      }
+    } finally {
+      if (this.controller === controller) this.controller = null;
+      if (this.dependencies.shell().isCurrent(selection)) {
+        this.loading = false;
+        this.dependencies.requestRender();
+      }
+    }
+  }
+  deactivate() {
+    var _a;
+    (_a = this.controller) == null ? void 0 : _a.abort();
+    this.controller = null;
+    this.selection = null;
+    this.displayState = null;
+    this.error = "";
+    this.loading = false;
+  }
+  shouldReactivate(selection) {
+    var _a;
+    const state = this.getRenderState();
+    return ((_a = this.selection) == null ? void 0 : _a.revision) === selection.revision && state !== null && state.model === null && !state.loading;
+  }
+  async refresh() {
+    if (this.selection) await this.activate(this.selection);
+  }
+  observesFile(filePath) {
+    var _a;
+    return ((_a = this.selection) == null ? void 0 : _a.resourcePath) === filePath;
+  }
+  render(container) {
+    const state = this.getRenderState();
+    if (state) this.dependencies.render(container, state);
+  }
+  getRenderState() {
+    var _a, _b, _c, _d, _e;
+    const casePath = (_a = this.selection) == null ? void 0 : _a.resourcePath;
+    if (!casePath) return null;
+    const display = ((_b = this.displayState) == null ? void 0 : _b.casePath) === casePath ? this.displayState : null;
+    return {
+      casePath,
+      model: (_c = display == null ? void 0 : display.model) != null ? _c : null,
+      loadedAt: (_d = display == null ? void 0 : display.loadedAt) != null ? _d : "",
+      staleReason: (_e = display == null ? void 0 : display.staleReason) != null ? _e : "",
+      error: this.error,
+      loading: this.loading
+    };
+  }
+};
+function formatWorkCaseError(error) {
+  if (error instanceof WorkCaseSnapshotCompatibilityError) return error.message;
+  const message = error instanceof Error ? error.message : String(error);
+  return `Work Case snapshot \u8BFB\u53D6\u5931\u8D25\uFF1A${message}`;
+}
+
+// src/work-case-invocation.ts
+var path2 = __toESM(require("path"));
+function buildWorkCaseSnapshotInvocation(input) {
+  const flowdeskRoot = path2.resolve(input.flowdeskRoot);
+  const workingDirectory = path2.resolve(input.workingDirectory);
+  const args = [input.casePath];
+  if (input.apiUrl) args.push("--api-url", input.apiUrl);
+  args.push("--working-directory", workingDirectory, "--format", "json");
+  return {
+    executable: path2.join(flowdeskRoot, "bin", "flowdesk-work-case-snapshot"),
+    args,
+    cwd: flowdeskRoot
+  };
+}
+
+// src/work-case-presentation.ts
+function createWorkCasePresentation(model) {
+  var _a, _b, _c;
+  const total = model.tasks.counts.total;
+  const completed = model.tasks.counts.completed;
+  const primary = model.tasks.items.filter(
+    (item) => !item.archived && (item.isBlocked || item.statusIsCompleted === false)
+  ).map(taskPresentation);
+  const history = model.tasks.items.filter((item) => item.statusIsCompleted === true || item.archived).map(taskPresentation);
+  const active = model.tasks.counts.active;
+  const caseStatus = ((_a = model.workCase.status) != null ? _a : "").trim();
+  const driftWarning = active !== null && active > 0 && isClosedCaseStatus(caseStatus) ? `Case \u72B6\u6001\u4E3A ${caseStatus}\uFF0C\u4F46\u4ECD\u6709 ${active} \u4E2A active Task\uFF1B\u4E24\u8005\u5747\u6309\u539F\u59CB\u4E8B\u5B9E\u663E\u793A\u3002` : "";
+  const currentSource = (_c = (_b = model.current.raw) == null ? void 0 : _b.source) != null ? _c : null;
+  return {
+    header: {
+      typeLabel: "WORK CASE",
+      title: model.workCase.title,
+      status: model.workCase.status || "\u672A\u8BB0\u5F55",
+      project: model.workCase.project || "\u672A\u5173\u8054 Project",
+      dateLabel: model.workCase.summaryLastUpdated || model.workCase.date || "\u65F6\u95F4\u672A\u8BB0\u5F55",
+      badges: [
+        ...model.source.type === "session" ? ["legacy"] : [],
+        ...model.source.archived ? ["\u5DF2\u5F52\u6863"] : []
+      ],
+      recoveryContext: [
+        ["Agent", model.workCase.agent],
+        ["Workspace", model.workCase.workspace],
+        ["Session", model.workCase.agentSessionId],
+        ["Device", model.workCase.device],
+        ["CWD", model.workCase.cwd],
+        ["Branch", model.workCase.branch]
+      ].filter((entry) => Boolean(entry[1])).map(([label, value]) => ({ label, value }))
+    },
+    current: [
+      { key: "progressSummary", label: "\u505A\u5230\u54EA\u4E86", value: model.current.progressSummary || "\u672A\u8BB0\u5F55", source: currentSource },
+      { key: "next", label: "\u4E0B\u4E00\u6B65", value: model.current.next || "\u672A\u8BB0\u5F55", source: currentSource },
+      { key: "blockers", label: "\u5F53\u524D\u98CE\u9669/\u963B\u585E", value: model.current.blockers || "\u672A\u8BB0\u5F55", source: currentSource },
+      { key: "pending", label: "\u672A\u63D0\u4EA4/\u5F85\u5904\u7406", value: model.current.pending || "\u672A\u8BB0\u5F55", source: currentSource }
+    ],
+    tasks: {
+      health: model.tasks.observationHealth,
+      completedLabel: completed === null || total === null ? "\u2014 / \u2014" : `${completed} / ${total}`,
+      progressPercent: completed === null || total === null ? null : total === 0 ? 0 : Math.round(completed / total * 100),
+      counts: [
+        ["\u603B\u6570", total],
+        ["active", active],
+        ["blocked", model.tasks.counts.blocked],
+        ["completed", completed],
+        ["archived", model.tasks.counts.archived]
+      ].map(([label, value]) => ({
+        label: String(label),
+        value: typeof value === "number" ? String(value) : "\u2014"
+      })),
+      byStatus: Object.entries(model.tasks.counts.byStatus).map(([status, count]) => ({
+        status,
+        count
+      })),
+      primary,
+      history,
+      driftWarning
+    },
+    recentProgress: model.recentProgress,
+    sections: [
+      { key: "goal", label: "Goal", items: model.sections.goal },
+      { key: "decisions", label: "Decisions", items: model.sections.decisions },
+      { key: "discoveries", label: "Discoveries", items: model.sections.discoveries },
+      { key: "blockers", label: "Blockers", items: model.sections.blockers },
+      { key: "outcome", label: "Outcome", items: model.sections.outcome },
+      { key: "candidatePatterns", label: "Candidate Patterns", items: model.sections.candidatePatterns },
+      { key: "definitionOfDone", label: "Definition of Done", items: model.sections.definitionOfDone }
+    ],
+    related: [
+      { label: "Project", targets: model.related.project ? [model.related.project] : [] },
+      { label: "Plans", targets: model.related.plans },
+      { label: "Docs", targets: model.related.docs },
+      { label: "Sessions", targets: model.related.sessions },
+      { label: "Related", targets: model.related.related }
+    ].filter((group) => group.targets.length > 0),
+    diagnostics: model.diagnostics
+  };
+}
+function taskPresentation(item) {
+  return {
+    ...item,
+    tone: item.archived ? "archived" : item.isBlocked ? "blocked" : item.statusIsCompleted === true ? "completed" : item.statusIsCompleted === false ? "active" : "unknown"
+  };
+}
+function isClosedCaseStatus(status) {
+  return ["done", "complete", "completed", "closed"].includes(status.toLowerCase());
+}
+
+// src/work-case-renderer.ts
+var WorkCaseDashboardRenderer = class {
+  constructor(dependencies) {
+    this.dependencies = dependencies;
+  }
+  reset(container) {
+    container.removeClass("flowdesk-case-dashboard");
+  }
+  render(container, state) {
+    container.addClass("flowdesk-case-dashboard");
+    if (!state.model) {
+      this.renderShell(container, state);
+      return;
+    }
+    const presentation = createWorkCasePresentation(state.model);
+    this.renderHeader(container, state, presentation);
+    if (state.error || state.staleReason) {
+      container.createDiv({
+        cls: "flowdesk-case-stale-warning",
+        text: state.staleReason || state.error
+      });
+    }
+    this.renderCurrent(container, state, presentation);
+    this.renderTasks(container, presentation);
+    this.renderProgress(container, state, presentation);
+    this.renderSections(container, state, presentation);
+    this.renderRelated(container, state, presentation);
+    this.renderDiagnostics(container, presentation);
+  }
+  renderShell(container, state) {
+    const header = container.createDiv({ cls: "flowdesk-case-header" });
+    header.createDiv({ cls: "flowdesk-case-kicker", text: "WORK CASE" });
+    header.createDiv({ cls: "flowdesk-case-title", text: caseTitle(state.casePath) });
+    const refresh = header.createEl("button", {
+      cls: "flowdesk-case-refresh",
+      text: state.loading ? "\u8BFB\u53D6\u4E2D" : "\u5237\u65B0",
+      attr: { "aria-label": state.loading ? "Work Case \u8BFB\u53D6\u4E2D" : "\u5237\u65B0 Work Case" }
+    });
+    refresh.disabled = state.loading;
+    refresh.addEventListener("click", () => void this.dependencies.refresh());
+    container.createDiv({
+      cls: state.error ? "flowdesk-case-error" : "flowdesk-case-empty",
+      text: state.error || (state.loading ? "\u6B63\u5728\u8BFB\u53D6 Work Case snapshot..." : "\u5C1A\u672A\u8BFB\u53D6 Work Case snapshot\u3002")
+    });
+  }
+  renderHeader(container, state, presentation) {
+    const header = container.createDiv({ cls: "flowdesk-case-header" });
+    const top = header.createDiv({ cls: "flowdesk-case-header-top" });
+    top.createDiv({ cls: "flowdesk-case-kicker", text: presentation.header.typeLabel || "WORK CASE" });
+    const refresh = top.createEl("button", {
+      cls: "flowdesk-case-refresh",
+      text: state.loading ? "\u8BFB\u53D6\u4E2D" : "\u5237\u65B0",
+      attr: { "aria-label": state.loading ? "Work Case \u8BFB\u53D6\u4E2D" : "\u5237\u65B0 Work Case" }
+    });
+    refresh.disabled = state.loading;
+    refresh.addEventListener("click", () => void this.dependencies.refresh());
+    header.createDiv({ cls: "flowdesk-case-title", text: presentation.header.title });
+    const metadata = header.createDiv({ cls: "flowdesk-case-metadata" });
+    metadata.createSpan({ cls: "flowdesk-case-status", text: presentation.header.status });
+    if (presentation.header.project !== "\u672A\u5173\u8054 Project") {
+      const project = metadata.createEl("button", {
+        cls: "flowdesk-case-related-link",
+        text: presentation.header.project
+      });
+      project.addEventListener(
+        "click",
+        () => void this.dependencies.openRelated(presentation.header.project, state.casePath)
+      );
+    } else {
+      metadata.createSpan({ cls: "flowdesk-case-muted", text: presentation.header.project });
+    }
+    metadata.createSpan({ cls: "flowdesk-case-date", text: presentation.header.dateLabel });
+    for (const badge of presentation.header.badges) {
+      metadata.createSpan({ cls: "flowdesk-case-badge", text: badge });
+    }
+    if (presentation.header.recoveryContext.length) {
+      const details = header.createEl("details", { cls: "flowdesk-case-recovery" });
+      details.createEl("summary", { text: "\u6062\u590D\u4E0A\u4E0B\u6587" });
+      for (const item of presentation.header.recoveryContext) {
+        const row = details.createDiv({ cls: "flowdesk-case-recovery-row" });
+        row.createSpan({ cls: "flowdesk-case-label", text: item.label });
+        row.createSpan({ cls: "flowdesk-case-long-value", text: item.value });
+      }
+    }
+  }
+  renderCurrent(container, state, presentation) {
+    const section2 = createSection(container, "Current", "flowdesk-case-current");
+    const grid = section2.createDiv({ cls: "flowdesk-case-short-grid" });
+    for (const item of presentation.current) {
+      const card = grid.createEl("button", {
+        cls: `flowdesk-case-current-card is-${item.key}`,
+        attr: { "aria-label": `\u6253\u5F00 Current\uFF1A${item.label}` }
+      });
+      card.createDiv({ cls: "flowdesk-case-label", text: item.label });
+      card.createDiv({ cls: "flowdesk-case-current-value", text: item.value });
+      if (item.source) {
+        card.addEventListener(
+          "click",
+          () => void this.dependencies.openCaseSource(state.casePath, item.source)
+        );
+      } else {
+        card.disabled = true;
+      }
+    }
+  }
+  renderTasks(container, presentation) {
+    const section2 = createSection(container, "\u5173\u8054\u4EFB\u52A1", "flowdesk-case-tasks");
+    const summary = section2.createDiv({ cls: "flowdesk-case-task-summary" });
+    const completion = summary.createDiv({ cls: "flowdesk-case-completion" });
+    completion.createDiv({ cls: "flowdesk-case-completion-value", text: presentation.tasks.completedLabel });
+    completion.createDiv({ cls: "flowdesk-case-label", text: "completed / total" });
+    if (presentation.tasks.progressPercent !== null) {
+      const progress = summary.createEl("progress", {
+        cls: "flowdesk-case-progress-bar",
+        attr: { max: "100", value: String(presentation.tasks.progressPercent) }
+      });
+      progress.value = presentation.tasks.progressPercent;
+    }
+    summary.createDiv({
+      cls: `flowdesk-case-observation is-${presentation.tasks.health}`,
+      text: `\u4EFB\u52A1\u89C2\u5BDF\uFF1A${presentation.tasks.health}`
+    });
+    const counts = section2.createDiv({ cls: "flowdesk-case-count-grid" });
+    for (const count of presentation.tasks.counts) {
+      const item = counts.createDiv({ cls: "flowdesk-case-count" });
+      item.createDiv({ cls: "flowdesk-case-count-value", text: count.value });
+      item.createDiv({ cls: "flowdesk-case-label", text: count.label });
+    }
+    if (presentation.tasks.byStatus.length) {
+      const statuses = section2.createDiv({ cls: "flowdesk-case-status-list" });
+      for (const item of presentation.tasks.byStatus) {
+        statuses.createSpan({
+          cls: "flowdesk-case-status-chip",
+          text: `${item.status} ${item.count}`
+        });
+      }
+    }
+    if (presentation.tasks.driftWarning) {
+      section2.createDiv({ cls: "flowdesk-case-drift", text: presentation.tasks.driftWarning });
+    }
+    if (!presentation.tasks.primary.length && !presentation.tasks.history.length) {
+      section2.createDiv({
+        cls: "flowdesk-case-empty",
+        text: presentation.tasks.health === "healthy" ? "\u6CA1\u6709\u5173\u8054\u4EFB\u52A1\u3002" : "\u4EFB\u52A1\u6570\u636E\u6682\u4E0D\u53EF\u7528\uFF0CCase \u4E3B\u4F53\u4ECD\u53EF\u9605\u8BFB\u3002"
+      });
+      return;
+    }
+    if (presentation.tasks.primary.length) {
+      const list = section2.createDiv({ cls: "flowdesk-case-task-list" });
+      for (const task of presentation.tasks.primary) this.renderTask(list, task);
+    }
+    if (presentation.tasks.history.length) {
+      const history = section2.createEl("details", { cls: "flowdesk-case-task-history" });
+      history.createEl("summary", { text: `\u5DF2\u5B8C\u6210 / \u5DF2\u5F52\u6863 \xB7 ${presentation.tasks.history.length}` });
+      const list = history.createDiv({ cls: "flowdesk-case-task-list" });
+      for (const task of presentation.tasks.history) this.renderTask(list, task);
+    }
+  }
+  renderTask(container, task) {
+    const row = container.createEl("button", {
+      cls: `flowdesk-case-task-row is-${task.tone}`,
+      attr: { "aria-label": `\u6253\u5F00\u4EFB\u52A1\uFF1A${task.title}` }
+    });
+    const content = row.createDiv({ cls: "flowdesk-case-task-content" });
+    content.createDiv({ cls: "flowdesk-case-task-title", text: task.title });
+    content.createDiv({
+      cls: "flowdesk-case-task-meta",
+      text: `${task.associationSource}${task.archived ? " \xB7 archived" : ""}`
+    });
+    row.createSpan({ cls: "flowdesk-case-task-status", text: task.status || "\u672A\u8BB0\u5F55" });
+    row.addEventListener("click", () => void this.dependencies.openTask(task.id));
+  }
+  renderProgress(container, state, presentation) {
+    const section2 = createSection(container, "\u6700\u8FD1 Progress", "flowdesk-case-recent-progress");
+    if (!presentation.recentProgress.length) {
+      section2.createDiv({ cls: "flowdesk-case-empty", text: "\u672A\u8BB0\u5F55\u7ED3\u6784\u5316 Progress\u3002" });
+      return;
+    }
+    for (const item of presentation.recentProgress) {
+      const row = section2.createEl("button", { cls: "flowdesk-case-progress-item" });
+      if (item.timestamp) row.createSpan({ cls: "flowdesk-case-progress-time", text: item.timestamp });
+      row.createSpan({ cls: "flowdesk-case-progress-text", text: item.text });
+      row.addEventListener(
+        "click",
+        () => void this.dependencies.openCaseSource(state.casePath, item.source)
+      );
+    }
+  }
+  renderSections(container, state, presentation) {
+    const section2 = createSection(container, "\u6848\u5377\u5185\u5BB9", "flowdesk-case-record");
+    const grid = section2.createDiv({ cls: "flowdesk-case-section-grid" });
+    for (const group of presentation.sections) {
+      const details = grid.createEl("details", { cls: "flowdesk-case-record-group" });
+      details.createEl("summary", { text: `${group.label} \xB7 ${group.items.length}` });
+      if (!group.items.length) {
+        details.createDiv({ cls: "flowdesk-case-empty", text: "\u672A\u8BB0\u5F55" });
+        continue;
+      }
+      for (const item of group.items) {
+        const entry = details.createEl("button", { cls: "flowdesk-case-record-entry" });
+        entry.createDiv({ cls: "flowdesk-case-record-heading", text: item.heading });
+        entry.createDiv({ cls: "flowdesk-case-record-text", text: item.text });
+        entry.addEventListener(
+          "click",
+          () => void this.dependencies.openCaseSource(state.casePath, item.source)
+        );
+      }
+    }
+  }
+  renderRelated(container, state, presentation) {
+    if (!presentation.related.length) return;
+    const section2 = createSection(container, "\u5173\u8054\u5BFC\u822A", "flowdesk-case-related");
+    for (const group of presentation.related) {
+      const row = section2.createDiv({ cls: "flowdesk-case-related-row" });
+      row.createSpan({ cls: "flowdesk-case-label", text: group.label });
+      const links = row.createDiv({ cls: "flowdesk-case-related-links" });
+      for (const target of group.targets) {
+        const link = links.createEl("button", {
+          cls: "flowdesk-case-related-link",
+          text: target
+        });
+        link.addEventListener(
+          "click",
+          () => void this.dependencies.openRelated(target, state.casePath)
+        );
+      }
+    }
+  }
+  renderDiagnostics(container, presentation) {
+    if (!presentation.diagnostics.length) return;
+    const details = container.createEl("details", { cls: "flowdesk-case-diagnostics" });
+    details.createEl("summary", { text: `\u89E3\u6790\u4E0E\u89C2\u5BDF\u8BCA\u65AD \xB7 ${presentation.diagnostics.length}` });
+    for (const diagnostic of presentation.diagnostics) {
+      const row = details.createDiv({ cls: `flowdesk-case-diagnostic is-${diagnostic.severity}` });
+      row.createDiv({ cls: "flowdesk-case-diagnostic-code", text: diagnostic.code });
+      row.createDiv({ cls: "flowdesk-case-diagnostic-message", text: diagnostic.message });
+      row.createDiv({ cls: "flowdesk-case-diagnostic-path", text: diagnostic.path });
+    }
+  }
+};
+function createSection(container, title, className) {
+  const section2 = container.createDiv({ cls: `flowdesk-case-section ${className}` });
+  section2.createDiv({ cls: "flowdesk-case-section-title", text: title });
+  return section2;
+}
+function caseTitle(casePath) {
+  const name = casePath.split("/").pop() || casePath;
+  return name.replace(/\.md$/i, "");
 }
 
 // src/main.ts
@@ -1359,9 +2307,18 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
       })
     );
     this.registerEvent(
+      this.app.metadataCache.on("changed", (file) => {
+        var _a;
+        const activeFile = this.app.workspace.getActiveFile();
+        if ((activeFile == null ? void 0 : activeFile.path) === file.path && !this.isTaskFile(activeFile)) {
+          void ((_a = this.getDashboardView()) == null ? void 0 : _a.syncToActiveFile(file));
+        }
+      })
+    );
+    this.registerEvent(
       this.app.vault.on("modify", (file) => {
         const view = this.getDashboardView();
-        if (view && file instanceof import_obsidian.TFile && view.observesTaskFile(file.path)) {
+        if (view && file instanceof import_obsidian.TFile && view.observesFile(file.path)) {
           view.scheduleRefresh();
         }
       })
@@ -1374,11 +2331,15 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
   async refreshDashboard(fallbackTaskPath = "") {
     const file = this.app.workspace.getActiveFile();
     const taskPath = this.isTaskFile(file) ? file.path : fallbackTaskPath;
-    if (!taskPath) {
-      new import_obsidian.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A Tasks/*.md \u4EFB\u52A1\u6587\u4EF6\u3002");
+    if (taskPath) {
+      await this.activateDashboard(taskPath);
       return;
     }
-    await this.activateDashboard(taskPath);
+    if (file && ["work-case", "session"].includes(this.workCaseType(file))) {
+      await this.activateWorkCaseDashboard(file);
+      return;
+    }
+    new import_obsidian.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A Tasks/*.md \u4EFB\u52A1\u6587\u4EF6\u3002");
   }
   async activateDashboard(taskPath) {
     var _a;
@@ -1393,6 +2354,22 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     }
     if (leaf.view instanceof FlowDeskDashboardView) {
       await leaf.view.loadTask(taskPath);
+    }
+    workspace.revealLeaf(leaf);
+  }
+  async activateWorkCaseDashboard(file) {
+    var _a;
+    const { workspace } = this.app;
+    let leaf = workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE)[0];
+    if (!leaf) {
+      leaf = (_a = workspace.getRightLeaf(false)) != null ? _a : workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: FLOWDESK_DASHBOARD_VIEW_TYPE,
+        active: true
+      });
+    }
+    if (leaf.view instanceof FlowDeskDashboardView) {
+      await leaf.view.syncToActiveFile(file);
     }
     workspace.revealLeaf(leaf);
   }
@@ -1414,6 +2391,24 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
       throw new Error(`Snapshot JSON \u89E3\u6790\u5931\u8D25\uFF1A${message}`);
     }
   }
+  async loadWorkCaseSnapshot(casePath, signal) {
+    const invocation = this.createWorkCaseSnapshotInvocation(casePath);
+    let stdout;
+    try {
+      const result = await execFileAsync(invocation.executable, invocation.args, {
+        ...createSnapshotExecutionOptions(invocation.cwd, signal)
+      });
+      stdout = result.stdout;
+    } catch (error) {
+      throw new Error(formatWorkCaseCommandError(error));
+    }
+    try {
+      return JSON.parse(stdout);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Work Case snapshot JSON \u89E3\u6790\u5931\u8D25\uFF1A${message}`);
+    }
+  }
   createSnapshotInvocation(taskPath, format) {
     const flowdeskRoot = this.resolveFlowDeskRoot();
     const workingDirectory = expandHomePath(this.settings.workingDirectory.trim()) || flowdeskRoot;
@@ -1426,6 +2421,14 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
       },
       format
     );
+  }
+  createWorkCaseSnapshotInvocation(casePath) {
+    return buildWorkCaseSnapshotInvocation({
+      flowdeskRoot: this.resolveFlowDeskRoot(),
+      casePath,
+      workingDirectory: this.resolveVaultRoot(),
+      apiUrl: this.settings.apiUrl.trim()
+    });
   }
   async copyDashboardCommand(taskPath) {
     await navigator.clipboard.writeText(
@@ -1487,6 +2490,12 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
   isTaskFile(file) {
     return Boolean(file && file.extension === "md" && isTaskPath(file.path));
   }
+  workCaseType(file) {
+    var _a, _b;
+    if (!file || file.extension !== "md" || this.isTaskFile(file)) return "";
+    const type = (_b = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter) == null ? void 0 : _b.type;
+    return typeof type === "string" ? type : "";
+  }
   getDashboardView() {
     const leaf = this.app.workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE)[0];
     return (leaf == null ? void 0 : leaf.view) instanceof FlowDeskDashboardView ? leaf.view : null;
@@ -1495,35 +2504,51 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     const candidates = [
       expandHomePath(this.settings.flowdeskRoot.trim()),
       expandHomePath(process.env.FLOWDESK_PLUGIN_ROOT || ""),
-      path2.resolve(__dirname, "..", "..")
+      path3.resolve(__dirname, "..", "..")
     ].filter(Boolean);
     for (const candidate of candidates) {
-      if ((0, import_fs.existsSync)(path2.join(candidate, "bin", "flowdesk-execution-snapshot"))) {
+      if ((0, import_fs.existsSync)(path3.join(candidate, "bin", "flowdesk-execution-snapshot"))) {
         return candidate;
       }
     }
     throw new Error("\u672A\u627E\u5230 FlowDesk \u4ED3\u5E93\u8DEF\u5F84\uFF0C\u8BF7\u5728\u63D2\u4EF6\u8BBE\u7F6E\u91CC\u914D\u7F6E FlowDesk repo path\u3002");
+  }
+  resolveVaultRoot() {
+    const adapter = this.app.vault.adapter;
+    const basePath = typeof adapter.getBasePath === "function" ? adapter.getBasePath() : adapter.basePath;
+    if (!basePath) {
+      throw new Error("Work Case Dashboard \u4EC5\u652F\u6301\u672C\u5730\u6587\u4EF6\u7CFB\u7EDF Vault\u3002");
+    }
+    return path3.resolve(basePath);
   }
 };
 var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
-    this.context = { kind: "empty" };
     this.previousTaskPath = "";
-    this.selectionRevision = 0;
-    this.displayState = null;
-    this.error = "";
-    this.loading = false;
-    this.queuedRequest = null;
-    this.refreshPromise = null;
-    this.snapshotAbortCoordinator = new SnapshotRequestAbortCoordinator();
     this.cancelInitialSync = null;
-    this.disclosureStateCache = new DisclosureStateCache(20);
-    this.disclosureState = resolveDisclosureState(void 0, true);
-    this.refreshScheduler = new TrailingRefreshScheduler(() => {
-      void this.loadCurrentTask();
+    this.taskAdapter = new FrozenTaskAdapter({
+      shell: () => this.shell,
+      loadSnapshot: (taskPath, signal) => this.plugin.loadSnapshot(taskPath, signal),
+      render: (container, state) => this.renderFrozenTask(container, state),
+      requestRender: () => this.renderShell(),
+      nowLabel: () => formatTime(/* @__PURE__ */ new Date())
     });
+    this.caseAdapter = new WorkCaseAdapter({
+      shell: () => this.shell,
+      loadSnapshot: (casePath, signal) => this.plugin.loadWorkCaseSnapshot(casePath, signal),
+      render: (container, state) => this.renderWorkCase(container, state),
+      requestRender: () => this.renderShell(),
+      nowLabel: () => formatTime(/* @__PURE__ */ new Date())
+    });
+    this.caseRenderer = new WorkCaseDashboardRenderer({
+      refresh: () => this.caseAdapter.refresh(),
+      openTask: (taskPath) => this.openTask(taskPath),
+      openCaseSource: (casePath, source) => this.openCaseSource(casePath, source),
+      openRelated: (target, casePath) => this.openRelated(target, casePath)
+    });
+    this.shell = new ViewShellController([this.taskAdapter, this.caseAdapter]);
   }
   getViewType() {
     return FLOWDESK_DASHBOARD_VIEW_TYPE;
@@ -1546,149 +2571,106 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     var _a;
     (_a = this.cancelInitialSync) == null ? void 0 : _a.call(this);
     this.cancelInitialSync = null;
-    this.refreshScheduler.cancel();
-    this.snapshotAbortCoordinator.cancel();
-    this.disclosureStateCache.clear();
+    this.shell.close();
+    this.taskAdapter.close();
   }
   async syncToActiveFile(file = this.app.workspace.getActiveFile()) {
     var _a;
-    const nextContext = resolveDashboardContext((_a = file == null ? void 0 : file.path) != null ? _a : null, this.previousTaskPath);
-    if (nextContext.kind === "task") {
-      if (this.context.kind === "task" && this.context.taskPath === nextContext.taskPath) {
-        if (!this.displayState && !this.loading) {
-          await this.loadTask(nextContext.taskPath);
-        }
-        return;
-      }
-      await this.loadTask(nextContext.taskPath);
+    const nextContext = resolveViewShellContext(
+      (_a = file == null ? void 0 : file.path) != null ? _a : null,
+      this.previousTaskPath,
+      this.plugin.workCaseType(file)
+    );
+    if ("resourcePath" in nextContext) {
+      this.previousTaskPath = nextContext.resourcePath;
+      await this.shell.select(nextContext);
+      this.renderShell();
       return;
     }
-    this.selectionRevision += 1;
-    this.context = nextContext;
-    this.displayState = null;
-    this.queuedRequest = null;
-    this.refreshScheduler.cancel();
-    this.snapshotAbortCoordinator.cancel();
-    this.loading = false;
-    this.error = "";
-    this.render();
+    await this.shell.select(nextContext);
+    this.renderShell();
   }
   async loadTask(taskPath) {
-    const sameTask = this.context.kind === "task" && this.context.taskPath === taskPath;
-    if (!sameTask) {
-      this.selectionRevision += 1;
-      this.context = { kind: "task", taskPath };
-      this.previousTaskPath = taskPath;
-      this.displayState = null;
-      this.error = "";
-      this.loading = true;
-      this.refreshScheduler.cancel();
-      this.snapshotAbortCoordinator.cancel();
-      this.disclosureState = this.disclosureStateCache.forTask(taskPath);
-      this.render();
-    }
-    this.queuedRequest = { taskPath, selectionRevision: this.selectionRevision };
-    if (this.refreshPromise) return this.refreshPromise;
-    this.refreshPromise = this.drainRefreshQueue();
-    try {
-      await this.refreshPromise;
-    } finally {
-      this.refreshPromise = null;
-    }
+    this.previousTaskPath = taskPath;
+    await this.shell.select(
+      { kind: this.taskAdapter.kind, resourcePath: taskPath },
+      { force: true }
+    );
   }
   async refreshCurrentTask() {
-    this.refreshScheduler.cancel();
-    await this.loadCurrentTask();
+    await this.taskAdapter.refresh();
   }
   scheduleRefresh() {
-    this.refreshScheduler.schedule();
+    if (this.shell.context.kind === this.caseAdapter.kind) {
+      void this.caseAdapter.refresh();
+    } else {
+      this.taskAdapter.scheduleRefresh();
+    }
   }
   observesTaskFile(filePath) {
-    var _a;
-    return this.context.kind === "task" ? collectObservedTaskPaths(this.context.taskPath, (_a = this.displayState) == null ? void 0 : _a.snapshot).has(filePath) : false;
+    return this.taskAdapter.observesTaskFile(filePath);
   }
-  async loadCurrentTask() {
-    if (this.context.kind === "task") await this.loadTask(this.context.taskPath);
+  observesFile(filePath) {
+    return this.shell.context.kind === this.caseAdapter.kind ? this.caseAdapter.observesFile(filePath) : this.observesTaskFile(filePath);
   }
-  async drainRefreshQueue() {
-    while (this.queuedRequest) {
-      const request = this.queuedRequest;
-      this.queuedRequest = null;
-      await this.loadTaskNow(request);
-    }
+  get taskRenderState() {
+    const state = this.taskAdapter.getRenderState();
+    if (!state) throw new Error("Frozen Task Adapter \u5C1A\u672A\u6FC0\u6D3B");
+    return state;
   }
-  async loadTaskNow(request) {
-    const signal = this.snapshotAbortCoordinator.begin();
-    this.loading = true;
-    this.error = "";
-    this.render();
-    try {
-      const snapshot = await this.plugin.loadSnapshot(request.taskPath, signal);
-      if (!isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) return;
-      const envelopeFailure = resolveSnapshotEnvelopeFailure(
-        this.displayState,
-        request.taskPath,
-        snapshot
-      );
-      if (envelopeFailure.error) {
-        this.error = envelopeFailure.error;
-        this.displayState = envelopeFailure.displayState;
-        return;
-      }
-      this.displayState = {
-        taskPath: request.taskPath,
-        snapshot,
-        loadedAt: formatTime(/* @__PURE__ */ new Date()),
-        staleReason: ""
-      };
-    } catch (error) {
-      if (!isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) return;
-      this.error = error instanceof Error ? error.message : String(error);
-      this.displayState = resolveRefreshFailureDisplay(
-        this.displayState,
-        request.taskPath,
-        this.error
-      );
-    } finally {
-      this.snapshotAbortCoordinator.finish(signal);
-      if (isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) {
-        this.loading = false;
-        this.render();
-      }
-    }
+  get loading() {
+    return this.taskRenderState.loading;
   }
-  render() {
-    var _a;
+  get disclosureState() {
+    return this.taskRenderState.disclosureState;
+  }
+  renderShell() {
     const container = this.contentEl;
     container.empty();
+    this.caseRenderer.reset(container);
     container.addClass("flowdesk-dashboard");
-    if (this.context.kind === "non-task") {
-      this.renderNonTaskState(container, this.context);
+    if (this.shell.context.kind === this.taskAdapter.kind) {
+      this.taskAdapter.render(container);
       return;
     }
-    if (this.context.kind === "empty") {
+    if (this.shell.context.kind === this.caseAdapter.kind) {
+      this.caseAdapter.render(container);
+      return;
+    }
+    if (isUnsupportedContext(this.shell.context)) {
+      this.renderNonTaskState(container, {
+        kind: "non-task",
+        activePath: this.shell.context.activePath,
+        previousTaskPath: this.shell.context.previousResourcePath
+      });
+      return;
+    }
+    if (this.shell.context.kind === "empty") {
       container.createDiv({
         cls: "flowdesk-empty",
         text: "\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u4EE5\u67E5\u770B Dashboard\u3002"
       });
-      return;
     }
-    const taskPath = this.context.taskPath;
-    const displayState = ((_a = this.displayState) == null ? void 0 : _a.taskPath) === taskPath ? this.displayState : null;
-    const snapshot = displayState == null ? void 0 : displayState.snapshot;
+  }
+  renderWorkCase(container, state) {
+    this.caseRenderer.render(container, state);
+  }
+  renderFrozenTask(container, state) {
+    const taskPath = state.taskPath;
+    const snapshot = state.snapshot;
     if (!snapshot) {
       this.renderLoadingHeader(
         container,
         taskPath,
-        formatTaskShellStatus(this.loading, this.error)
+        formatTaskShellStatus(state.loading, state.error)
       );
     }
-    if (this.loading && !snapshot) {
+    if (state.loading && !snapshot) {
       container.createDiv({ cls: "flowdesk-empty", text: "\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u4EFB\u52A1 snapshot..." });
       return;
     }
-    if (this.error && !snapshot) {
-      container.createDiv({ cls: "flowdesk-error", text: this.error });
+    if (state.error && !snapshot) {
+      container.createDiv({ cls: "flowdesk-error", text: state.error });
       return;
     }
     if (!snapshot) {
@@ -1697,8 +2679,8 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     }
     const model = createDashboardViewModel(snapshot, {
       expectedTaskPath: taskPath,
-      loadedAt: displayState == null ? void 0 : displayState.loadedAt,
-      staleReason: displayState == null ? void 0 : displayState.staleReason
+      loadedAt: state.loadedAt,
+      staleReason: state.staleReason
     });
     if (model.errorCode) {
       this.renderLoadingHeader(container, taskPath, "snapshot \u4E0D\u517C\u5BB9");
@@ -1962,8 +2944,8 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     }
   }
   renderChildren(container, model, children) {
-    const section = container.createDiv({ cls: "flowdesk-child-section" });
-    const heading = section.createDiv({ cls: "flowdesk-section-heading" });
+    const section2 = container.createDiv({ cls: "flowdesk-child-section" });
+    const heading = section2.createDiv({ cls: "flowdesk-section-heading" });
     heading.createDiv({
       cls: "flowdesk-dashboard-section-title",
       text: `\u76F4\u63A5\u5B50\u4EFB\u52A1 \xB7 ${children.length}`
@@ -1972,7 +2954,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       cls: "flowdesk-section-meta",
       text: `${model.rollup.childrenTrustedDone}/${model.rollup.childrenTotal} \u53EF\u4FE1\u5B8C\u6210`
     });
-    const list = section.createDiv({ cls: "flowdesk-child-list" });
+    const list = section2.createDiv({ cls: "flowdesk-child-list" });
     for (const child of children) {
       const row = list.createDiv({
         cls: `flowdesk-child-row is-${child.tone}`,
@@ -2029,7 +3011,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     full.createEl("summary", { text: "\u89C4\u683C\u4E0E\u4EA4\u4ED8\u8BE6\u60C5" });
     const body = full.createDiv({ cls: "flowdesk-detail-body" });
     const renderedSections = /* @__PURE__ */ new Map();
-    const contract = createSection(
+    const contract = createSection2(
       body,
       model.currentTask.trustLevel === "legacy_v3" ? "\u4EFB\u52A1\u5408\u540C v3" : "\u4EFB\u52A1\u89C4\u683C v4",
       formatSemanticStatus(model.contract.semanticStatus)
@@ -2092,7 +3074,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         void this.openSnapshotSource(model.currentTask.id, { section: "Execution Result" }, "\u5B8C\u6210\u8BB0\u5F55");
       });
     }
-    const observation = createSection(
+    const observation = createSection2(
       body,
       "\u89C2\u5BDF\u4E0E\u6765\u6E90",
       model.observation.isTrustworthy ? "\u5065\u5EB7" : "\u9700\u68C0\u67E5",
@@ -2278,8 +3260,8 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       activeDiagnosticKeys
     );
     for (const sectionName of resolveDetailSectionOrder(diagnosticCount > 0)) {
-      const section = renderedSections.get(sectionName);
-      if (section) body.appendChild(section);
+      const section2 = renderedSections.get(sectionName);
+      if (section2) body.appendChild(section2);
     }
   }
   makeNavigable(element, action) {
@@ -2301,6 +3283,38 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       return;
     }
     await this.app.workspace.getLeaf(taskNavigationNewLeaf(origin)).openFile(file);
+  }
+  async openCaseSource(casePath, source) {
+    var _a;
+    const file = this.app.vault.getAbstractFileByPath(casePath);
+    if (!(file instanceof import_obsidian.TFile)) {
+      new import_obsidian.Notice(`\u672A\u627E\u5230 Work Case \u6587\u4EF6\uFF1A${casePath}`);
+      return;
+    }
+    await this.app.workspace.getLeaf(false).openFile(file);
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+    if (!view || ((_a = view.file) == null ? void 0 : _a.path) !== casePath) {
+      new import_obsidian.Notice("Work Case \u5DF2\u6253\u5F00\uFF0C\u4F46\u5F53\u524D\u89C6\u56FE\u65E0\u6CD5\u5B9A\u4F4D\u5230\u5177\u4F53\u884C\u3002");
+      return;
+    }
+    const editorLine = Math.max(0, source.lineStart - 1);
+    if (editorLine >= view.editor.lineCount()) {
+      new import_obsidian.Notice(`Work Case \u6765\u6E90\u884C\u53F7\u5DF2\u8D85\u51FA\u5F53\u524D\u6587\u4EF6\u8303\u56F4\uFF1A${source.lineStart}`);
+      return;
+    }
+    const position = { line: editorLine, ch: 0 };
+    view.editor.setCursor(position);
+    view.editor.scrollIntoView({ from: position, to: position }, true);
+    view.editor.focus();
+  }
+  async openRelated(target, casePath) {
+    const linkText = normalizeWikiLink(target);
+    try {
+      await this.app.workspace.openLinkText(linkText, casePath, false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new import_obsidian.Notice(`\u65E0\u6CD5\u6253\u5F00\u5173\u8054\u6587\u4EF6\uFF1A${message}`);
+    }
   }
 };
 var EvidenceReviewModal = class extends import_obsidian.Modal {
@@ -2372,16 +3386,16 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian.PluginSettingTab
     );
   }
 };
-function createSection(container, title, meta = "", className = "") {
-  const section = container.createDiv({
+function createSection2(container, title, meta = "", className = "") {
+  const section2 = container.createDiv({
     cls: `flowdesk-dashboard-section ${className}`.trim()
   });
-  const heading = section.createDiv({ cls: "flowdesk-contract-section-head" });
+  const heading = section2.createDiv({ cls: "flowdesk-contract-section-head" });
   heading.createDiv({ cls: "flowdesk-dashboard-section-title", text: title });
   if (meta) {
     heading.createDiv({ cls: "flowdesk-contract-section-meta", text: meta });
   }
-  return section;
+  return section2;
 }
 function scopeRow(container, label, values) {
   const row = container.createDiv({ cls: "flowdesk-contract-scope-row" });
@@ -2389,22 +3403,22 @@ function scopeRow(container, label, values) {
   row.createSpan({ text: values.length ? values.join("\u3001") : "\u65E0" });
 }
 function renderContractItems(container, label, kind, items, openSource, open, onToggle) {
-  const section = container.createEl("details", {
+  const section2 = container.createEl("details", {
     cls: "flowdesk-contract-item-details"
   });
-  section.open = open;
-  section.addEventListener("toggle", () => onToggle(section.open));
-  const summary = section.createEl("summary");
+  section2.open = open;
+  section2.addEventListener("toggle", () => onToggle(section2.open));
+  const summary = section2.createEl("summary");
   summary.createSpan({ text: label });
   summary.createSpan({
     cls: "flowdesk-contract-item-count",
     text: `${items.length} \u6761`
   });
   if (!items.length) {
-    section.createDiv({ cls: "flowdesk-muted", text: "\u65E0" });
+    section2.createDiv({ cls: "flowdesk-muted", text: "\u65E0" });
     return;
   }
-  const list = section.createDiv({ cls: "flowdesk-contract-item-list" });
+  const list = section2.createDiv({ cls: "flowdesk-contract-item-list" });
   for (const item of items) {
     const presentation = createContractItemPresentation(item, kind);
     const row = list.createDiv({ cls: "flowdesk-contract-item" });
@@ -2463,11 +3477,11 @@ function formatReviewTimestamp(now) {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 }
 function taskTitleFromPath(taskPath) {
-  return path2.basename(taskPath, path2.extname(taskPath));
+  return path3.basename(taskPath, path3.extname(taskPath));
 }
 function expandHomePath(value) {
   if (value === "~") return (0, import_os.homedir)();
-  if (value.startsWith("~/")) return path2.join((0, import_os.homedir)(), value.slice(2));
+  if (value.startsWith("~/")) return path3.join((0, import_os.homedir)(), value.slice(2));
   return value;
 }
 function formatTime(date) {
@@ -2489,6 +3503,18 @@ function formatSnapshotCommandError(error) {
   }
   const runtime = output.match(/RuntimeError: ([\s\S]+)$/);
   return runtime ? `FlowDesk snapshot \u8BFB\u53D6\u5931\u8D25\uFF1A${runtime[1].trim()}` : `FlowDesk snapshot \u547D\u4EE4\u5931\u8D25\uFF1A${message}`;
+}
+function formatWorkCaseCommandError(error) {
+  const failure = error;
+  const stderr = typeof failure.stderr === "string" ? failure.stderr.trim() : "";
+  const stdout = typeof failure.stdout === "string" ? failure.stdout.trim() : "";
+  const message = error instanceof Error ? error.message : String(error);
+  return `Work Case snapshot \u547D\u4EE4\u5931\u8D25\uFF1A${stderr || stdout || message}`;
+}
+function normalizeWikiLink(value) {
+  var _a;
+  const match = value.trim().match(/^\[\[([^\]]+)\]\]$/);
+  return ((_a = match == null ? void 0 : match[1]) != null ? _a : value).split("|", 1)[0].trim();
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
