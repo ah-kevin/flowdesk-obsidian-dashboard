@@ -283,7 +283,7 @@ function text(value, fallback) {
 
 // src/snapshot-model.ts
 function createDashboardViewModel(value, options = {}) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, __, _$, _aa, _ba, _ca, _da, _ea, _fa, _ga, _ha, _ia, _ja, _ka, _la, _ma, _na, _oa, _pa;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, __, _$, _aa, _ba, _ca, _da, _ea, _fa, _ga, _ha, _ia, _ja, _ka, _la, _ma, _na, _oa, _pa, _qa, _ra, _sa;
   const snapshot = isRecord2(value) ? value : {};
   const schemaVersion = snapshot.snapshot_schema_version;
   const isV4 = schemaVersion === 4;
@@ -404,7 +404,12 @@ function createDashboardViewModel(value, options = {}) {
     },
     primaryDiagnostic: (_oa = diagnostics[0]) != null ? _oa : null,
     diagnostics,
-    nextAction: formatNextAction((_pa = snapshot.next_actions) == null ? void 0 : _pa[0])
+    nextAction: formatNextAction((_pa = snapshot.next_actions) == null ? void 0 : _pa[0]),
+    records: {
+      execution: Array.isArray((_qa = currentTask.records) == null ? void 0 : _qa.execution) ? currentTask.records.execution.length : 0,
+      verification: Array.isArray((_ra = currentTask.records) == null ? void 0 : _ra.verification) ? currentTask.records.verification.length : 0,
+      delivery: Array.isArray((_sa = currentTask.records) == null ? void 0 : _sa.delivery) ? currentTask.records.delivery.length : 0
+    }
   };
 }
 function validateSnapshotSource(value, expectedTaskPath) {
@@ -424,7 +429,7 @@ function formatRollupState(value) {
     blocked: "\u5B58\u5728\u963B\u585E\u5B50\u4EFB\u52A1",
     awaiting_current_verification: "\u7B49\u5F85\u5F53\u524D\u4EFB\u52A1\u9A8C\u8BC1",
     inconsistent: "\u7236\u5B50\u72B6\u6001\u77DB\u76FE",
-    contract_invalid: "\u4EFB\u52A1\u5408\u540C\u65E0\u6548",
+    contract_invalid: "\u4EFB\u52A1\u89C4\u683C\u65E0\u6548",
     done: "\u4EFB\u52A1\u53EF\u4FE1\u5B8C\u6210",
     unknown: "\u6C47\u603B\u72B6\u6001\u672A\u77E5"
   };
@@ -445,7 +450,7 @@ function formatNextAction(action) {
     resolve_child_blockers: "\u5904\u7406\u76F4\u63A5\u5B50\u4EFB\u52A1\u963B\u585E",
     complete_current_verification: "\u5B8C\u6210\u5F53\u524D\u4EFB\u52A1\u9A8C\u8BC1",
     resolve_contradictions: "\u5904\u7406\u7236\u5B50\u72B6\u6001\u77DB\u76FE",
-    repair_contract: "\u4FEE\u590D\u5F53\u524D\u4EFB\u52A1\u5408\u540C"
+    repair_contract: "\u4FEE\u590D\u5F53\u524D\u4EFB\u52A1\u89C4\u683C"
   };
   const taskIds = Array.isArray(action.task_ids) ? action.task_ids.map(String).filter(Boolean) : [];
   const label = (_a = labels[kind]) != null ? _a : kind;
@@ -898,7 +903,7 @@ function taskStatusTone(value, isBlocked = false) {
 function createTrustSummary(model) {
   const isLegacy = model.currentTask.trustLevel === "legacy_v3";
   const isTasknotesOnly = model.currentTask.completion.contractStatus === "not_applicable";
-  const contractLabel = isTasknotesOnly ? "TaskNotes \u72B6\u6001\u4E3A\u51C6" : isLegacy ? model.contract.semanticStatus === "valid" ? "v3 \u5386\u53F2\u5408\u540C\u6709\u6548" : "v3 \u5386\u53F2\u5408\u540C\u9700\u68C0\u67E5" : model.contract.semanticStatus === "valid" ? "\u5408\u540C\u6709\u6548" : model.contract.semanticStatus === "invalid" ? "\u5408\u540C\u5B58\u5728\u95EE\u9898" : "\u5408\u540C\u72B6\u6001\u672A\u77E5";
+  const contractLabel = isTasknotesOnly ? "TaskNotes \u72B6\u6001\u4E3A\u51C6" : isLegacy ? model.contract.semanticStatus === "valid" ? "v3 \u5386\u53F2\u5408\u540C\u6709\u6548" : "v3 \u5386\u53F2\u5408\u540C\u9700\u68C0\u67E5" : model.contract.semanticStatus === "valid" ? "\u89C4\u683C\u6709\u6548" : model.contract.semanticStatus === "invalid" ? "\u89C4\u683C\u5B58\u5728\u95EE\u9898" : "\u89C4\u683C\u72B6\u6001\u672A\u77E5";
   const contractTone = isTasknotesOnly ? "muted" : model.contract.semanticStatus === "valid" ? "healthy" : model.contract.semanticStatus === "invalid" ? "error" : "muted";
   if (model.observation.isStale) {
     const detail2 = model.observation.staleReason || "snapshot \u5DF2\u6807\u8BB0\u4E3A\u65E7\u6570\u636E";
@@ -1009,10 +1014,10 @@ function createPrimaryStatus(model) {
   if (model.contract.semanticStatus !== "valid") {
     return {
       tone: "error",
-      title: "\u4EFB\u52A1\u5408\u540C\u5B58\u5728\u95EE\u9898",
-      reason: `producer \u5C06\u5408\u540C\u6807\u8BB0\u4E3A ${model.contract.semanticStatus}\uFF0C\u4F46\u6CA1\u6709\u8FD4\u56DE\u7ED3\u6784\u5316\u8BCA\u65AD`,
-      remediation: "\u5C55\u5F00\u5B8C\u6574\u8BE6\u60C5\u6838\u5BF9\u5408\u540C\u5B57\u6BB5\uFF0C\u5E76\u4F7F\u7528 CLI \u83B7\u53D6 producer \u539F\u59CB\u8F93\u51FA",
-      location: "\u4EFB\u52A1\u5408\u540C",
+      title: "\u4EFB\u52A1\u89C4\u683C\u5B58\u5728\u95EE\u9898",
+      reason: `producer \u5C06\u89C4\u683C\u6807\u8BB0\u4E3A ${model.contract.semanticStatus}\uFF0C\u4F46\u6CA1\u6709\u8FD4\u56DE\u7ED3\u6784\u5316\u8BCA\u65AD`,
+      remediation: "\u5C55\u5F00\u5B8C\u6574\u8BE6\u60C5\u6838\u5BF9\u89C4\u683C\u5B57\u6BB5\uFF0C\u5E76\u4F7F\u7528 CLI \u83B7\u53D6 producer \u539F\u59CB\u8F93\u51FA",
+      location: "\u4EFB\u52A1\u89C4\u683C",
       diagnostic: null
     };
   }
@@ -1039,8 +1044,8 @@ function createPrimaryStatus(model) {
   return {
     tone: "healthy",
     title: "\u5DF2\u8BFB\u53D6\u5F53\u524D\u4EFB\u52A1\uFF0C\u672A\u53D1\u73B0\u7ED3\u6784\u5316\u8BCA\u65AD",
-    reason: "\u5DF2\u68C0\u67E5\u4EFB\u52A1\u5408\u540C\u4E0E\u6267\u884C\u8BC1\u636E",
-    remediation: model.nextAction || "\u7EE7\u7EED\u6309\u5F53\u524D\u4EFB\u52A1\u5408\u540C\u6267\u884C",
+    reason: "\u5DF2\u68C0\u67E5\u4EFB\u52A1\u89C4\u683C\u4E0E\u6267\u884C\u8BC1\u636E",
+    remediation: model.nextAction || "\u7EE7\u7EED\u6309\u5F53\u524D\u4EFB\u52A1\u89C4\u683C\u6267\u884C",
     location: "\u5F53\u524D\u4EFB\u52A1",
     diagnostic: null
   };
@@ -1238,9 +1243,9 @@ function diagnosticActionTitle(diagnostic) {
     task_store_missing: "Evidence Contract \u5B58\u50A8\u7F3A\u5931",
     inline_v4_migration_required: "\u65E7\u7248 v4 \u6280\u672F\u6570\u636E\u9700\u8981\u8FC1\u79FB",
     contract_drift: "Evidence Contract \u5DF2\u6F02\u79FB",
-    contract_invalid: "\u7ED3\u6784\u5316\u5408\u540C\u65E0\u6548",
+    contract_invalid: "\u7ED3\u6784\u5316\u89C4\u683C\u65E0\u6548",
     observation_unavailable: "TaskNotes \u89C2\u5BDF\u4E0D\u53EF\u7528",
-    reference_unaccepted: "\u5B9E\u9A8C\u53C2\u8003\u771F\u503C\u4E0D\u88AB\u5408\u540C\u63A5\u53D7",
+    reference_unaccepted: "\u5B9E\u9A8C\u53C2\u8003\u771F\u503C\u4E0D\u88AB\u89C4\u683C\u63A5\u53D7",
     "contract.goal": "\u4EFB\u52A1\u76EE\u6807\u9700\u8981\u4FEE\u590D",
     "evidence.execution": "\u6267\u884C\u7ED3\u679C\u9700\u8981\u4FEE\u590D",
     "evidence.verification": "\u9A8C\u8BC1\u7ED3\u679C\u9700\u8981\u4FEE\u590D",
@@ -1248,7 +1253,7 @@ function diagnosticActionTitle(diagnostic) {
   };
   if (labels[diagnostic.code]) return labels[diagnostic.code];
   if (labels[diagnostic.path]) return labels[diagnostic.path];
-  if (diagnostic.path.startsWith("contract.")) return "\u4EFB\u52A1\u5408\u540C\u9700\u8981\u4FEE\u590D";
+  if (diagnostic.path.startsWith("contract.")) return "\u4EFB\u52A1\u89C4\u683C\u9700\u8981\u4FEE\u590D";
   if (diagnostic.path.startsWith("evidence.")) return "\u6267\u884C\u8BC1\u636E\u9700\u8981\u4FEE\u590D";
   return "\u5F53\u524D\u4EFB\u52A1\u5B58\u5728\u7ED3\u6784\u5316\u8BCA\u65AD";
 }
@@ -2001,7 +2006,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       this.disclosureState.summaryOpen = details.open;
     });
     const summaryToggle = details.createEl("summary");
-    summaryToggle.createSpan({ text: "\u5F53\u524D\u4EFB\u52A1\u5408\u540C\u4E0E\u8BC1\u636E" });
+    summaryToggle.createSpan({ text: "\u9700\u6C42\u4E0E\u8BB0\u5F55" });
     summaryToggle.createSpan({
       cls: "flowdesk-contract-diagnostic-count",
       text: `${diagnosticCount} \u9879\u8BCA\u65AD`
@@ -2021,12 +2026,12 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     full.addEventListener("toggle", () => {
       this.disclosureState.fullOpen = full.open;
     });
-    full.createEl("summary", { text: "\u5408\u540C\u4E0E\u4EA4\u4ED8\u8BE6\u60C5" });
+    full.createEl("summary", { text: "\u89C4\u683C\u4E0E\u4EA4\u4ED8\u8BE6\u60C5" });
     const body = full.createDiv({ cls: "flowdesk-detail-body" });
     const renderedSections = /* @__PURE__ */ new Map();
     const contract = createSection(
       body,
-      model.currentTask.trustLevel === "legacy_v3" ? "\u4EFB\u52A1\u5408\u540C v3" : "\u4EFB\u52A1\u5408\u540C v4",
+      model.currentTask.trustLevel === "legacy_v3" ? "\u4EFB\u52A1\u5408\u540C v3" : "\u4EFB\u52A1\u89C4\u683C v4",
       formatSemanticStatus(model.contract.semanticStatus)
     );
     renderedSections.set("contract", contract);
@@ -2071,6 +2076,22 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         this.disclosureState.scenariosOpen = open;
       }
     );
+    const recordsTotal = model.records.execution + model.records.verification + model.records.delivery;
+    if (recordsTotal > 0) {
+      const recordsRow = contract.createDiv({ cls: "flowdesk-records-summary" });
+      recordsRow.createSpan({ cls: "flowdesk-summary-label", text: "\u5B8C\u6210\u8BB0\u5F55\uFF1A" });
+      const parts = [];
+      if (model.records.execution > 0) parts.push(`\u6267\u884C ${model.records.execution}`);
+      if (model.records.verification > 0) parts.push(`\u9A8C\u8BC1 ${model.records.verification}`);
+      if (model.records.delivery > 0) parts.push(`\u4EA4\u4ED8 ${model.records.delivery}`);
+      const recordsLink = recordsRow.createEl("a", {
+        text: parts.join(" \xB7 "),
+        cls: "flowdesk-records-link"
+      });
+      recordsLink.addEventListener("click", () => {
+        void this.openSnapshotSource(model.currentTask.id, { section: "Execution Result" }, "\u5B8C\u6210\u8BB0\u5F55");
+      });
+    }
     const observation = createSection(
       body,
       "\u89C2\u5BDF\u4E0E\u6765\u6E90",
@@ -2434,7 +2455,7 @@ function observationField(container, label, value) {
 function formatSemanticStatus(value) {
   if (value === "valid") return "\u8BED\u4E49\u6709\u6548";
   if (value === "invalid") return "\u8BED\u4E49\u65E0\u6548";
-  if (value === "not_applicable") return "\u65E0\u7ED3\u6784\u5316\u5408\u540C";
+  if (value === "not_applicable") return "";
   return "\u8BED\u4E49\u5F85\u786E\u8BA4";
 }
 function formatReviewTimestamp(now) {

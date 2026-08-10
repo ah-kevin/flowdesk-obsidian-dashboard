@@ -1,0 +1,152 @@
+<style>
+  .layout-grid { display:grid; grid-template-columns:repeat(3,minmax(280px,1fr)); gap:18px; align-items:start; }
+  .layout-card { cursor:pointer; border:2px solid var(--border); border-radius:16px; overflow:hidden; background:var(--surface); transition:.18s ease; }
+  .layout-card:hover { transform:translateY(-2px); border-color:var(--accent); }
+  .layout-card.selected { border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent); }
+  .layout-head { padding:14px 16px 10px; border-bottom:1px solid var(--border); }
+  .layout-head h3 { margin:0 0 4px; font-size:17px; }
+  .layout-head p { margin:0; color:var(--muted); font-size:13px; }
+  .panel { padding:12px; background:#f4f4f6; color:#27272a; min-height:560px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .bar { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; background:white; border:1px solid #dedee5; border-radius:9px; }
+  .title { font-weight:750; font-size:14px; line-height:1.25; }
+  .muted { color:#7b7b85; font-size:10px; }
+  .chips { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+  .chip { padding:3px 6px; border-radius:999px; background:#e9e9ef; font-size:9px; font-weight:700; }
+  .good { color:#18794e; background:#ddf7e9; }
+  .bad { color:#b42318; background:#fee4e2; }
+  .warn { color:#946200; background:#fff0c2; }
+  .btn { border:1px solid #d2d2da; border-radius:6px; background:white; padding:4px 7px; font-size:9px; font-weight:650; }
+  .row { display:flex; gap:6px; align-items:center; }
+  .cardx { margin-top:9px; padding:10px; background:white; border:1px solid #dedee5; border-radius:9px; }
+  .issue { border-left:4px solid #d92d20; }
+  .issue-title { font-weight:760; font-size:13px; }
+  .issue-copy { margin-top:6px; font-size:11px; line-height:1.4; }
+  .loc { margin-top:5px; color:#6e6e78; font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .section-label { color:#71717a; font-size:9px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
+  .metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:8px; }
+  .metric { background:#f5f5f7; border-radius:7px; padding:7px; }
+  .metric b { display:block; margin-top:3px; font-size:10px; }
+  .child { display:flex; align-items:center; gap:6px; padding:7px 0; border-top:1px solid #ededf1; font-size:10px; }
+  .dot { width:7px; height:7px; border-radius:50%; background:#d92d20; flex:0 0 auto; }
+  .fold { margin-top:8px; padding:8px 9px; border:1px solid #dedee5; background:#fafafd; border-radius:7px; color:#666670; font-size:10px; font-weight:650; }
+  .tabs { display:flex; gap:3px; margin-top:9px; background:#e8e8ed; padding:3px; border-radius:8px; }
+  .tab { flex:1; text-align:center; padding:5px; border-radius:6px; color:#65656f; font-size:9px; }
+  .tab.active { background:white; color:#26262c; font-weight:750; box-shadow:0 1px 2px rgba(0,0,0,.08); }
+  .table { margin-top:8px; border:1px solid #dedee5; border-radius:8px; overflow:hidden; background:white; }
+  .trow { display:grid; grid-template-columns:86px 1fr; border-top:1px solid #ececf0; font-size:9px; }
+  .trow:first-child { border-top:0; }
+  .trow span { padding:6px; }
+  .trow span:first-child { color:#73737c; background:#f8f8fa; font-weight:700; }
+  .explain { margin-top:14px; padding:0 2px; color:var(--muted); font-size:12px; line-height:1.5; }
+  @media (max-width:1050px){ .layout-grid{grid-template-columns:1fr;} .panel{min-height:auto;} }
+</style>
+
+<h2>Dashboard 信息层级：你更希望靠近哪一种？</h2>
+<p class="subtitle">三套都保留 task-centric、可信观测和可定位诊断，只改变默认呈现与交互密度。点击卡片选择。</p>
+
+<div class="layout-grid">
+  <div class="layout-card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="layout-head">
+      <h3>A · 行动优先（推荐）</h3>
+      <p>默认只回答：这是哪张任务、现在是否可信、卡在哪里、下一步做什么。</p>
+    </div>
+    <div class="panel">
+      <div class="bar">
+        <div>
+          <div class="muted">← 父任务</div>
+          <div class="title">FlowDesk Plugin — 实现 SDD v3…</div>
+          <div class="chips"><span class="chip">已完成</span><span class="chip good">观测可信</span><span class="chip bad">合同无效</span></div>
+        </div>
+        <div class="row"><span class="btn">复制 CLI</span><span class="btn">↻</span></div>
+      </div>
+
+      <div class="cardx issue">
+        <div class="section-label">当前阻断</div>
+        <div class="issue-title">缺少 Task Contract v3</div>
+        <div class="issue-copy">当前卡使用旧 Work Package v3，无法作为可信完成证据。</div>
+        <div class="loc">Goal · 第 1 行 · contract.goal</div>
+        <div class="row" style="margin-top:8px"><span class="btn">打开并定位</span><span class="btn">复制修复命令</span></div>
+      </div>
+
+      <div class="cardx">
+        <div class="section-label">任务摘要</div>
+        <div class="metrics">
+          <div class="metric"><span class="muted">Priority</span><b>High</b></div>
+          <div class="metric"><span class="muted">证据</span><b>3 / 3</b></div>
+          <div class="metric"><span class="muted">子任务</span><b>Leaf</b></div>
+        </div>
+      </div>
+      <div class="fold">› 合同、证据与全部诊断</div>
+    </div>
+    <div class="explain"><b>取舍：</b>日常最快；把诊断代码、完整路径、Observation 字段放入详情。适合多数使用时刻。</div>
+  </div>
+
+  <div class="layout-card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="layout-head">
+      <h3>B · 分页检查器</h3>
+      <p>固定任务摘要，通过“概览 / 合同 / 诊断”切换不同检查视角。</p>
+    </div>
+    <div class="panel">
+      <div class="bar">
+        <div>
+          <div class="muted">FlowDesk SDD v3… /</div>
+          <div class="title">FlowDesk Plugin — 实现 SDD v3…</div>
+        </div>
+        <div class="row"><span class="btn">复制</span><span class="btn">↻</span></div>
+      </div>
+      <div class="tabs"><div class="tab active">概览</div><div class="tab">合同</div><div class="tab">诊断 6</div></div>
+      <div class="cardx">
+        <div class="chips"><span class="chip">已完成</span><span class="chip good">Observation healthy</span><span class="chip bad">contract_invalid</span></div>
+        <div class="metrics">
+          <div class="metric"><span class="muted">Priority</span><b>High</b></div>
+          <div class="metric"><span class="muted">证据</span><b>3 / 3</b></div>
+          <div class="metric"><span class="muted">可信完成</span><b>否</b></div>
+        </div>
+      </div>
+      <div class="cardx issue">
+        <div class="section-label">首要诊断</div>
+        <div class="issue-title">task_contract_count_invalid</div>
+        <div class="issue-copy">找到 0 个 Task Contract v3；预期恰好一个。</div>
+        <div class="row" style="margin-top:8px"><span class="btn">打开位置</span></div>
+      </div>
+      <div class="cardx">
+        <div class="section-label">下一动作</div>
+        <div class="issue-copy">保留唯一的 v3 task 合同块。</div>
+      </div>
+    </div>
+    <div class="explain"><b>取舍：</b>结构清晰、适合审计；但标签页会隐藏内容，窄侧栏切换次数更多。</div>
+  </div>
+
+  <div class="layout-card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="layout-head">
+      <h3>C · 紧凑审计表</h3>
+      <p>减少卡片与装饰，像 CLI 一样用密集行呈现全部关键事实。</p>
+    </div>
+    <div class="panel">
+      <div class="bar">
+        <div class="title">FlowDesk Plugin — 实现 SDD v3…</div>
+        <div class="row"><span class="btn">CLI</span><span class="btn">↻</span></div>
+      </div>
+      <div class="table">
+        <div class="trow"><span>状态</span><span>done · contract_invalid</span></div>
+        <div class="trow"><span>观测</span><span style="color:#18794e">healthy · task-centric</span></div>
+        <div class="trow"><span>父任务</span><span>FlowDesk SDD v3 原生父子模型…</span></div>
+        <div class="trow"><span>证据</span><span>execution valid · verification valid · delivery valid</span></div>
+      </div>
+      <div class="cardx issue">
+        <div class="issue-title">缺少 Task Contract v3</div>
+        <div class="table">
+          <div class="trow"><span>位置</span><span>Goal · L1</span></div>
+          <div class="trow"><span>路径</span><span>contract.goal</span></div>
+          <div class="trow"><span>实际</span><span>找到 0 个合同块</span></div>
+          <div class="trow"><span>预期</span><span>恰好 1 个合同块</span></div>
+          <div class="trow"><span>修复</span><span>保留唯一 Task Contract v3</span></div>
+        </div>
+        <div class="row" style="margin-top:8px"><span class="btn">打开位置</span></div>
+      </div>
+      <div class="fold">› Contract</div>
+      <div class="fold">› All diagnostics (6)</div>
+    </div>
+    <div class="explain"><b>取舍：</b>信息密度最高、接近 CLI；但情绪层级弱，普通用户阅读压力更大。</div>
+  </div>
+</div>

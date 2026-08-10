@@ -1,0 +1,44 @@
+<style>
+  .demo{max-width:760px;margin:0 auto;padding:18px;background:#f4f4f6;color:#29292e;border-radius:16px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.top{background:white;border:1px solid #dedee5;border-radius:10px;padding:11px}.back,.link{color:#6f4bd8;cursor:pointer;text-decoration:none}.back{font-size:10px;font-weight:700}.toprow{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-top:5px}.title{font-size:14px;font-weight:780;line-height:1.35}.tools{display:flex;gap:5px}.btn{border:1px solid #d2d2da;border-radius:6px;background:white;padding:5px 8px;font-size:9px;font-weight:700}.chips{display:flex;gap:5px;margin-top:7px}.chip{border-radius:999px;padding:3px 6px;background:#ececf1;font-size:9px;font-weight:750}.good{background:#ddf7e9;color:#18794e}.bad{background:#fee4e2;color:#b42318}.issue{margin-top:10px;border:1px solid #dedee5;border-left:4px solid #d92d20;border-radius:10px;background:white;padding:11px}.label{color:#9a3412;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}.issue-title{display:inline-block;margin-top:4px;color:#6f4bd8;font-size:14px;font-weight:780;cursor:pointer}.issue-title:hover{text-decoration:underline}.copy{margin-top:6px;font-size:11px;line-height:1.45}.loc{margin-top:6px;color:#74747d;font-size:9px}.section{margin-top:10px;background:white;border:1px solid #dedee5;border-radius:9px;overflow:hidden}.section-head{display:flex;justify-content:space-between;padding:9px;font-size:10px;font-weight:780}.child{display:grid;grid-template-columns:12px 1fr auto;gap:7px;padding:9px;border-top:1px solid #ececf0;cursor:pointer}.child:hover{background:#f8f8fa}.dot{width:8px;height:8px;border-radius:50%;background:#12b76a;margin-top:3px}.child-title{color:#6f4bd8;font-size:11px;font-weight:720;line-height:1.35}.sub{margin-top:3px;color:#b42318;font-size:9px}.chev{color:#85858e}.rules{max-width:760px;margin:18px auto 0}.rules li{margin:7px 0}.decision{max-width:720px;margin:20px auto 0}
+</style>
+
+<h2>交互修订：标题即操作</h2>
+<p class="subtitle">删除重复的“打开”按钮，让可点击对象与用户想去的位置直接对应。</p>
+
+<div class="demo">
+  <div class="top">
+    <div class="back">← FlowDesk SDD v3 原生父子模型…</div>
+    <div class="toprow"><div class="title">FlowDesk Plugin — 实现 SDD v3 原生父子任务与 snapshot</div><div class="tools"><span class="btn">复制 CLI</span><span class="btn">↻</span></div></div>
+    <div class="chips"><span class="chip">已完成</span><span class="chip good">观测可信</span><span class="chip bad">合同无效</span></div>
+  </div>
+
+  <div class="issue">
+    <div class="label">当前阻断</div>
+    <div><span class="issue-title">缺少 Task Contract v3 ↗</span></div>
+    <div class="copy">点击标题直接打开对应任务并定位到诊断行。</div>
+    <div class="copy"><b>怎么修：</b>添加并保留唯一的 <code>## Task Contract v3</code>。</div>
+    <div class="loc">Task Contract v3 · 第 1 行</div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><span>直接子任务</span><span class="bad">0 / 2 可信完成</span></div>
+    <div class="child"><span class="dot"></span><div><div class="child-title">FlowDesk Plugin — 实现 SDD v3…</div><div class="sub">缺少 Task Contract v3 · 证据 3/3</div></div><span class="chev">›</span></div>
+    <div class="child"><span class="dot"></span><div><div class="child-title">FlowDesk Obsidian Dashboard — 消费…</div><div class="sub">缺少 Task Contract v3 · 证据 1/3</div></div><span class="chev">›</span></div>
+  </div>
+</div>
+
+<div class="rules">
+  <h3>统一点击规则</h3>
+  <ul>
+    <li><b>Parent 标题</b>：打开父任务。</li>
+    <li><b>诊断标题</b>：打开对应 task，并定位到 section/line。</li>
+    <li><b>子任务整行</b>：打开子任务。</li>
+    <li><b>当前任务标题</b>：不重复跳转，因为当前编辑器已处于该 task。</li>
+    <li><b>独立按钮</b>：只保留复制 CLI 与刷新。</li>
+  </ul>
+</div>
+
+<div class="decision options">
+  <div class="option" data-choice="approve-v2" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>交互修订正确</h3><p>按标题即操作的规则进入完整设计定稿。</p></div></div>
+  <div class="option" data-choice="adjust-v2" onclick="toggleSelect(this)"><div class="letter">↺</div><div class="content"><h3>继续调整</h3><p>在终端说明仍然多余或不自然的部分。</p></div></div>
+</div>

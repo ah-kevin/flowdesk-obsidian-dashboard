@@ -1,0 +1,72 @@
+<style>
+  .mock-grid{display:grid;grid-template-columns:repeat(2,minmax(330px,1fr));gap:22px;align-items:start}.shell{border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#f4f4f6;color:#29292e;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.shell-label{padding:11px 14px;background:var(--surface);border-bottom:1px solid var(--border);font-weight:750}.panel{padding:12px;min-height:540px}.top{position:relative;background:white;border:1px solid #dedee5;border-radius:10px;padding:10px}.back{color:#7857d8;font-size:9px;font-weight:700}.toprow{display:flex;justify-content:space-between;align-items:flex-start;gap:9px}.title{font-size:13px;font-weight:780;line-height:1.35}.tools{display:flex;gap:5px;flex:0 0 auto}.btn{border:1px solid #d2d2da;border-radius:6px;background:white;padding:4px 7px;font-size:9px;font-weight:700}.primary{background:#29292e;color:white;border-color:#29292e}.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}.chip{border-radius:999px;padding:3px 6px;background:#ececf1;font-size:9px;font-weight:750}.good{background:#ddf7e9;color:#18794e}.bad{background:#fee4e2;color:#b42318}.issue{margin-top:9px;border:1px solid #dedee5;border-left:4px solid #d92d20;border-radius:10px;background:white;padding:11px}.label{color:#9a3412;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}.issue-title{margin-top:4px;font-size:13px;font-weight:780}.copy{margin-top:6px;font-size:10px;line-height:1.45}.loc{margin-top:6px;padding:5px 7px;border-radius:6px;background:#f7f7f9;color:#74747d;font-size:9px}.row{display:flex;gap:6px;margin-top:8px}.summary{margin-top:9px;background:white;border:1px solid #dedee5;border-radius:9px;padding:9px}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.metric{padding:7px;background:#f6f6f8;border-radius:7px}.metric span{display:block;color:#74747d;font-size:8px}.metric b{display:block;margin-top:3px;font-size:10px}.section-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:10px;font-weight:780}.child-list{background:white;border:1px solid #dedee5;border-radius:9px;overflow:hidden}.child{display:grid;grid-template-columns:12px 1fr auto;gap:7px;align-items:start;padding:8px;border-top:1px solid #ececf0}.child:first-child{border-top:0}.dot{width:8px;height:8px;border-radius:50%;background:#12b76a;margin-top:2px}.child-title{font-size:10px;font-weight:720;line-height:1.35}.sub{margin-top:3px;color:#74747d;font-size:8px}.sub.err{color:#b42318}.chev{color:#85858e}.fold{margin-top:9px;padding:8px 9px;border:1px solid #dedee5;background:#fafafd;border-radius:8px;color:#666670;font-size:10px;font-weight:700}.note{margin-top:18px;padding:14px;border-radius:12px;background:color-mix(in srgb,var(--accent) 8%,var(--surface));font-size:13px;line-height:1.55}.note ul{margin-bottom:0}.decision{margin-top:20px}.options{max-width:720px}@media(max-width:900px){.mock-grid{grid-template-columns:1fr}.panel{min-height:auto}}
+</style>
+
+<h2>整合方案：行动优先的当前任务控制台</h2>
+<p class="subtitle">父任务与 leaf 使用同一骨架，只按是否有 children 调整中部内容；不再重复标题、路径、诊断字段和操作按钮。</p>
+
+<div class="mock-grid">
+  <div class="shell">
+    <div class="shell-label">父任务状态</div>
+    <div class="panel">
+      <div class="top">
+        <div class="toprow"><div class="title">FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐</div><div class="tools"><span class="btn">复制 CLI</span><span class="btn">↻</span></div></div>
+        <div class="chips"><span class="chip">进行中</span><span class="chip good">观测可信</span><span class="chip bad">合同无效</span></div>
+      </div>
+      <div class="issue">
+        <div class="label">当前阻断</div><div class="issue-title">缺少 Task Contract v3</div>
+        <div class="copy">当前任务仍使用旧合同结构，因此不能判定为可信完成。</div>
+        <div class="copy"><b>怎么修：</b>添加并保留唯一的 <code>## Task Contract v3</code>。</div>
+        <div class="loc">Task Contract v3 · 第 1 行</div>
+        <div class="row"><span class="btn primary">打开并定位</span></div>
+      </div>
+      <div class="summary">
+        <div class="section-title"><span>直接子任务</span><span class="bad" style="font-size:9px">0 / 2 可信完成</span></div>
+        <div class="child-list">
+          <div class="child"><span class="dot"></span><div><div class="child-title">FlowDesk Plugin — 实现 SDD v3…</div><div class="sub err">缺少 Task Contract v3 · 证据 3/3</div></div><span class="chev">›</span></div>
+          <div class="child"><span class="dot"></span><div><div class="child-title">FlowDesk Obsidian Dashboard — 消费…</div><div class="sub err">缺少 Task Contract v3 · 证据 1/3</div></div><span class="chev">›</span></div>
+        </div>
+      </div>
+      <div class="fold">› 合同、证据与全部诊断</div>
+    </div>
+  </div>
+
+  <div class="shell">
+    <div class="shell-label">Leaf task 状态</div>
+    <div class="panel">
+      <div class="top">
+        <div class="back">← FlowDesk SDD v3 原生父子模型…</div>
+        <div class="toprow" style="margin-top:4px"><div class="title">FlowDesk Plugin — 实现 SDD v3 原生父子任务与 snapshot</div><div class="tools"><span class="btn">复制 CLI</span><span class="btn">↻</span></div></div>
+        <div class="chips"><span class="chip">已完成</span><span class="chip good">观测可信</span><span class="chip bad">合同无效</span></div>
+      </div>
+      <div class="issue">
+        <div class="label">当前阻断</div><div class="issue-title">缺少 Task Contract v3</div>
+        <div class="copy">当前任务仍使用旧 Work Package v3，因此完成状态暂不可信。</div>
+        <div class="copy"><b>怎么修：</b>转换为当前任务自己的统一合同。</div>
+        <div class="loc">Task Contract v3 · 第 1 行</div>
+        <div class="row"><span class="btn primary">打开并定位</span></div>
+      </div>
+      <div class="summary">
+        <div class="section-title"><span>任务摘要</span></div>
+        <div class="metrics"><div class="metric"><span>优先级</span><b>高</b></div><div class="metric"><span>证据</span><b>3 / 3</b></div><div class="metric"><span>类型</span><b>Leaf</b></div></div>
+      </div>
+      <div class="fold">› 合同、证据与全部诊断</div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>交互规则</b>
+  <ul>
+    <li>完整 task path 仅在悬浮提示或技术详情中出现。</li>
+    <li>首要诊断永远只露出原因、修法和简短位置；机器字段折叠。</li>
+    <li>子任务整行可点击；不再显示“打开任务”按钮。</li>
+    <li>详情首次折叠，同一任务刷新时保留展开状态，切换任务后重新折叠。</li>
+    <li>复制 CLI 与刷新只在顶部出现。</li>
+  </ul>
+</div>
+
+<div class="decision options">
+  <div class="option" data-choice="approve" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>整体结构符合预期</h3><p>按这个信息架构继续补齐异常状态与实施边界。</p></div></div>
+  <div class="option" data-choice="adjust" onclick="toggleSelect(this)"><div class="letter">↺</div><div class="content"><h3>还需要调整</h3><p>在终端告诉我具体哪一块仍显得多余或缺失。</p></div></div>
+</div>

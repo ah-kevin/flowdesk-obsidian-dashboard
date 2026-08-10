@@ -1,0 +1,58 @@
+<style>
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(360px,1fr));gap:22px;align-items:start}.shell{border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#f4f4f6;color:#29292e;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.shell-label{padding:11px 14px;background:var(--surface);border-bottom:1px solid var(--border);font-weight:760}.panel{padding:12px}.top{background:white;border:1px solid #dedee5;border-radius:10px;padding:10px}.back{color:#6f4bd8;font-size:9px;font-weight:720}.toprow{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-top:4px}.title{font-size:13px;font-weight:780;line-height:1.35}.tools{display:flex;gap:5px}.btn{border:1px solid #d2d2da;border-radius:6px;background:white;padding:4px 7px;font-size:9px;font-weight:700}.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}.chip{border-radius:999px;padding:3px 6px;background:#ececf1;font-size:9px;font-weight:750}.good{background:#ddf7e9;color:#18794e}.info{margin-top:9px;border:1px solid #dedee5;border-left:4px solid #12b76a;border-radius:10px;background:white;padding:11px}.label{color:#18794e;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}.headline{margin-top:4px;font-size:13px;font-weight:780}.copy{margin-top:6px;font-size:10px;line-height:1.5}.section{margin-top:9px;border:1px solid #dedee5;border-radius:9px;background:white;padding:10px}.section-title{display:flex;justify-content:space-between;align-items:center;font-size:10px;font-weight:780}.goal{margin-top:7px;font-size:11px;line-height:1.5}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}.metric{padding:7px;background:#f6f6f8;border-radius:7px}.metric span{display:block;color:#74747d;font-size:8px}.metric b{display:block;margin-top:3px;font-size:10px}.accept{margin-top:7px;padding-top:7px;border-top:1px solid #ececf0;font-size:10px;line-height:1.55}.fold{margin-top:8px;padding:8px 9px;border:1px solid #dedee5;background:#fafafd;border-radius:8px;color:#666670;font-size:10px;font-weight:700}.open-head{display:flex;justify-content:space-between;align-items:center;padding-bottom:8px;border-bottom:1px solid #ececf0;font-size:11px;font-weight:780}.block{padding:9px 0;border-bottom:1px solid #ececf0}.block:last-child{border-bottom:0}.block h4{margin:0 0 5px;font-size:10px}.block p,.block li{margin:3px 0;font-size:9px;line-height:1.45}.block ul{margin:0;padding-left:16px}.req{display:grid;grid-template-columns:58px 1fr;gap:6px;margin-top:5px;font-size:9px}.req b{color:#6f4bd8}.evidence{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.ev{padding:6px;border-radius:6px;background:#ddf7e9;color:#18794e;font-size:9px;font-weight:700;text-align:center}.caption{padding:12px 15px;color:var(--muted);font-size:12px;line-height:1.5}.decision{max-width:720px;margin:20px auto 0}@media(max-width:950px){.grid{grid-template-columns:1fr}}
+</style>
+
+<h2>合同正确时：默认露出部分内容，支持展开全部</h2>
+<p class="subtitle">无诊断时不再显示“当前阻断”空卡；主区域转为合同目标、验收进度和证据状态。</p>
+
+<div class="grid">
+  <div class="shell">
+    <div class="shell-label">合同正确 · 默认状态</div>
+    <div class="panel">
+      <div class="top">
+        <div class="back">← FlowDesk SDD v3 原生父子模型…</div>
+        <div class="toprow"><div class="title">FlowDesk Plugin — 实现 SDD v3 原生父子任务与 snapshot</div><div class="tools"><span class="btn">复制 CLI</span><span class="btn">↻</span></div></div>
+        <div class="chips"><span class="chip">进行中</span><span class="chip good">观测可信</span><span class="chip good">合同有效</span></div>
+      </div>
+      <div class="info">
+        <div class="label">当前任务目标</div>
+        <div class="headline">生成可信的 task-centric snapshot</div>
+        <div class="copy">以当前 TaskNotes task 为入口，准确呈现 parent、direct children、递归汇总与可执行诊断。</div>
+      </div>
+      <div class="section">
+        <div class="section-title"><span>完成条件</span><span class="good">4 / 6</span></div>
+        <div class="metrics"><div class="metric"><span>优先级</span><b>高</b></div><div class="metric"><span>证据</span><b>2 / 3</b></div><div class="metric"><span>类型</span><b>Leaf</b></div></div>
+        <div class="accept">☑ 输出 task-centric schema 3<br>☑ Observation 完整可信<br>☐ 完成真实 root/leaf smoke</div>
+      </div>
+      <div class="fold">› 查看完整合同、证据与诊断</div>
+    </div>
+    <div class="caption"><b>默认露出：</b>Goal、验收进度、前三条完成条件和证据摘要；足够判断当前任务要做什么、做到哪。</div>
+  </div>
+
+  <div class="shell">
+    <div class="shell-label">合同正确 · 展开全部</div>
+    <div class="panel">
+      <div class="top">
+        <div class="back">← FlowDesk SDD v3 原生父子模型…</div>
+        <div class="toprow"><div class="title">FlowDesk Plugin — 实现 SDD v3 原生父子任务与 snapshot</div><div class="tools"><span class="btn">复制 CLI</span><span class="btn">↻</span></div></div>
+        <div class="chips"><span class="chip">进行中</span><span class="chip good">观测可信</span><span class="chip good">合同有效</span></div>
+      </div>
+      <div class="section">
+        <div class="open-head"><span>完整合同与证据</span><span>⌃</span></div>
+        <div class="block"><h4>Goal</h4><p>生成可信的 task-centric snapshot，并为 CLI 与 Obsidian 提供同一事实源。</p></div>
+        <div class="block"><h4>Scope</h4><ul><li><b>包含：</b>当前 task、parent、direct children、递归 rollup</li><li><b>不包含：</b>Dashboard 写入 TaskNotes 或 runtime 状态</li></ul></div>
+        <div class="block"><h4>Requirements</h4><div class="req"><b>REQ-001</b><span>任一 task 都可以作为 snapshot source。</span></div><div class="req"><b>REQ-002</b><span>观测不完整时必须 fail-closed。</span></div></div>
+        <div class="block"><h4>Scenarios</h4><div class="req"><b>SCN-001</b><span>Given leaf task，When 生成 snapshot，Then 显示 parent 且不显示空 children。</span></div><div class="req"><b>SCN-002</b><span>Given 查询失败，Then 不得复用另一 task 的数据。</span></div></div>
+        <div class="block"><h4>Acceptance Criteria · 4 / 6</h4><p>☑ schema/model 握手通过</p><p>☑ parent/children identity 正确</p><p>☐ 真实 root/leaf smoke 通过</p></div>
+        <div class="block"><h4>证据</h4><div class="evidence"><div class="ev">执行有效</div><div class="ev">验证有效</div><div class="ev" style="background:#fff0c2;color:#946200">交付缺失</div></div></div>
+        <div class="block"><h4>技术详情</h4><p>Observation、source identity、schema/model 与全部 diagnostics 默认仍保持二级折叠。</p></div>
+      </div>
+    </div>
+    <div class="caption"><b>展开全部：</b>按合同语义分段阅读，不再为每个 section 嵌套一张卡；机器字段继续放在最底部技术详情。</div>
+  </div>
+</div>
+
+<div class="decision options">
+  <div class="option" data-choice="approve-valid-expanded" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>正确合同的默认/展开效果合适</h3><p>按这套渐进披露规则定稿。</p></div></div>
+  <div class="option" data-choice="adjust-valid-expanded" onclick="toggleSelect(this)"><div class="letter">↺</div><div class="content"><h3>继续调整</h3><p>在终端说明默认态或展开态需要改变的部分。</p></div></div>
+</div>

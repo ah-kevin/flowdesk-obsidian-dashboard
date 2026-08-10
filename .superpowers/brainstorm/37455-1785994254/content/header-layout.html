@@ -1,0 +1,102 @@
+<style>
+  .compare-grid { display:grid; grid-template-columns:repeat(3,minmax(280px,1fr)); gap:18px; align-items:start; }
+  .choice-card { border:1px solid var(--border); border-radius:14px; padding:14px; cursor:pointer; transition:.18s ease; background:var(--card-bg); }
+  .choice-card:hover { border-color:var(--accent); transform:translateY(-1px); }
+  .choice-card.selected { border:2px solid var(--accent); padding:13px; box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent); }
+  .choice-head { display:flex; align-items:baseline; gap:9px; margin-bottom:10px; }
+  .choice-letter { display:grid; place-items:center; width:25px; height:25px; border-radius:999px; background:var(--accent); color:white; font-weight:800; }
+  .choice-head h3 { margin:0; font-size:16px; }
+  .choice-note { margin:0 0 13px; color:var(--text-muted); font-size:13px; min-height:38px; }
+  .side-label { margin:12px 2px 6px; color:var(--text-muted); font-size:11px; font-weight:750; letter-spacing:.08em; text-transform:uppercase; }
+  .sidebar { width:100%; box-sizing:border-box; border:1px solid #d7d9dd; border-radius:10px; background:#fafafa; padding:12px; color:#262626; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .crumb { display:flex; align-items:center; gap:5px; min-width:0; color:#7464d9; font-size:12px; font-weight:650; margin-bottom:7px; }
+  .crumb span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .title-row { display:flex; align-items:flex-start; gap:8px; }
+  .task-title { min-width:0; flex:1; font-size:16px; font-weight:720; line-height:1.28; overflow-wrap:anywhere; }
+  .toolbox { display:flex; flex:none; gap:5px; }
+  .tool { display:grid; place-items:center; width:26px; height:26px; border:1px solid #d6d6d6; border-radius:7px; background:#f1f1f1; font-size:13px; }
+  .meta { display:flex; align-items:center; gap:6px; margin-top:10px; flex-wrap:wrap; }
+  .pill { padding:3px 8px; border-radius:999px; background:#ececec; color:#696969; font-size:11px; font-weight:650; }
+  .pill.blue { color:#1680e9; background:#eaf4ff; }
+  .pill.green { color:#16a85b; background:#e8f7ef; }
+  .stamp { margin-left:auto; color:#aaa; font-size:10px; }
+  .path { color:#8b8b8b; font-size:11px; margin-top:6px; line-height:1.35; overflow-wrap:anywhere; }
+  .flat .sidebar { border:0; border-radius:0; padding:10px 4px 12px; background:transparent; border-bottom:1px solid #ddd; }
+  .flat .crumb { margin-bottom:5px; }
+  .flat .path { display:none; }
+  .compact .crumb { margin:0; flex:1; }
+  .compact .topline { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .compact .task-title { font-size:15px; }
+  .compact .path { display:none; }
+  .compact .meta { margin-top:8px; }
+  .rule { margin-top:18px; padding:12px 14px; border-radius:10px; background:color-mix(in srgb,var(--accent) 8%,transparent); color:var(--text); font-size:13px; }
+  @media (max-width:980px) { .compare-grid { grid-template-columns:1fr; } .choice-note { min-height:auto; } }
+</style>
+
+<h2>先只定头部：哪种更接近你要的 0.1.7 基础感？</h2>
+<p class="subtitle">每个方案同时展示父任务页和子任务页。内容、字号和侧栏宽度按你当前截图模拟。</p>
+
+<div class="compare-grid">
+  <div class="choice-card option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="choice-head"><div class="choice-letter">A</div><h3>轻量卡片（推荐）</h3></div>
+    <p class="choice-note">保留 0.1.7 卡片边界，但去掉重复路径。父级只作为一条轻量面包屑。</p>
+    <div class="side-label">父任务页</div>
+    <div class="sidebar">
+      <div class="title-row">
+        <div class="task-title">FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐</div>
+        <div class="toolbox"><div class="tool">⧉</div><div class="tool">↻</div></div>
+      </div>
+      <div class="meta"><span class="pill blue">进行中</span><span class="pill">父任务</span><span class="pill">高优先级</span><span class="stamp">13:27</span></div>
+    </div>
+    <div class="side-label">子任务页</div>
+    <div class="sidebar">
+      <div class="crumb">↑ <span>FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐</span></div>
+      <div class="title-row">
+        <div class="task-title">FlowDesk Obsidian Dashboard — 消费 SDD v3 snapshot 并优化父子任务展示</div>
+        <div class="toolbox"><div class="tool">⧉</div><div class="tool">↻</div></div>
+      </div>
+      <div class="meta"><span class="pill green">已完成</span><span class="pill">叶子任务</span><span class="pill">高优先级</span><span class="stamp">13:28</span></div>
+    </div>
+  </div>
+
+  <div class="choice-card option flat" data-choice="b" onclick="toggleSelect(this)">
+    <div class="choice-head"><div class="choice-letter">B</div><h3>OpenSpec 扁平标题</h3></div>
+    <p class="choice-note">不使用头部卡片，视觉最轻；靠留白和底部分隔线组织信息。</p>
+    <div class="side-label">父任务页</div>
+    <div class="sidebar">
+      <div class="title-row">
+        <div class="task-title">FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐</div>
+        <div class="toolbox"><div class="tool">⧉</div><div class="tool">↻</div></div>
+      </div>
+      <div class="meta"><span class="pill blue">进行中</span><span class="pill">父任务</span><span class="pill">高优先级</span><span class="stamp">13:27</span></div>
+    </div>
+    <div class="side-label">子任务页</div>
+    <div class="sidebar">
+      <div class="crumb">↑ <span>FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐</span></div>
+      <div class="title-row">
+        <div class="task-title">FlowDesk Obsidian Dashboard — 消费 SDD v3 snapshot 并优化父子任务展示</div>
+        <div class="toolbox"><div class="tool">⧉</div><div class="tool">↻</div></div>
+      </div>
+      <div class="meta"><span class="pill green">已完成</span><span class="pill">叶子任务</span><span class="pill">高优先级</span><span class="stamp">13:28</span></div>
+    </div>
+  </div>
+
+  <div class="choice-card option compact" data-choice="c" onclick="toggleSelect(this)">
+    <div class="choice-head"><div class="choice-letter">C</div><h3>操作与导航分行</h3></div>
+    <p class="choice-note">工具按钮绝不挤标题；顶部一行专门承载父级导航和操作。</p>
+    <div class="side-label">父任务页</div>
+    <div class="sidebar">
+      <div class="topline"><div class="crumb"><span>当前父任务</span></div><div class="toolbox"><div class="tool">⧉</div><div class="tool">↻</div></div></div>
+      <div class="task-title">FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐</div>
+      <div class="meta"><span class="pill blue">进行中</span><span class="pill">父任务</span><span class="pill">高优先级</span><span class="stamp">13:27</span></div>
+    </div>
+    <div class="side-label">子任务页</div>
+    <div class="sidebar">
+      <div class="topline"><div class="crumb">↑ <span>FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐</span></div><div class="toolbox"><div class="tool">⧉</div><div class="tool">↻</div></div></div>
+      <div class="task-title">FlowDesk Obsidian Dashboard — 消费 SDD v3 snapshot 并优化父子任务展示</div>
+      <div class="meta"><span class="pill green">已完成</span><span class="pill">叶子任务</span><span class="pill">高优先级</span><span class="stamp">13:28</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="rule"><strong>本轮共同规则：</strong>去掉重复的完整文件路径；标题本身可点击；父级名称只在子任务页出现；复制与刷新不再占用标题文字宽度。具体“普通点击 / ⌘ 点击”行为在选定布局后单独确认。</div>

@@ -373,10 +373,10 @@ function createTrustSummary(
         ? "v3 历史合同有效"
         : "v3 历史合同需检查"
       : model.contract.semanticStatus === "valid"
-        ? "合同有效"
+        ? "规格有效"
         : model.contract.semanticStatus === "invalid"
-          ? "合同存在问题"
-          : "合同状态未知";
+          ? "规格存在问题"
+          : "规格状态未知";
   const contractTone: PresentationTone = isTasknotesOnly
     ? "muted"
     : model.contract.semanticStatus === "valid"
@@ -504,10 +504,10 @@ function createPrimaryStatus(
   if (model.contract.semanticStatus !== "valid") {
     return {
       tone: "error",
-      title: "任务合同存在问题",
-      reason: `producer 将合同标记为 ${model.contract.semanticStatus}，但没有返回结构化诊断`,
-      remediation: "展开完整详情核对合同字段，并使用 CLI 获取 producer 原始输出",
-      location: "任务合同",
+      title: "任务规格存在问题",
+      reason: `producer 将规格标记为 ${model.contract.semanticStatus}，但没有返回结构化诊断`,
+      remediation: "展开完整详情核对规格字段，并使用 CLI 获取 producer 原始输出",
+      location: "任务规格",
       diagnostic: null,
     };
   }
@@ -534,8 +534,8 @@ function createPrimaryStatus(
   return {
     tone: "healthy",
     title: "已读取当前任务，未发现结构化诊断",
-    reason: "已检查任务合同与执行证据",
-    remediation: model.nextAction || "继续按当前任务合同执行",
+    reason: "已检查任务规格与执行证据",
+    remediation: model.nextAction || "继续按当前任务规格执行",
     location: "当前任务",
     diagnostic: null,
   };
@@ -785,9 +785,9 @@ function diagnosticActionTitle(diagnostic: SnapshotDiagnostic): string {
     task_store_missing: "Evidence Contract 存储缺失",
     inline_v4_migration_required: "旧版 v4 技术数据需要迁移",
     contract_drift: "Evidence Contract 已漂移",
-    contract_invalid: "结构化合同无效",
+    contract_invalid: "结构化规格无效",
     observation_unavailable: "TaskNotes 观察不可用",
-    reference_unaccepted: "实验参考真值不被合同接受",
+    reference_unaccepted: "实验参考真值不被规格接受",
     "contract.goal": "任务目标需要修复",
     "evidence.execution": "执行结果需要修复",
     "evidence.verification": "验证结果需要修复",
@@ -795,7 +795,7 @@ function diagnosticActionTitle(diagnostic: SnapshotDiagnostic): string {
   };
   if (labels[diagnostic.code]) return labels[diagnostic.code];
   if (labels[diagnostic.path]) return labels[diagnostic.path];
-  if (diagnostic.path.startsWith("contract.")) return "任务合同需要修复";
+  if (diagnostic.path.startsWith("contract.")) return "任务规格需要修复";
   if (diagnostic.path.startsWith("evidence.")) return "执行证据需要修复";
   return "当前任务存在结构化诊断";
 }

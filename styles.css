@@ -390,8 +390,7 @@
 }
 
 .flowdesk-child-section {
-  min-width: 0;
-  overflow: hidden;
+  flex-shrink: 0;
   border: 1px solid var(--fd-border);
   border-radius: 8px;
   background: var(--background-primary-alt);
@@ -692,6 +691,26 @@
   color: var(--text-muted);
   font-size: 10.5px;
   font-weight: 550;
+}
+
+.flowdesk-records-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--fd-border);
+  font-size: 12px;
+}
+
+.flowdesk-records-link {
+  color: var(--text-accent);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.flowdesk-records-link:hover {
+  text-decoration: underline;
 }
 
 .flowdesk-contract-list {

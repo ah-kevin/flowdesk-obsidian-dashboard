@@ -510,10 +510,10 @@ test("合同异常但 diagnostics 为空时不显示健康", () => {
   const presentation = createDashboardPresentation(model);
 
   assert.equal(presentation.primaryStatus.tone, "error");
-  assert.equal(presentation.primaryStatus.title, "任务合同存在问题");
+  assert.equal(presentation.primaryStatus.title, "任务规格存在问题");
   assert.equal(
     presentation.primaryStatus.reason,
-    "producer 将合同标记为 invalid，但没有返回结构化诊断"
+    "producer 将规格标记为 invalid，但没有返回结构化诊断"
   );
   assert.equal(presentation.trust.tone, "warning");
   assert.equal(presentation.trust.contractTone, "error");
@@ -628,8 +628,8 @@ test("tasknotes_only 父任务把父子进度作为主状态，不误报合同�
   });
   const presentation = createDashboardPresentation(model);
 
-  // contract.status=not_applicable 不是合同异常，不得再走「任务合同存在问题」。
-  assert.notEqual(presentation.primaryStatus.title, "任务合同存在问题");
+  // contract.status=not_applicable 不是合同异常，不得再走「任务规格存在问题」。
+  assert.notEqual(presentation.primaryStatus.title, "任务规格存在问题");
   assert.equal(presentation.primaryStatus.location, "直接子任务");
   assert.match(presentation.primaryStatus.title, /1\s*\/\s*2/);
   // 有阻塞子任务时必须点名，并把 next_actions 作为下一步。
@@ -710,7 +710,7 @@ test("tasknotes_only leaf 任务主状态讲自身进度而非子任务", () => 
 
   assert.equal(presentation.kind, "leaf");
   assert.equal(presentation.primaryStatus.location, "当前任务");
-  assert.notEqual(presentation.primaryStatus.title, "任务合同存在问题");
+  assert.notEqual(presentation.primaryStatus.title, "任务规格存在问题");
   assert.equal(presentation.primaryStatus.remediation, "派发 Child B");
 });
 

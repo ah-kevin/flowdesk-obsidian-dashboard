@@ -895,7 +895,7 @@ class FlowDeskDashboardView extends ItemView {
       this.disclosureState.summaryOpen = details.open;
     });
     const summaryToggle = details.createEl("summary");
-    summaryToggle.createSpan({ text: "当前任务合同与证据" });
+    summaryToggle.createSpan({ text: "需求与记录" });
     summaryToggle.createSpan({
       cls: "flowdesk-contract-diagnostic-count",
       text: `${diagnosticCount} 项诊断`,
@@ -916,14 +916,14 @@ class FlowDeskDashboardView extends ItemView {
     full.addEventListener("toggle", () => {
       this.disclosureState.fullOpen = full.open;
     });
-    full.createEl("summary", { text: "合同与交付详情" });
+    full.createEl("summary", { text: "规格与交付详情" });
     const body = full.createDiv({ cls: "flowdesk-detail-body" });
     const renderedSections = new Map<DetailSection, HTMLElement>();
     const contract = createSection(
       body,
       model.currentTask.trustLevel === "legacy_v3"
         ? "任务合同 v3"
-        : "任务合同 v4",
+        : "任务规格 v4",
       formatSemanticStatus(model.contract.semanticStatus)
     );
     renderedSections.set("contract", contract);
@@ -970,6 +970,25 @@ class FlowDeskDashboardView extends ItemView {
         this.disclosureState.scenariosOpen = open;
       }
     );
+
+    // 完成记录计数行
+    const recordsTotal = model.records.execution + model.records.verification + model.records.delivery;
+    if (recordsTotal > 0) {
+      const recordsRow = contract.createDiv({ cls: "flowdesk-records-summary" });
+      recordsRow.createSpan({ cls: "flowdesk-summary-label", text: "完成记录：" });
+      const parts: string[] = [];
+      if (model.records.execution > 0) parts.push(`执行 ${model.records.execution}`);
+      if (model.records.verification > 0) parts.push(`验证 ${model.records.verification}`);
+      if (model.records.delivery > 0) parts.push(`交付 ${model.records.delivery}`);
+      const recordsLink = recordsRow.createEl("a", {
+        text: parts.join(" · "),
+        cls: "flowdesk-records-link",
+      });
+      recordsLink.addEventListener("click", () => {
+        void this.openSnapshotSource(model.currentTask.id, { section: "Execution Result" }, "完成记录");
+      });
+    }
+
     const observation = createSection(
       body,
       "观察与来源",
@@ -1397,7 +1416,8 @@ function formatSemanticStatus(value: string): string {
   if (value === "valid") return "语义有效";
   if (value === "invalid") return "语义无效";
   // 判定层拆除后 producer 不再产结构化合同，事实以 TaskNotes 为准。
-  if (value === "not_applicable") return "无结构化合同";
+  // not_applicable 是常态，不显示状态文案。
+  if (value === "not_applicable") return "";
   return "语义待确认";
 }
 

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>侧栏工具按钮位置</title>
+  <style>
+    :root { --bg:#f2f2f5; --panel:#fff; --text:#26242a; --muted:#77737d; --line:#e8e6eb; --soft:#f6f5f7; --accent:#7658ef; --green:#238c51; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    main { max-width:1240px; margin:auto; padding:28px 22px 48px; }
+    h1 { margin:0 0 6px; font-size:24px; }
+    .subtitle { margin:0 0 22px; color:var(--muted); font-size:14px; }
+    .options { display:grid; grid-template-columns:repeat(3,minmax(320px,370px)); gap:22px; justify-content:center; align-items:start; }
+    .option-label { display:flex; justify-content:space-between; align-items:center; margin:0 2px 8px; font-size:12px; color:var(--muted); }
+    .recommended { padding:3px 7px; color:#176d40; background:#e8f7ef; border-radius:999px; font-size:10px; font-weight:700; }
+    .sidebar { width:100%; min-height:540px; background:#fff; border:1px solid #dcd9e0; border-radius:12px; overflow:hidden; box-shadow:0 8px 22px rgba(30,27,40,.07); }
+    .pane { height:33px; display:flex; align-items:center; justify-content:space-between; padding:0 11px; border-bottom:1px solid var(--line); background:#f8f7f9; color:#77727c; font-size:10.5px; font-weight:700; }
+    .content { padding:13px; }
+    .parent { display:block; margin-bottom:7px; color:var(--accent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:10.5px; font-weight:650; }
+    .title { margin:0; font-size:16px; line-height:1.34; letter-spacing:-.015em; font-weight:720; }
+    .title-row { display:flex; gap:9px; align-items:flex-start; }
+    .title-row .title { flex:1; }
+    .tools { display:flex; gap:4px; flex:none; }
+    .tool { width:27px; height:27px; display:grid; place-items:center; border:1px solid var(--line); border-radius:7px; background:#fff; color:#625e67; font-size:13px; }
+    .meta-row { display:flex; align-items:center; gap:6px; margin-top:9px; min-height:27px; }
+    .tags { display:flex; gap:5px; flex-wrap:wrap; }
+    .tag { padding:3px 7px; border-radius:999px; background:var(--soft); color:#66616a; font-size:10px; font-weight:650; }
+    .done { color:var(--green); background:#eaf8f0; }
+    .push { margin-left:auto; }
+    .utility-top { display:flex; justify-content:flex-end; margin-bottom:7px; }
+    .trust { display:flex; align-items:center; gap:6px; margin-top:12px; padding:9px 1px; border-top:1px solid var(--line); border-bottom:1px solid var(--line); color:var(--muted); font-size:10.5px; }
+    .dot { width:7px; height:7px; border-radius:50%; background:#28b86a; }
+    .trust strong { color:#47434b; }
+    .trust .tools { margin-left:auto; }
+    .issue { margin-top:12px; padding:11px 12px; border-left:3px solid #df4b58; border-radius:8px; background:#fff1f2; }
+    .issue small { color:#c43e4a; font-weight:750; }
+    .issue h3 { margin:4px 0; font-size:14px; }
+    .issue p { margin:0; color:#75666a; font-size:11px; line-height:1.5; }
+    .note { margin:10px 2px 0; color:var(--muted); font-size:11.5px; line-height:1.5; }
+    .summary { max-width:760px; margin:24px auto 0; padding:14px 16px; background:#fff; border:1px solid var(--line); border-radius:10px; color:var(--muted); font-size:13px; line-height:1.6; }
+    .summary strong { color:var(--text); }
+    @media(max-width:1050px){ .options{grid-template-columns:minmax(330px,380px);} }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>复制 CLI / 刷新放在哪里？</h1>
+    <p class="subtitle">三种方案都用 370 px 侧栏宽度。对比重点是标题可用宽度、操作发现性和整体高度。</p>
+    <div class="options">
+      <section>
+        <div class="option-label"><span>A · 标题下方元信息行</span><span class="recommended">推荐</span></div>
+        <div class="sidebar">
+          <div class="pane"><span>FLOWDESK DASHBOARD</span><span>··· ×</span></div>
+          <div class="content">
+            <span class="parent">↑ FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐</span>
+            <h2 class="title">FlowDesk Plugin — 实现 SDD v3 原生父子任务与 snapshot</h2>
+            <div class="meta-row">
+              <div class="tags"><span class="tag done">已完成</span><span class="tag">叶子任务</span><span class="tag">高优先级</span></div>
+              <div class="tools push"><button class="tool" title="复制 CLI">⧉</button><button class="tool" title="刷新">↻</button></div>
+            </div>
+            <div class="trust"><span class="dot"></span><strong>数据可信</strong><span>snapshot v3</span><span style="margin-left:auto;color:#c4434e;font-weight:650">合同 1 项问题</span></div>
+            <div class="issue"><small>需要处理</small><h3>缺少 Task Contract v3</h3><p>当前 TaskNote 中没有找到唯一的 v3 合同块。</p></div>
+          </div>
+        </div>
+        <p class="note">标题获得完整宽度；按钮与标签共用一行。极窄时只让元信息行换行，不影响任务标题。</p>
+      </section>
+
+      <section>
+        <div class="option-label"><span>B · 标题上方独立工具行</span><span></span></div>
+        <div class="sidebar">
+          <div class="pane"><span>FLOWDESK DASHBOARD</span><span>··· ×</span></div>
+          <div class="content">
+            <div class="utility-top"><div class="tools"><button class="tool" title="复制 CLI">⧉</button><button class="tool" title="刷新">↻</button></div></div>
+            <span class="parent">↑ FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐</span>
+            <h2 class="title">FlowDesk Plugin — 实现 SDD v3 原生父子任务与 snapshot</h2>
+            <div class="meta-row"><div class="tags"><span class="tag done">已完成</span><span class="tag">叶子任务</span><span class="tag">高优先级</span></div></div>
+            <div class="trust"><span class="dot"></span><strong>数据可信</strong><span>snapshot v3</span><span style="margin-left:auto;color:#c4434e;font-weight:650">合同 1 项问题</span></div>
+            <div class="issue"><small>需要处理</small><h3>缺少 Task Contract v3</h3><p>当前 TaskNote 中没有找到唯一的 v3 合同块。</p></div>
+          </div>
+        </div>
+        <p class="note">按钮最容易发现，标题也是完整宽度；但顶部会额外增加一行空白工具区。</p>
+      </section>
+
+      <section>
+        <div class="option-label"><span>C · 合并到可信状态行</span><span></span></div>
+        <div class="sidebar">
+          <div class="pane"><span>FLOWDESK DASHBOARD</span><span>··· ×</span></div>
+          <div class="content">
+            <span class="parent">↑ FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐</span>
+            <h2 class="title">FlowDesk Plugin — 实现 SDD v3 原生父子任务与 snapshot</h2>
+            <div class="meta-row"><div class="tags"><span class="tag done">已完成</span><span class="tag">叶子任务</span><span class="tag">高优先级</span></div></div>
+            <div class="trust"><span class="dot"></span><strong>数据可信</strong><span>v3</span><div class="tools"><button class="tool" title="复制 CLI">⧉</button><button class="tool" title="刷新">↻</button></div></div>
+            <div class="issue"><small>需要处理</small><h3>缺少 Task Contract v3</h3><p>当前 TaskNote 中没有找到唯一的 v3 合同块。</p></div>
+          </div>
+        </div>
+        <p class="note">垂直最紧凑，但把数据状态和全局操作混在一起；合同状态也容易被挤掉。</p>
+      </section>
+    </div>
+    <div class="summary"><strong>推荐 A：</strong>任务标题始终独占完整宽度，操作移动到标题下方的元信息行右侧。它只牺牲少量元信息行宽度，不会再用工具按钮强迫标题提前换行；在极窄侧栏中，标签可以自然换行，两个操作仍保持可见。</div>
+  </main>
+</body>
+</html>

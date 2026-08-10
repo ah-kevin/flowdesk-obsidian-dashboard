@@ -150,11 +150,11 @@ test("REQ 与 SCN 使用独立详情，并为场景保留结构和来源入口",
 });
 
 test("完整详情保留合同与观察的原型布局", () => {
-  assert.match(source, /text: "合同与交付详情"/);
+  assert.match(source, /text: "规格与交付详情"/);
   assert.match(source, /flowdesk-contract-section-head/);
   assert.match(source, /flowdesk-observation-summary/);
   assert.match(source, /flowdesk-observation-details/);
-  assert.match(source, /"任务合同 v4"[\s\S]*?"观察与来源"/);
+  assert.match(source, /"任务规格 v4"[\s\S]*?"观察与来源"/);
   assert.match(
     source,
     /const body = full\.createDiv[\s\S]*?resolveDetailSectionOrder\(diagnosticCount > 0\)/

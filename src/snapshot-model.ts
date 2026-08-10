@@ -73,6 +73,11 @@ export interface SnapshotTaskSummary {
   evidence_requirements?: SnapshotStructuredEvidenceRequirement[];
   acceptance?: SnapshotDerivedAcceptance[];
   review?: SnapshotReviewSummary;
+  records?: {
+    execution?: unknown[];
+    verification?: unknown[];
+    delivery?: unknown[];
+  };
   legacy_v3?: {
     semantic_status?: string;
     evidence_health?: SnapshotEvidenceHealth;
@@ -368,6 +373,11 @@ export interface DashboardViewModel {
   primaryDiagnostic: SnapshotDiagnostic | null;
   diagnostics: SnapshotDiagnostic[];
   nextAction: string | null;
+  records: {
+    execution: number;
+    verification: number;
+    delivery: number;
+  };
 }
 
 export interface DashboardModelOptions {
@@ -571,6 +581,17 @@ export function createDashboardViewModel(
     primaryDiagnostic: diagnostics[0] ?? null,
     diagnostics,
     nextAction: formatNextAction(snapshot.next_actions?.[0]),
+    records: {
+      execution: Array.isArray(currentTask.records?.execution)
+        ? currentTask.records.execution.length
+        : 0,
+      verification: Array.isArray(currentTask.records?.verification)
+        ? currentTask.records.verification.length
+        : 0,
+      delivery: Array.isArray(currentTask.records?.delivery)
+        ? currentTask.records.delivery.length
+        : 0,
+    },
   };
 }
 
@@ -594,7 +615,7 @@ export function formatRollupState(value: unknown): string {
     blocked: "存在阻塞子任务",
     awaiting_current_verification: "等待当前任务验证",
     inconsistent: "父子状态矛盾",
-    contract_invalid: "任务合同无效",
+    contract_invalid: "任务规格无效",
     done: "任务可信完成",
     unknown: "汇总状态未知",
   };
@@ -652,7 +673,7 @@ export function formatNextAction(action?: Record<string, unknown>): string | nul
     resolve_child_blockers: "处理直接子任务阻塞",
     complete_current_verification: "完成当前任务验证",
     resolve_contradictions: "处理父子状态矛盾",
-    repair_contract: "修复当前任务合同",
+    repair_contract: "修复当前任务规格",
   };
   const taskIds = Array.isArray(action.task_ids)
     ? action.task_ids.map(String).filter(Boolean)

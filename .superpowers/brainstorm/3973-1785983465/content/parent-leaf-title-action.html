@@ -1,0 +1,63 @@
+<style>
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(340px,1fr));gap:22px;align-items:start}.shell{border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#f4f4f6;color:#29292e;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.shell-label{padding:11px 14px;background:var(--surface);border-bottom:1px solid var(--border);font-weight:760}.panel{padding:12px;min-height:520px}.top{background:white;border:1px solid #dedee5;border-radius:10px;padding:10px}.back{display:inline-block;color:#6f4bd8;font-size:9px;font-weight:720;cursor:pointer}.toprow{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}.title{font-size:13px;font-weight:780;line-height:1.35}.tools{display:flex;gap:5px;flex:0 0 auto}.btn{border:1px solid #d2d2da;border-radius:6px;background:white;padding:4px 7px;font-size:9px;font-weight:700}.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}.chip{border-radius:999px;padding:3px 6px;background:#ececf1;font-size:9px;font-weight:750}.good{background:#ddf7e9;color:#18794e}.bad{background:#fee4e2;color:#b42318}.issue{margin-top:9px;border:1px solid #dedee5;border-left:4px solid #d92d20;border-radius:10px;background:white;padding:11px}.label{color:#9a3412;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}.issue-title{display:inline-block;margin-top:4px;color:#6f4bd8;font-size:13px;font-weight:780;cursor:pointer}.issue-title:hover{text-decoration:underline}.copy{margin-top:6px;font-size:10px;line-height:1.45}.loc{margin-top:6px;padding:5px 7px;border-radius:6px;background:#f7f7f9;color:#74747d;font-size:9px}.summary{margin-top:9px;background:white;border:1px solid #dedee5;border-radius:9px;padding:9px}.section-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:10px;font-weight:780}.child-list{border:1px solid #dedee5;border-radius:8px;overflow:hidden}.child{display:grid;grid-template-columns:12px 1fr auto;gap:7px;align-items:start;padding:8px;border-top:1px solid #ececf0;cursor:pointer}.child:first-child{border-top:0}.child:hover{background:#f8f8fa}.dot{width:8px;height:8px;border-radius:50%;background:#12b76a;margin-top:2px}.child-title{color:#6f4bd8;font-size:10px;font-weight:720;line-height:1.35}.sub{margin-top:3px;color:#b42318;font-size:8px}.chev{color:#85858e}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.metric{padding:7px;background:#f6f6f8;border-radius:7px}.metric span{display:block;color:#74747d;font-size:8px}.metric b{display:block;margin-top:3px;font-size:10px}.fold{margin-top:9px;padding:8px 9px;border:1px solid #dedee5;background:#fafafd;border-radius:8px;color:#666670;font-size:10px;font-weight:700}.caption{padding:12px 15px;color:var(--muted);font-size:12px;line-height:1.5}.decision{max-width:720px;margin:20px auto 0}@media(max-width:900px){.grid{grid-template-columns:1fr}.panel{min-height:auto}}
+</style>
+
+<h2>父任务与 leaf task：标题即操作</h2>
+<p class="subtitle">这是上一版两种完整状态。唯一变化：Parent、诊断、子任务标题本身可点击，不再出现独立“打开”按钮。</p>
+
+<div class="grid">
+  <div class="shell">
+    <div class="shell-label">父任务</div>
+    <div class="panel">
+      <div class="top">
+        <div class="toprow"><div class="title">FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐</div><div class="tools"><span class="btn">复制 CLI</span><span class="btn">↻</span></div></div>
+        <div class="chips"><span class="chip">进行中</span><span class="chip good">观测可信</span><span class="chip bad">合同无效</span></div>
+      </div>
+      <div class="issue">
+        <div class="label">当前阻断</div>
+        <div><span class="issue-title">缺少 Task Contract v3 ↗</span></div>
+        <div class="copy">当前任务仍使用旧合同结构，因此不能判定为可信完成。</div>
+        <div class="copy"><b>怎么修：</b>添加并保留唯一的 <code>## Task Contract v3</code>。</div>
+        <div class="loc">Task Contract v3 · 第 1 行</div>
+      </div>
+      <div class="summary">
+        <div class="section-title"><span>直接子任务</span><span class="bad">0 / 2 可信完成</span></div>
+        <div class="child-list">
+          <div class="child"><span class="dot"></span><div><div class="child-title">FlowDesk Plugin — 实现 SDD v3…</div><div class="sub">缺少 Task Contract v3 · 证据 3/3</div></div><span class="chev">›</span></div>
+          <div class="child"><span class="dot"></span><div><div class="child-title">FlowDesk Obsidian Dashboard — 消费…</div><div class="sub">缺少 Task Contract v3 · 证据 1/3</div></div><span class="chev">›</span></div>
+        </div>
+      </div>
+      <div class="fold">› 合同、证据与全部诊断</div>
+    </div>
+    <div class="caption"><b>父任务重点：</b>当前阻断 + direct children 汇总。子任务整行可点击；不复制子任务完整详情。</div>
+  </div>
+
+  <div class="shell">
+    <div class="shell-label">Leaf task</div>
+    <div class="panel">
+      <div class="top">
+        <span class="back">← FlowDesk SDD v3 原生父子模型…</span>
+        <div class="toprow" style="margin-top:4px"><div class="title">FlowDesk Plugin — 实现 SDD v3 原生父子任务与 snapshot</div><div class="tools"><span class="btn">复制 CLI</span><span class="btn">↻</span></div></div>
+        <div class="chips"><span class="chip">已完成</span><span class="chip good">观测可信</span><span class="chip bad">合同无效</span></div>
+      </div>
+      <div class="issue">
+        <div class="label">当前阻断</div>
+        <div><span class="issue-title">缺少 Task Contract v3 ↗</span></div>
+        <div class="copy">当前任务仍使用旧 Work Package v3，因此完成状态暂不可信。</div>
+        <div class="copy"><b>怎么修：</b>转换为当前任务自己的统一合同。</div>
+        <div class="loc">Task Contract v3 · 第 1 行</div>
+      </div>
+      <div class="summary">
+        <div class="section-title"><span>任务摘要</span></div>
+        <div class="metrics"><div class="metric"><span>优先级</span><b>高</b></div><div class="metric"><span>证据</span><b>3 / 3</b></div><div class="metric"><span>类型</span><b>Leaf</b></div></div>
+      </div>
+      <div class="fold">› 合同、证据与全部诊断</div>
+    </div>
+    <div class="caption"><b>Leaf 重点：</b>Parent 返回入口 + 当前任务阻断 + 自身摘要；不显示空 children 区域。</div>
+  </div>
+</div>
+
+<div class="decision options">
+  <div class="option" data-choice="approve-parent-leaf" onclick="toggleSelect(this)"><div class="letter">✓</div><div class="content"><h3>这两种表现正确</h3><p>按父任务/leaf 的这套差异定稿。</p></div></div>
+  <div class="option" data-choice="adjust-parent-leaf" onclick="toggleSelect(this)"><div class="letter">↺</div><div class="content"><h3>继续调整</h3><p>在终端说明希望调整父任务或 leaf 的哪一处。</p></div></div>
+</div>

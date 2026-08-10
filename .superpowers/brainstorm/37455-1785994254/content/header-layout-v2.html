@@ -1,0 +1,86 @@
+<style>
+  .fdc-list { display:grid; gap:18px; }
+  .fdc-choice { display:block; border:1px solid var(--border); border-radius:14px; padding:16px; background:var(--card-bg); cursor:pointer; transition:.16s ease; }
+  .fdc-choice:hover { border-color:var(--accent); transform:translateY(-1px); }
+  .fdc-choice.selected { border:2px solid var(--accent); padding:15px; box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent); }
+  .fdc-choice-head { display:flex; align-items:center; gap:10px; margin-bottom:4px; }
+  .fdc-letter { display:grid; place-items:center; width:26px; height:26px; flex:none; border-radius:999px; background:var(--accent); color:white; font-weight:800; }
+  .fdc-choice-head h3 { margin:0; font-size:16px; }
+  .fdc-note { margin:0 0 14px 36px; color:var(--text-muted); font-size:13px; }
+  .fdc-pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+  .fdc-case-label { margin:0 0 6px 2px; color:var(--text-muted); font-size:11px; font-weight:750; letter-spacing:.06em; }
+  .fdc-sidebar { box-sizing:border-box; min-width:0; border:1px solid #d7d9dd; border-radius:10px; background:#fafafa; padding:12px; color:#262626; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .fdc-crumb { display:flex; align-items:center; gap:5px; min-width:0; margin-bottom:7px; color:#7464d9; font-size:12px; font-weight:650; }
+  .fdc-crumb span { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .fdc-title-row { display:flex; align-items:flex-start; gap:9px; }
+  .fdc-title { min-width:0; flex:1; font-size:16px; font-weight:720; line-height:1.3; overflow-wrap:anywhere; }
+  .fdc-tools { display:flex; flex:none; gap:5px; }
+  .fdc-tool { display:grid; place-items:center; width:26px; height:26px; border:1px solid #d6d6d6; border-radius:7px; background:#f1f1f1; font-size:13px; }
+  .fdc-meta { display:flex; align-items:center; gap:6px; margin-top:10px; flex-wrap:wrap; }
+  .fdc-pill { padding:3px 8px; border-radius:999px; background:#ececec; color:#696969; font-size:11px; font-weight:650; }
+  .fdc-pill.is-blue { color:#1680e9; background:#eaf4ff; }
+  .fdc-pill.is-green { color:#16a85b; background:#e8f7ef; }
+  .fdc-stamp { margin-left:auto; color:#aaa; font-size:10px; }
+  .is-flat .fdc-sidebar { border:0; border-radius:0; padding:10px 4px 12px; background:transparent; border-bottom:1px solid #ddd; }
+  .is-split .fdc-topline { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .is-split .fdc-topline .fdc-crumb { flex:1; margin:0; }
+  .is-split .fdc-title { font-size:15px; }
+  .fdc-rule { margin-top:18px; padding:12px 14px; border-radius:10px; background:color-mix(in srgb,var(--accent) 8%,transparent); font-size:13px; }
+  @media (max-width:800px) { .fdc-pair { grid-template-columns:1fr; } .fdc-note { margin-left:0; } }
+</style>
+
+<h2>先只定头部：哪种更接近你要的 0.1.7 基础感？</h2>
+<p class="subtitle">每行是一个完整方案，左边父任务页、右边子任务页。点击整行即可选择。</p>
+
+<div class="fdc-list">
+  <div class="fdc-choice" data-choice="a" onclick="toggleSelect(this)">
+    <div class="fdc-choice-head"><div class="fdc-letter">A</div><h3>轻量卡片（推荐）</h3></div>
+    <p class="fdc-note">保留 0.1.7 卡片边界，删掉重复文件路径；父级只作为子任务页的轻量面包屑。</p>
+    <div class="fdc-pair">
+      <div><div class="fdc-case-label">父任务页</div><div class="fdc-sidebar">
+        <div class="fdc-title-row"><div class="fdc-title">FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐</div><div class="fdc-tools"><div class="fdc-tool">⧉</div><div class="fdc-tool">↻</div></div></div>
+        <div class="fdc-meta"><span class="fdc-pill is-blue">进行中</span><span class="fdc-pill">父任务</span><span class="fdc-pill">高优先级</span><span class="fdc-stamp">13:27</span></div>
+      </div></div>
+      <div><div class="fdc-case-label">子任务页</div><div class="fdc-sidebar">
+        <div class="fdc-crumb">↑ <span>FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐</span></div>
+        <div class="fdc-title-row"><div class="fdc-title">FlowDesk Obsidian Dashboard — 消费 SDD v3 snapshot 并优化父子任务展示</div><div class="fdc-tools"><div class="fdc-tool">⧉</div><div class="fdc-tool">↻</div></div></div>
+        <div class="fdc-meta"><span class="fdc-pill is-green">已完成</span><span class="fdc-pill">叶子任务</span><span class="fdc-pill">高优先级</span><span class="fdc-stamp">13:28</span></div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="fdc-choice is-flat" data-choice="b" onclick="toggleSelect(this)">
+    <div class="fdc-choice-head"><div class="fdc-letter">B</div><h3>OpenSpec 扁平标题</h3></div>
+    <p class="fdc-note">去掉头部卡片，用留白和底部分隔线组织信息，视觉最轻。</p>
+    <div class="fdc-pair">
+      <div><div class="fdc-case-label">父任务页</div><div class="fdc-sidebar">
+        <div class="fdc-title-row"><div class="fdc-title">FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐</div><div class="fdc-tools"><div class="fdc-tool">⧉</div><div class="fdc-tool">↻</div></div></div>
+        <div class="fdc-meta"><span class="fdc-pill is-blue">进行中</span><span class="fdc-pill">父任务</span><span class="fdc-pill">高优先级</span><span class="fdc-stamp">13:27</span></div>
+      </div></div>
+      <div><div class="fdc-case-label">子任务页</div><div class="fdc-sidebar">
+        <div class="fdc-crumb">↑ <span>FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐</span></div>
+        <div class="fdc-title-row"><div class="fdc-title">FlowDesk Obsidian Dashboard — 消费 SDD v3 snapshot 并优化父子任务展示</div><div class="fdc-tools"><div class="fdc-tool">⧉</div><div class="fdc-tool">↻</div></div></div>
+        <div class="fdc-meta"><span class="fdc-pill is-green">已完成</span><span class="fdc-pill">叶子任务</span><span class="fdc-pill">高优先级</span><span class="fdc-stamp">13:28</span></div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="fdc-choice is-split" data-choice="c" onclick="toggleSelect(this)">
+    <div class="fdc-choice-head"><div class="fdc-letter">C</div><h3>导航与操作独立一行</h3></div>
+    <p class="fdc-note">工具按钮不占标题宽度；顶部一行专门承载父级导航和操作。</p>
+    <div class="fdc-pair">
+      <div><div class="fdc-case-label">父任务页</div><div class="fdc-sidebar">
+        <div class="fdc-topline"><div class="fdc-crumb"><span>当前父任务</span></div><div class="fdc-tools"><div class="fdc-tool">⧉</div><div class="fdc-tool">↻</div></div></div>
+        <div class="fdc-title">FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐</div>
+        <div class="fdc-meta"><span class="fdc-pill is-blue">进行中</span><span class="fdc-pill">父任务</span><span class="fdc-pill">高优先级</span><span class="fdc-stamp">13:27</span></div>
+      </div></div>
+      <div><div class="fdc-case-label">子任务页</div><div class="fdc-sidebar">
+        <div class="fdc-topline"><div class="fdc-crumb">↑ <span>FlowDesk SDD v3 原生 TaskNotes 父子模型重构与 Dashboard 对齐</span></div><div class="fdc-tools"><div class="fdc-tool">⧉</div><div class="fdc-tool">↻</div></div></div>
+        <div class="fdc-title">FlowDesk Obsidian Dashboard — 消费 SDD v3 snapshot 并优化父子任务展示</div>
+        <div class="fdc-meta"><span class="fdc-pill is-green">已完成</span><span class="fdc-pill">叶子任务</span><span class="fdc-pill">高优先级</span><span class="fdc-stamp">13:28</span></div>
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<div class="fdc-rule"><strong>三种方案的共同规则：</strong>去掉重复完整路径；当前任务标题可点击；父任务名称只在子任务页出现；复制与刷新不再压缩标题文字宽度。</div>
