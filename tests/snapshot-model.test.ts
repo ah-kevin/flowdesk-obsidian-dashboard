@@ -438,6 +438,40 @@ test("真实 producer fixture 映射 tasknotes_only completion 与父子 rollup"
   assert.equal(model.diagnostics.length, 0);
 });
 
+test("producer 未输出 records 时降级为全 0 而不是报错", () => {
+  // 早于 records 特性的真实 producer 输出缺该字段，必须安全降级。
+  //
+  // 注意：含 records 的正向计数（ER/VR/DR 各若干段 → 对应数字）在此没有数据层
+  // 覆盖。含 records 的真实 producer 输出会把 flowdesk-plugin 的内部执行记录
+  // 全文与本机绝对路径带进这个公开仓库，因此不入库；手写 fixture 又违反本卡
+  // 「不手写 fixture」的硬要求。正向路径目前只由
+  // tests/dashboard-ui-contract.test.ts 的源码断言覆盖（只消费 .length、
+  // 不渲染 text）。改动 records 映射时请另跑真实 producer 输出人工回放。
+  const fixturePath = path.join(
+    process.cwd(),
+    "tests/fixtures/sdd_v4_real_root_snapshot.json"
+  );
+  const snapshot = JSON.parse(readFileSync(fixturePath, "utf8"));
+  assert.equal(snapshot.current_task.records, undefined);
+
+  const model = createDashboardViewModel(snapshot, {
+    expectedTaskPath: snapshot.source.task_id,
+  });
+
+  assert.equal(model.errorCode, null);
+  assert.deepEqual(model.records, {
+    execution: 0,
+    verification: 0,
+    delivery: 0,
+  });
+  // 键恒为三类，缺字段不改变形状。
+  assert.deepEqual(Object.keys(model.records).sort(), [
+    "delivery",
+    "execution",
+    "verification",
+  ]);
+});
+
 test("child 未可信完成与阻塞关系在 tasknotes_only 下不被伪装为完成", () => {
   const fixturePath = path.join(
     process.cwd(),

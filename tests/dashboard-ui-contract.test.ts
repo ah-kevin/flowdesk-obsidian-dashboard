@@ -123,6 +123,27 @@ test("标题全宽且 child 使用统一背景容器与内部行分隔", () => {
   );
 });
 
+test("子任务区块不被折叠区展开压缩，且仍防止长内容撑宽", () => {
+  // 折叠区展开时抢占空间会压缩 child 区块，overflow: hidden 会把溢出部分裁掉，
+  // 看起来像子任务被遮挡。flex-shrink: 0 防压缩，min-width: 0 让内层
+  // grid 的 minmax(0, 1fr) 生效防撑宽——两者必须并存。
+  const childSection = styles.match(/\.flowdesk-child-section\s*\{([^}]*)\}/s);
+  assert.ok(childSection, "styles.css 必须定义 .flowdesk-child-section");
+  const declarations = childSection[1];
+  assert.match(declarations, /flex-shrink:\s*0;/);
+  assert.match(declarations, /min-width:\s*0;/);
+  assert.doesNotMatch(
+    declarations,
+    /overflow:\s*hidden;/,
+    "overflow: hidden 会裁掉被压缩后溢出的子任务行"
+  );
+  // 长标题靠 overflow-wrap 在标题内换行，不依赖父级裁剪。
+  assert.match(
+    styles,
+    /\.flowdesk-child-title\s*\{[^}]*overflow-wrap:\s*anywhere;/s
+  );
+});
+
 test("极窄侧栏允许工具组换行但不改变标题宽度", () => {
   assert.match(styles, /@media \(max-width:\s*360px\)/);
   assert.match(
@@ -159,6 +180,19 @@ test("完整详情保留合同与观察的原型布局", () => {
     source,
     /const body = full\.createDiv[\s\S]*?resolveDetailSectionOrder\(diagnosticCount > 0\)/
   );
+});
+
+test("完成记录只渲染计数行与跳转，不渲染记录全文", () => {
+  assert.match(source, /flowdesk-records-summary/);
+  assert.match(source, /flowdesk-records-link/);
+  // 只消费长度做计数，绝不把 records 的 text/excerpt 渲染进 DOM。
+  assert.match(source, /model\.records\.execution/);
+  assert.match(source, /model\.records\.verification/);
+  assert.match(source, /model\.records\.delivery/);
+  assert.doesNotMatch(source, /records\.execution\[\d*\]?\.text/);
+  assert.doesNotMatch(source, /records\.[a-z]+\.map\(/);
+  // 三类全空时整行不出现，不占视觉重量。
+  assert.match(source, /if \(recordsTotal > 0\)/);
 });
 
 test("判定层拆除后不再渲染 Evidence 与 Acceptance 空壳区块", () => {

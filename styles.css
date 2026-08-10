@@ -389,7 +389,13 @@
   line-height: 1.45;
 }
 
+/*
+ * min-width: 0 让内层 grid 的 minmax(0, 1fr) 生效，防长内容撑宽侧栏；
+ * flex-shrink: 0 防止下方折叠区展开时压缩本区块高度。两者作用于不同机制，需并存。
+ * 不要加 overflow: hidden——它会把被压缩后溢出的子任务行裁掉。
+ */
 .flowdesk-child-section {
+  min-width: 0;
   flex-shrink: 0;
   border: 1px solid var(--fd-border);
   border-radius: 8px;
