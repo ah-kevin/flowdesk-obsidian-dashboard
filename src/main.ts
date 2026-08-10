@@ -17,19 +17,20 @@ import { homedir } from "os";
 import * as path from "path";
 import { promisify } from "util";
 import {
-  collectObservedTaskPaths,
   createSnapshotExecutionOptions,
-  isCurrentSnapshotRequest,
   isTaskPath,
   registerInitialDashboardSync,
-  resolveRefreshFailureDisplay,
-  resolveSnapshotEnvelopeFailure,
-  resolveDashboardContext,
-  SnapshotRequestAbortCoordinator,
-  TrailingRefreshScheduler,
   type DashboardContext,
-  type SnapshotRequestIdentity,
 } from "./dashboard-state";
+import {
+  FrozenTaskAdapter,
+  type FrozenTaskRenderState,
+} from "./frozen-task-adapter";
+import {
+  isUnsupportedContext,
+  resolveViewShellContext,
+  ViewShellController,
+} from "./view-shell";
 import {
   buildSnapshotInvocation,
   formatShellCommand,
@@ -46,14 +47,12 @@ import {
   createContractItemPresentation,
   createDashboardPresentation,
   createDiagnosticDisclosureKey,
-  DisclosureStateCache,
   formatSnapshotCompatibilityError,
   formatTaskShellStatus,
   isActivationKey,
   reconcileDiagnosticDisclosureState,
   resolveDiagnosticDisclosureOpen,
   resolveDetailSectionOrder,
-  resolveDisclosureState,
   type DashboardChildRowPresentation,
   type DashboardContractPresentation,
   type DashboardPresentation,
@@ -77,6 +76,16 @@ import {
   type TaskNavigationOrigin,
 } from "./task-navigation";
 import { formatDiagnosticClipboard } from "./diagnostic-clipboard";
+import {
+  WorkCaseAdapter,
+  type WorkCaseRenderState,
+} from "./work-case-adapter";
+import {
+  buildWorkCaseSnapshotInvocation,
+  type WorkCaseSnapshotInvocation,
+} from "./work-case-invocation";
+import type { WorkCaseSourceRange } from "./work-case-model";
+import { WorkCaseDashboardRenderer } from "./work-case-renderer";
 
 export const FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
 
@@ -112,13 +121,6 @@ class EvidenceReviewCommandError extends Error {
   }
 }
 
-interface SnapshotDisplayState {
-  taskPath: string;
-  snapshot: ExecutionSnapshot;
-  loadedAt: string;
-  staleReason: string;
-}
-
 export default class FlowDeskDashboardPlugin extends Plugin {
   settings!: FlowDeskDashboardSettings;
 
@@ -152,9 +154,20 @@ export default class FlowDeskDashboardPlugin extends Plugin {
       })
     );
     this.registerEvent(
+      this.app.metadataCache.on("changed", (file) => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (
+          activeFile?.path === file.path &&
+          !this.isTaskFile(activeFile)
+        ) {
+          void this.getDashboardView()?.syncToActiveFile(file);
+        }
+      })
+    );
+    this.registerEvent(
       this.app.vault.on("modify", (file) => {
         const view = this.getDashboardView();
-        if (view && file instanceof TFile && view.observesTaskFile(file.path)) {
+        if (view && file instanceof TFile && view.observesFile(file.path)) {
           view.scheduleRefresh();
         }
       })
@@ -169,11 +182,15 @@ export default class FlowDeskDashboardPlugin extends Plugin {
   async refreshDashboard(fallbackTaskPath = "") {
     const file = this.app.workspace.getActiveFile();
     const taskPath = this.isTaskFile(file) ? file.path : fallbackTaskPath;
-    if (!taskPath) {
-      new Notice("请先打开一个 Tasks/*.md 任务文件。");
+    if (taskPath) {
+      await this.activateDashboard(taskPath);
       return;
     }
-    await this.activateDashboard(taskPath);
+    if (file && ["work-case", "session"].includes(this.workCaseType(file))) {
+      await this.activateWorkCaseDashboard(file);
+      return;
+    }
+    new Notice("请先打开一个 Tasks/*.md 任务文件。");
   }
 
   async activateDashboard(taskPath: string) {
@@ -188,6 +205,22 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     }
     if (leaf.view instanceof FlowDeskDashboardView) {
       await leaf.view.loadTask(taskPath);
+    }
+    workspace.revealLeaf(leaf);
+  }
+
+  async activateWorkCaseDashboard(file: TFile): Promise<void> {
+    const { workspace } = this.app;
+    let leaf = workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE)[0];
+    if (!leaf) {
+      leaf = workspace.getRightLeaf(false) ?? workspace.getLeaf(true);
+      await leaf.setViewState({
+        type: FLOWDESK_DASHBOARD_VIEW_TYPE,
+        active: true,
+      });
+    }
+    if (leaf.view instanceof FlowDeskDashboardView) {
+      await leaf.view.syncToActiveFile(file);
     }
     workspace.revealLeaf(leaf);
   }
@@ -214,6 +247,28 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     }
   }
 
+  async loadWorkCaseSnapshot(
+    casePath: string,
+    signal: AbortSignal
+  ): Promise<unknown> {
+    const invocation = this.createWorkCaseSnapshotInvocation(casePath);
+    let stdout: string;
+    try {
+      const result = await execFileAsync(invocation.executable, invocation.args, {
+        ...createSnapshotExecutionOptions(invocation.cwd, signal),
+      });
+      stdout = result.stdout;
+    } catch (error) {
+      throw new Error(formatWorkCaseCommandError(error));
+    }
+    try {
+      return JSON.parse(stdout) as unknown;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Work Case snapshot JSON 解析失败：${message}`);
+    }
+  }
+
   createSnapshotInvocation(taskPath: string, format: SnapshotFormat): SnapshotInvocation {
     const flowdeskRoot = this.resolveFlowDeskRoot();
     const workingDirectory =
@@ -227,6 +282,15 @@ export default class FlowDeskDashboardPlugin extends Plugin {
       },
       format
     );
+  }
+
+  createWorkCaseSnapshotInvocation(casePath: string): WorkCaseSnapshotInvocation {
+    return buildWorkCaseSnapshotInvocation({
+      flowdeskRoot: this.resolveFlowDeskRoot(),
+      casePath,
+      workingDirectory: this.resolveVaultRoot(),
+      apiUrl: this.settings.apiUrl.trim(),
+    });
   }
 
   async copyDashboardCommand(taskPath: string): Promise<void> {
@@ -307,6 +371,12 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     return Boolean(file && file.extension === "md" && isTaskPath(file.path));
   }
 
+  workCaseType(file: TFile | null): string {
+    if (!file || file.extension !== "md" || this.isTaskFile(file)) return "";
+    const type = this.app.metadataCache.getFileCache(file)?.frontmatter?.type;
+    return typeof type === "string" ? type : "";
+  }
+
   private getDashboardView(): FlowDeskDashboardView | null {
     const leaf = this.app.workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE)[0];
     return leaf?.view instanceof FlowDeskDashboardView ? leaf.view : null;
@@ -326,28 +396,57 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     throw new Error("未找到 FlowDesk 仓库路径，请在插件设置里配置 FlowDesk repo path。");
   }
 
+  private resolveVaultRoot(): string {
+    const adapter = this.app.vault.adapter as unknown as {
+      getBasePath?: () => string;
+      basePath?: string;
+    };
+    const basePath =
+      typeof adapter.getBasePath === "function"
+        ? adapter.getBasePath()
+        : adapter.basePath;
+    if (!basePath) {
+      throw new Error("Work Case Dashboard 仅支持本地文件系统 Vault。");
+    }
+    return path.resolve(basePath);
+  }
+
 }
 
 class FlowDeskDashboardView extends ItemView {
-  private context: DashboardContext = { kind: "empty" };
   private previousTaskPath = "";
-  private selectionRevision = 0;
-  private displayState: SnapshotDisplayState | null = null;
-  private error = "";
-  private loading = false;
-  private queuedRequest: SnapshotRequestIdentity | null = null;
-  private refreshPromise: Promise<void> | null = null;
-  private refreshScheduler: TrailingRefreshScheduler;
-  private snapshotAbortCoordinator = new SnapshotRequestAbortCoordinator();
+  private shell!: ViewShellController;
+  private readonly taskAdapter: FrozenTaskAdapter;
+  private readonly caseAdapter: WorkCaseAdapter;
+  private readonly caseRenderer: WorkCaseDashboardRenderer;
   private cancelInitialSync: (() => void) | null = null;
-  private disclosureStateCache = new DisclosureStateCache(20);
-  private disclosureState: DisclosureState = resolveDisclosureState(undefined, true);
 
   constructor(leaf: WorkspaceLeaf, private plugin: FlowDeskDashboardPlugin) {
     super(leaf);
-    this.refreshScheduler = new TrailingRefreshScheduler(() => {
-      void this.loadCurrentTask();
+    this.taskAdapter = new FrozenTaskAdapter({
+      shell: () => this.shell,
+      loadSnapshot: (taskPath, signal) =>
+        this.plugin.loadSnapshot(taskPath, signal),
+      render: (container, state) => this.renderFrozenTask(container, state),
+      requestRender: () => this.renderShell(),
+      nowLabel: () => formatTime(new Date()),
     });
+    this.caseAdapter = new WorkCaseAdapter({
+      shell: () => this.shell,
+      loadSnapshot: (casePath, signal) =>
+        this.plugin.loadWorkCaseSnapshot(casePath, signal),
+      render: (container, state) => this.renderWorkCase(container, state),
+      requestRender: () => this.renderShell(),
+      nowLabel: () => formatTime(new Date()),
+    });
+    this.caseRenderer = new WorkCaseDashboardRenderer({
+      refresh: () => this.caseAdapter.refresh(),
+      openTask: (taskPath) => this.openTask(taskPath),
+      openCaseSource: (casePath, source) =>
+        this.openCaseSource(casePath, source),
+      openRelated: (target, casePath) => this.openRelated(target, casePath),
+    });
+    this.shell = new ViewShellController([this.taskAdapter, this.caseAdapter]);
   }
 
   getViewType() {
@@ -374,160 +473,125 @@ class FlowDeskDashboardView extends ItemView {
   async onClose() {
     this.cancelInitialSync?.();
     this.cancelInitialSync = null;
-    this.refreshScheduler.cancel();
-    this.snapshotAbortCoordinator.cancel();
-    this.disclosureStateCache.clear();
+    this.shell.close();
+    this.taskAdapter.close();
   }
 
   async syncToActiveFile(file: TFile | null = this.app.workspace.getActiveFile()) {
-    const nextContext = resolveDashboardContext(file?.path ?? null, this.previousTaskPath);
-    if (nextContext.kind === "task") {
-      if (
-        this.context.kind === "task" &&
-        this.context.taskPath === nextContext.taskPath
-      ) {
-        if (!this.displayState && !this.loading) {
-          await this.loadTask(nextContext.taskPath);
-        }
-        return;
-      }
-      await this.loadTask(nextContext.taskPath);
+    const nextContext = resolveViewShellContext(
+      file?.path ?? null,
+      this.previousTaskPath,
+      this.plugin.workCaseType(file)
+    );
+    if ("resourcePath" in nextContext) {
+      this.previousTaskPath = nextContext.resourcePath;
+      await this.shell.select(nextContext);
+      this.renderShell();
       return;
     }
-    this.selectionRevision += 1;
-    this.context = nextContext;
-    this.displayState = null;
-    this.queuedRequest = null;
-    this.refreshScheduler.cancel();
-    this.snapshotAbortCoordinator.cancel();
-    this.loading = false;
-    this.error = "";
-    this.render();
+    await this.shell.select(nextContext);
+    this.renderShell();
   }
 
   async loadTask(taskPath: string) {
-    const sameTask = this.context.kind === "task" && this.context.taskPath === taskPath;
-    if (!sameTask) {
-      this.selectionRevision += 1;
-      this.context = { kind: "task", taskPath };
-      this.previousTaskPath = taskPath;
-      this.displayState = null;
-      this.error = "";
-      this.loading = true;
-      this.refreshScheduler.cancel();
-      this.snapshotAbortCoordinator.cancel();
-      this.disclosureState = this.disclosureStateCache.forTask(taskPath);
-      this.render();
-    }
-    this.queuedRequest = { taskPath, selectionRevision: this.selectionRevision };
-    if (this.refreshPromise) return this.refreshPromise;
-    this.refreshPromise = this.drainRefreshQueue();
-    try {
-      await this.refreshPromise;
-    } finally {
-      this.refreshPromise = null;
-    }
+    this.previousTaskPath = taskPath;
+    await this.shell.select(
+      { kind: this.taskAdapter.kind, resourcePath: taskPath },
+      { force: true }
+    );
   }
 
   async refreshCurrentTask() {
-    this.refreshScheduler.cancel();
-    await this.loadCurrentTask();
+    await this.taskAdapter.refresh();
   }
 
   scheduleRefresh() {
-    this.refreshScheduler.schedule();
+    if (this.shell.context.kind === this.caseAdapter.kind) {
+      void this.caseAdapter.refresh();
+    } else {
+      this.taskAdapter.scheduleRefresh();
+    }
   }
 
   observesTaskFile(filePath: string): boolean {
-    return this.context.kind === "task"
-      ? collectObservedTaskPaths(this.context.taskPath, this.displayState?.snapshot).has(filePath)
-      : false;
+    return this.taskAdapter.observesTaskFile(filePath);
   }
 
-  private async loadCurrentTask() {
-    if (this.context.kind === "task") await this.loadTask(this.context.taskPath);
+  observesFile(filePath: string): boolean {
+    return this.shell.context.kind === this.caseAdapter.kind
+      ? this.caseAdapter.observesFile(filePath)
+      : this.observesTaskFile(filePath);
   }
 
-  private async drainRefreshQueue() {
-    while (this.queuedRequest) {
-      const request = this.queuedRequest;
-      this.queuedRequest = null;
-      await this.loadTaskNow(request);
-    }
+  private get taskRenderState(): FrozenTaskRenderState {
+    const state = this.taskAdapter.getRenderState();
+    if (!state) throw new Error("Frozen Task Adapter 尚未激活");
+    return state;
   }
 
-  private async loadTaskNow(request: SnapshotRequestIdentity) {
-    const signal = this.snapshotAbortCoordinator.begin();
-    this.loading = true;
-    this.error = "";
-    this.render();
-    try {
-      const snapshot = await this.plugin.loadSnapshot(request.taskPath, signal);
-      if (!isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) return;
-      const envelopeFailure = resolveSnapshotEnvelopeFailure(
-        this.displayState,
-        request.taskPath,
-        snapshot
-      );
-      if (envelopeFailure.error) {
-        this.error = envelopeFailure.error;
-        this.displayState = envelopeFailure.displayState;
-        return;
-      }
-      this.displayState = {
-        taskPath: request.taskPath,
-        snapshot,
-        loadedAt: formatTime(new Date()),
-        staleReason: "",
-      };
-    } catch (error) {
-      if (!isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) return;
-      this.error = error instanceof Error ? error.message : String(error);
-      this.displayState = resolveRefreshFailureDisplay(
-        this.displayState,
-        request.taskPath,
-        this.error
-      );
-    } finally {
-      this.snapshotAbortCoordinator.finish(signal);
-      if (isCurrentSnapshotRequest(request, this.context, this.selectionRevision)) {
-        this.loading = false;
-        this.render();
-      }
-    }
+  private get loading(): boolean {
+    return this.taskRenderState.loading;
   }
 
-  private render() {
+  private get disclosureState(): DisclosureState {
+    return this.taskRenderState.disclosureState;
+  }
+
+  private renderShell() {
     const container = this.contentEl;
     container.empty();
+    this.caseRenderer.reset(container);
     container.addClass("flowdesk-dashboard");
-    if (this.context.kind === "non-task") {
-      this.renderNonTaskState(container, this.context);
+    if (this.shell.context.kind === this.taskAdapter.kind) {
+      this.taskAdapter.render(container);
       return;
     }
-    if (this.context.kind === "empty") {
+    if (this.shell.context.kind === this.caseAdapter.kind) {
+      this.caseAdapter.render(container);
+      return;
+    }
+    if (isUnsupportedContext(this.shell.context)) {
+      this.renderNonTaskState(container, {
+        kind: "non-task",
+        activePath: this.shell.context.activePath,
+        previousTaskPath: this.shell.context.previousResourcePath,
+      });
+      return;
+    }
+    if (this.shell.context.kind === "empty") {
       container.createDiv({
         cls: "flowdesk-empty",
         text: "打开一个 TaskNotes 任务以查看 Dashboard。",
       });
-      return;
     }
-    const taskPath = this.context.taskPath;
-    const displayState = this.displayState?.taskPath === taskPath ? this.displayState : null;
-    const snapshot = displayState?.snapshot;
+  }
+
+  private renderWorkCase(
+    container: HTMLElement,
+    state: WorkCaseRenderState
+  ): void {
+    this.caseRenderer.render(container, state);
+  }
+
+  private renderFrozenTask(
+    container: HTMLElement,
+    state: FrozenTaskRenderState
+  ) {
+    const taskPath = state.taskPath;
+    const snapshot = state.snapshot;
     if (!snapshot) {
       this.renderLoadingHeader(
         container,
         taskPath,
-        formatTaskShellStatus(this.loading, this.error)
+        formatTaskShellStatus(state.loading, state.error)
       );
     }
-    if (this.loading && !snapshot) {
+    if (state.loading && !snapshot) {
       container.createDiv({ cls: "flowdesk-empty", text: "正在读取当前任务 snapshot..." });
       return;
     }
-    if (this.error && !snapshot) {
-      container.createDiv({ cls: "flowdesk-error", text: this.error });
+    if (state.error && !snapshot) {
+      container.createDiv({ cls: "flowdesk-error", text: state.error });
       return;
     }
     if (!snapshot) {
@@ -536,8 +600,8 @@ class FlowDeskDashboardView extends ItemView {
     }
     const model = createDashboardViewModel(snapshot, {
       expectedTaskPath: taskPath,
-      loadedAt: displayState?.loadedAt,
-      staleReason: displayState?.staleReason,
+      loadedAt: state.loadedAt,
+      staleReason: state.staleReason,
     });
     if (model.errorCode) {
       this.renderLoadingHeader(container, taskPath, "snapshot 不兼容");
@@ -1219,6 +1283,42 @@ class FlowDeskDashboardView extends ItemView {
       .getLeaf(taskNavigationNewLeaf(origin))
       .openFile(file);
   }
+
+  private async openCaseSource(
+    casePath: string,
+    source: WorkCaseSourceRange
+  ): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(casePath);
+    if (!(file instanceof TFile)) {
+      new Notice(`未找到 Work Case 文件：${casePath}`);
+      return;
+    }
+    await this.app.workspace.getLeaf(false).openFile(file);
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!view || view.file?.path !== casePath) {
+      new Notice("Work Case 已打开，但当前视图无法定位到具体行。");
+      return;
+    }
+    const editorLine = Math.max(0, source.lineStart - 1);
+    if (editorLine >= view.editor.lineCount()) {
+      new Notice(`Work Case 来源行号已超出当前文件范围：${source.lineStart}`);
+      return;
+    }
+    const position = { line: editorLine, ch: 0 };
+    view.editor.setCursor(position);
+    view.editor.scrollIntoView({ from: position, to: position }, true);
+    view.editor.focus();
+  }
+
+  private async openRelated(target: string, casePath: string): Promise<void> {
+    const linkText = normalizeWikiLink(target);
+    try {
+      await this.app.workspace.openLinkText(linkText, casePath, false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(`无法打开关联文件：${message}`);
+    }
+  }
 }
 
 class EvidenceReviewModal extends Modal {
@@ -1458,4 +1558,17 @@ function formatSnapshotCommandError(error: unknown) {
   }
   const runtime = output.match(/RuntimeError: ([\s\S]+)$/);
   return runtime ? `FlowDesk snapshot 读取失败：${runtime[1].trim()}` : `FlowDesk snapshot 命令失败：${message}`;
+}
+
+function formatWorkCaseCommandError(error: unknown): string {
+  const failure = error as Partial<ExecFileFailure>;
+  const stderr = typeof failure.stderr === "string" ? failure.stderr.trim() : "";
+  const stdout = typeof failure.stdout === "string" ? failure.stdout.trim() : "";
+  const message = error instanceof Error ? error.message : String(error);
+  return `Work Case snapshot 命令失败：${stderr || stdout || message}`;
+}
+
+function normalizeWikiLink(value: string): string {
+  const match = value.trim().match(/^\[\[([^\]]+)\]\]$/);
+  return (match?.[1] ?? value).split("|", 1)[0].trim();
 }

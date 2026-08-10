@@ -1,9 +1,9 @@
 # FlowDesk Dashboard Obsidian 插件
 
 FlowDesk Dashboard 是一个 desktop-only 的 Obsidian 第三方插件，用来查看当前
-TaskNotes 任务的 FlowDesk execution snapshot。插件调用本机 FlowDesk-Plugin 仓库中的
-`bin/flowdesk-execution-snapshot --format json`，再在 Obsidian 侧栏渲染同一份只读
-snapshot 数据。
+TaskNotes 任务或 Work Case 的 FlowDesk snapshot。插件分别调用本机 FlowDesk-Plugin
+仓库中的 `bin/flowdesk-execution-snapshot` 与 `bin/flowdesk-work-case-snapshot`，
+在同一 Obsidian 侧栏内渲染隔离的 Task Dashboard 或只读 Case 恢复驾驶舱。
 
 本项目走 GitHub Release、BRAT 或手动安装，不以提交 Obsidian 官方 Community
 Directory 作为发布路径。
@@ -11,12 +11,12 @@ Directory 作为发布路径。
 ## 运行依赖与安全边界
 
 - 仅支持 Obsidian desktop，`manifest.json` 中 `isDesktopOnly` 固定为 `true`。
-- 需要本机已存在 FlowDesk-Plugin 仓库，并包含
-  `bin/flowdesk-execution-snapshot`。
-- 需要 TaskNotes HTTP API 可用；插件不会直接读写 TaskNotes markdown 文件作为降级。
-- Dashboard 只接受 `snapshot_schema_version=3` 且
-  `snapshot_model=task-centric`；缺少或错配 model marker 时 fail-closed，不兼容旧
-  root-centric schema 3。
+- 需要本机已存在 FlowDesk-Plugin 仓库，并包含 Task 与 Work Case 两个独立 snapshot CLI。
+- Task Dashboard 需要 TaskNotes HTTP API 可用；Case Dashboard 在 API 不可用时仍显示
+  Work Case 主体，并把关联任务区明确标记为 unavailable。
+- Task consumer 继续接受既有 task-centric schema 3/4；Case consumer 只接受
+  `snapshot_schema_version=1`、`snapshot_model=work-case-centric` 与 producer protocol 1。
+  两条路径都对 source identity fail-closed。
 - Dashboard 是只读视图；只执行 snapshot 命令，不修改 TaskNotes、Work Case 或
   FlowDesk runtime 状态。
 - 首次使用时，在插件设置里配置 FlowDesk repo path，例如
@@ -130,8 +130,10 @@ ln -s "$(pwd)" \
 **FlowDesk Dashboard: Show dashboard for current TaskNotes task**，或点击左侧 ribbon
 里的 dashboard 图标。插件会打开右侧面板并显示只读 dashboard。
 
-当前入口仍以正在打开的 TaskNotes task 文件为准；插件不会从 Work Case 猜测任务，也不会
-自行解析 TaskNotes Markdown。
+Dashboard 已打开时，切换到 frontmatter `type: work-case` 或 legacy `type: session`
+文件会自动进入 Case 恢复驾驶舱；明确打开的 archived Case 仍完整显示并标记“已归档”。
+其他 Markdown 文件继续显示非 FlowDesk 提示。Case 内容由独立 producer 解析，Dashboard
+不从散文猜测任务或 Current 字段。
 
 ## Task-centric snapshot v3 展示语义
 
