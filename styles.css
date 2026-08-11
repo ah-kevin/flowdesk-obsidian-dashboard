@@ -1330,6 +1330,16 @@
   text-align: left;
 }
 
+.flowdesk-case-dashboard .flowdesk-case-related .flowdesk-case-related-link {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .flowdesk-case-dashboard .flowdesk-case-status,
 .flowdesk-case-dashboard .flowdesk-case-badge,
 .flowdesk-case-dashboard .flowdesk-case-status-chip,
