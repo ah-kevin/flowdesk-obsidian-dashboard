@@ -55,22 +55,59 @@ test("所有 Case CSS 均使用独立作用域并覆盖 320/360/420/600px contra
   assert.match(styles, /\.flowdesk-case-dashboard[^}]*min-width:\s*0;/s);
   assert.match(styles, /\.flowdesk-case-short-grid\s*\{[^}]*repeat\(auto-fit,[^}]*220px/s);
   assert.match(styles, /overflow-wrap:\s*anywhere/);
-  assert.match(styles, /@container\s*\(max-width:\s*420px\)/);
+  const breakpoint = styles.match(/@container\s*\(max-width:\s*(\d+)px\)/);
+  assert.ok(breakpoint);
+  assert.equal(Number(breakpoint[1]), 420);
   const narrowRule = styles.match(
     /@container\s*\(max-width:\s*420px\)\s*\{([\s\S]*?)\n\}/
   );
   assert.ok(narrowRule);
   assert.match(narrowRule[1], /\.flowdesk-case-dashboard \.flowdesk-case-short-grid/);
+  assert.match(narrowRule[1], /\.flowdesk-case-dashboard \.flowdesk-case-related-row/);
   assert.match(narrowRule[1], /grid-template-columns:\s*minmax\(0, 1fr\)/);
-  for (const width of [320, 360, 420, 600]) {
-    const expected = width <= 420 ? "single" : "auto-fit";
-    const actual = width <= 420 && narrowRule ? "single" : "auto-fit";
-    assert.equal(actual, expected, `${width}px`);
-  }
+
+  const baseRelatedRow = styles.match(
+    /\.flowdesk-case-dashboard \.flowdesk-case-recovery-row,\s*\.flowdesk-case-dashboard \.flowdesk-case-related-row\s*\{([^}]*)\}/s
+  );
+  assert.ok(baseRelatedRow);
+  const baseColumns = baseRelatedRow[1].match(/grid-template-columns:\s*([^;]+);/);
+  const narrowColumns = narrowRule[1].match(/grid-template-columns:\s*([^;]+);/);
+  assert.ok(baseColumns);
+  assert.ok(narrowColumns);
+
+  const columnsAt = (width: number): string =>
+    width <= Number(breakpoint[1]) ? narrowColumns[1].trim() : baseColumns[1].trim();
+  assert.deepEqual(
+    [320, 360, 420, 600].map((width) => [width, columnsAt(width)]),
+    [
+      [320, "minmax(0, 1fr)"],
+      [360, "minmax(0, 1fr)"],
+      [420, "minmax(0, 1fr)"],
+      [600, "minmax(64px, auto) minmax(0, 1fr)"],
+    ]
+  );
 
   const caseBlocks = [...styles.matchAll(/([^{}]+)\{[^{}]*\}/g)]
     .map((match) => match[1].trim())
     .filter((selector) => selector.includes("flowdesk-case-"));
   assert.ok(caseBlocks.length > 0);
   assert.ok(caseBlocks.every((selector) => selector.includes(".flowdesk-case-")));
+});
+
+test("关联导航长链接覆盖主题按钮的 nowrap 与 inline-flex 居中布局", () => {
+  const relatedLinkRule = styles.match(
+    /\.flowdesk-case-dashboard \.flowdesk-case-related \.flowdesk-case-related-link\s*\{([^}]*)\}/
+  );
+  assert.ok(relatedLinkRule, "关联导航按钮必须有独立 Case-scoped rule");
+
+  for (const declaration of [
+    /display:\s*block/,
+    /width:\s*fit-content/,
+    /max-width:\s*100%/,
+    /white-space:\s*normal/,
+    /overflow-wrap:\s*anywhere/,
+    /word-break:\s*break-word/,
+  ]) {
+    assert.match(relatedLinkRule[1], declaration);
+  }
 });

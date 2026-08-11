@@ -106,12 +106,12 @@ test("renderer 用 canonical model 渲染三层驾驶舱并接通只读导航", 
   const model = createWorkCaseViewModel(snapshot, snapshot.source.path);
   const openedTasks: string[] = [];
   const openedSources: number[] = [];
-  const openedRelated: string[] = [];
+  const openedRelated: Array<{ target: string; casePath: string }> = [];
   const renderer = new WorkCaseDashboardRenderer({
     refresh: () => {},
     openTask: (taskPath) => openedTasks.push(taskPath),
     openCaseSource: (_casePath, source) => openedSources.push(source.lineStart),
-    openRelated: (target) => openedRelated.push(target),
+    openRelated: (target, casePath) => openedRelated.push({ target, casePath }),
   });
   const root = new FakeElement();
 
@@ -133,7 +133,12 @@ test("renderer 用 canonical model 渲染三层驾驶舱并接通只读导航", 
   root.findByClass("flowdesk-case-related-link")[0].click();
   assert.deepEqual(openedTasks, ["Tasks/Long.md"]);
   assert.deepEqual(openedSources, [31]);
-  assert.deepEqual(openedRelated, ["[[Notes/Projects/FlowDesk]]"]);
+  assert.deepEqual(openedRelated, [
+    {
+      target: "[[Notes/Projects/FlowDesk]]",
+      casePath: snapshot.source.path,
+    },
+  ]);
 
   renderer.reset(root as unknown as HTMLElement);
   assert.equal(root.classes.has("flowdesk-case-dashboard"), false);
@@ -169,4 +174,44 @@ test("任务观察 unavailable 时正文仍渲染，任务区不伪装成零任�
   assert.ok(root.allText().includes("Demo Case"));
   assert.ok(root.allText().includes("任务数据暂不可用，Case 主体仍可阅读。"));
   assert.equal(root.allText().includes("没有关联任务。"), false);
+});
+
+test("关联导航完整保留中英文及无空格长链接并逐项保持可点击", () => {
+  const snapshot = structuredClone(canonical);
+  const targets = [
+    "[[Notes/项目/超长中文关联计划显示增强实施方案]]",
+    "[[Notes/Plans/Long English Work Case Navigation Plan]]",
+    `[[Notes/Plans/${"UnbrokenPath".repeat(20)}]]`,
+  ];
+  snapshot.related = {
+    project: targets[0],
+    plans: [targets[1]],
+    docs: [targets[2]],
+    sessions: [],
+    related: [],
+  };
+  const openedRelated: Array<{ target: string; casePath: string }> = [];
+  const root = new FakeElement();
+  new WorkCaseDashboardRenderer({
+    refresh: () => {},
+    openTask: () => {},
+    openCaseSource: () => {},
+    openRelated: (target, casePath) => openedRelated.push({ target, casePath }),
+  }).render(root as unknown as HTMLElement, {
+    casePath: snapshot.source.path,
+    model: createWorkCaseViewModel(snapshot, snapshot.source.path),
+    loadedAt: "12:00:00",
+    staleReason: "",
+    error: "",
+    loading: false,
+  });
+
+  const relatedSection = root.findByClass("flowdesk-case-related")[0];
+  const links = relatedSection.findByClass("flowdesk-case-related-link");
+  assert.deepEqual(links.map((link) => link.text), targets);
+  for (const link of links) link.click();
+  assert.deepEqual(
+    openedRelated,
+    targets.map((target) => ({ target, casePath: snapshot.source.path }))
+  );
 });
