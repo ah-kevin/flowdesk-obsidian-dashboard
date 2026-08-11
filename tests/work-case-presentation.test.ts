@@ -60,6 +60,17 @@ test("任务分组保留原始 status，并只显示不修复 Case/Task drift", 
 
   const result = presentation(snapshot);
   assert.equal(result.tasks.completedLabel, "2 / 4");
+  assert.deepEqual(result.tasks.counts, [
+    { label: "active", value: "1" },
+    { label: "blocked", value: "1" },
+    { label: "archived", value: "1" },
+  ]);
+  assert.deepEqual(result.tasks.byStatus, [
+    { status: "open", count: 1 },
+    { status: "blocked", count: 1 },
+    { status: "cancel", count: 1 },
+    { status: "done", count: 1 },
+  ]);
   assert.deepEqual(result.tasks.primary.map((item) => item.status), ["open", "blocked"]);
   assert.deepEqual(result.tasks.history.map((item) => item.status), ["cancel", "done"]);
   assert.match(result.tasks.driftWarning, /Case 状态为 done/);

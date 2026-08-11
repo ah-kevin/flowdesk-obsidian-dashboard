@@ -111,3 +111,74 @@ test("关联导航长链接覆盖主题按钮的 nowrap 与 inline-flex 居中�
     assert.match(relatedLinkRule[1], declaration);
   }
 });
+
+test("关联任务使用纯静态响应式层级与 tone 状态 tag", () => {
+  assert.match(
+    styles,
+    /\.flowdesk-case-dashboard \.flowdesk-case-count-grid\s*\{[^}]*repeat\(auto-fit,\s*minmax\(min\(100%,\s*88px\),\s*1fr\)\)/s
+  );
+  assert.match(
+    styles,
+    /\.flowdesk-case-dashboard \.flowdesk-case-count \.flowdesk-case-label\s*\{[^}]*white-space:\s*normal;[^}]*overflow-wrap:\s*anywhere;/s
+  );
+
+  for (const [tone, color] of [
+    ["active", "blue"],
+    ["blocked", "red"],
+    ["completed", "green"],
+    ["archived", "text-muted"],
+    ["unknown", "yellow"],
+  ]) {
+    const selector = new RegExp(
+      `\\.flowdesk-case-dashboard \\.flowdesk-case-task-row\\.is-${tone} \\.flowdesk-case-task-status\\s*\\{([^}]*)\\}`
+    );
+    const rule = styles.match(selector);
+    assert.ok(rule, `${tone} task status tag 必须有 Case-scoped tone rule`);
+    assert.match(rule[1], new RegExp(`color:\\s*var\\(--fd-${color}\\)|color:\\s*var\\(--${color}\\)`));
+  }
+
+  assert.match(
+    styles,
+    /@container\s*\(max-width:\s*320px\)[\s\S]*?\.flowdesk-case-dashboard \.flowdesk-case-task-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/s
+  );
+  assert.match(
+    styles,
+    /@container\s*\(max-width:\s*320px\)[\s\S]*?\.flowdesk-case-dashboard \.flowdesk-case-task-status\s*\{[^}]*justify-self:\s*start;/s
+  );
+  const case420Start = styles.indexOf("@container (max-width: 420px)");
+  const case320Start = styles.indexOf("@container (max-width: 320px)");
+  assert.ok(case420Start >= 0 && case320Start > case420Start);
+  const case420Rule = styles.slice(case420Start, case320Start);
+  assert.doesNotMatch(case420Rule, /\.flowdesk-case-dashboard \.flowdesk-case-task-row/);
+
+  assert.match(
+    styles,
+    /\.flowdesk-dashboard\s*\{[^}]*padding:\s*8px 10px 18px;/s
+  );
+  assert.match(
+    styles,
+    /@media\s*\(max-width:\s*360px\)\s*\{[\s\S]*?\.flowdesk-dashboard\s*\{[^}]*padding-right:\s*11px;[^}]*padding-left:\s*11px;/s
+  );
+  const taskColumnsAt = (
+    outerWidth: number,
+    horizontalPadding: 20 | 22
+  ): "single" | "double" => {
+    return outerWidth - horizontalPadding <= 320 ? "single" : "double";
+  };
+  for (const horizontalPadding of [20, 22] as const) {
+    assert.deepEqual(
+      [320, 360, 420, 600].map((width) => [
+        width,
+        taskColumnsAt(width, horizontalPadding),
+      ]),
+      [
+        [320, "single"],
+        [360, "double"],
+        [420, "double"],
+        [600, "double"],
+      ]
+    );
+  }
+  assert.match(renderer, /const statuses = section\.createDiv\(\{ cls: "flowdesk-case-status-list" \}\)/);
+  assert.doesNotMatch(renderer, /createEl\("details", \{ cls: "flowdesk-case-status-list"/);
+});

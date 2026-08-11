@@ -1962,10 +1962,8 @@ function createWorkCasePresentation(model) {
       completedLabel: completed === null || total === null ? "\u2014 / \u2014" : `${completed} / ${total}`,
       progressPercent: completed === null || total === null ? null : total === 0 ? 0 : Math.round(completed / total * 100),
       counts: [
-        ["\u603B\u6570", total],
         ["active", active],
         ["blocked", model.tasks.counts.blocked],
-        ["completed", completed],
         ["archived", model.tasks.counts.archived]
       ].map(([label, value]) => ({
         label: String(label),
