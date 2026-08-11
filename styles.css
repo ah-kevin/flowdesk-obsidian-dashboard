@@ -1458,16 +1458,34 @@
 .flowdesk-case-dashboard .flowdesk-case-count-grid {
   display: grid;
   min-width: 0;
-  grid-template-columns: repeat(auto-fit, minmax(62px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 88px), 1fr));
   gap: 6px;
   margin-top: 9px;
 }
 
 .flowdesk-case-dashboard .flowdesk-case-count {
   min-width: 0;
+  border: 1px solid var(--fd-border);
   border-radius: 6px;
-  background: var(--background-secondary);
+  background: color-mix(in srgb, var(--background-secondary) 72%, transparent);
   padding: 6px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-count:nth-child(1) {
+  border-top-color: color-mix(in srgb, var(--fd-blue) 62%, var(--fd-border));
+}
+
+.flowdesk-case-dashboard .flowdesk-case-count:nth-child(2) {
+  border-top-color: color-mix(in srgb, var(--fd-red) 62%, var(--fd-border));
+}
+
+.flowdesk-case-dashboard .flowdesk-case-count:nth-child(3) {
+  border-top-color: color-mix(in srgb, var(--text-muted) 62%, var(--fd-border));
+}
+
+.flowdesk-case-dashboard .flowdesk-case-count .flowdesk-case-label {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .flowdesk-case-dashboard .flowdesk-case-status-list,
@@ -1481,8 +1499,8 @@
 .flowdesk-case-dashboard .flowdesk-case-task-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
+  gap: 6px 8px;
+  align-items: start;
   margin-top: 5px;
 }
 
@@ -1492,6 +1510,54 @@
 
 .flowdesk-case-dashboard .flowdesk-case-task-title {
   font-weight: 650;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-status-list {
+  gap: 4px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-status-chip {
+  background: color-mix(in srgb, var(--background-secondary) 58%, transparent);
+  color: var(--text-muted);
+  padding: 1px 6px;
+  font-size: 10px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-status {
+  justify-self: end;
+  background: var(--background-secondary);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-row.is-active .flowdesk-case-task-status {
+  border-color: color-mix(in srgb, var(--fd-blue) 45%, var(--fd-border));
+  background: color-mix(in srgb, var(--fd-blue) 10%, transparent);
+  color: var(--fd-blue);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-row.is-blocked .flowdesk-case-task-status {
+  border-color: color-mix(in srgb, var(--fd-red) 45%, var(--fd-border));
+  background: color-mix(in srgb, var(--fd-red) 10%, transparent);
+  color: var(--fd-red);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-row.is-completed .flowdesk-case-task-status {
+  border-color: color-mix(in srgb, var(--fd-green) 45%, var(--fd-border));
+  background: color-mix(in srgb, var(--fd-green) 10%, transparent);
+  color: var(--fd-green);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-row.is-archived .flowdesk-case-task-status {
+  border-color: var(--fd-border);
+  background: color-mix(in srgb, var(--background-secondary) 72%, transparent);
+  color: var(--text-muted);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-row.is-unknown .flowdesk-case-task-status {
+  border-color: color-mix(in srgb, var(--fd-yellow) 45%, var(--fd-border));
+  background: color-mix(in srgb, var(--fd-yellow) 10%, transparent);
+  color: var(--fd-yellow);
 }
 
 .flowdesk-case-dashboard .flowdesk-case-drift,
@@ -1565,9 +1631,18 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .flowdesk-case-dashboard .flowdesk-case-task-row,
   .flowdesk-case-dashboard .flowdesk-case-recovery-row,
   .flowdesk-case-dashboard .flowdesk-case-related-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 320px) {
+  .flowdesk-case-dashboard .flowdesk-case-task-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .flowdesk-case-dashboard .flowdesk-case-task-status {
+    justify-self: start;
   }
 }

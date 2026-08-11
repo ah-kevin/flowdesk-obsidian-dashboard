@@ -107,10 +107,8 @@ export function createWorkCasePresentation(
             ? 0
             : Math.round((completed / total) * 100),
       counts: [
-        ["总数", total],
         ["active", active],
         ["blocked", model.tasks.counts.blocked],
-        ["completed", completed],
         ["archived", model.tasks.counts.archived],
       ].map(([label, value]) => ({
         label: String(label),
