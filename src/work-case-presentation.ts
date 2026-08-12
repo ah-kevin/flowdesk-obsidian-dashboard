@@ -126,7 +126,9 @@ export function createWorkCasePresentation(
       history,
       driftWarning,
     },
-    recentProgress: model.recentProgress,
+    recentProgress: [...model.recentProgress]
+      .reverse()
+      .map((item) => ({ ...item, text: progressDisplayText(item.text, item.timestamp) })),
     sections: [
       { key: "goal", label: "Goal", items: model.sections.goal },
       { key: "decisions", label: "Decisions", items: model.sections.decisions },
@@ -145,6 +147,15 @@ export function createWorkCasePresentation(
     ].filter((group) => group.targets.length > 0),
     diagnostics: model.diagnostics,
   };
+}
+
+function progressDisplayText(text: string, timestamp: string | null): string {
+  if (!timestamp || !text.startsWith(timestamp)) return text;
+  const remainder = text
+    .slice(timestamp.length)
+    .replace(/^\s*(?:[：:·—–-]\s*)?/, "")
+    .trim();
+  return remainder || text;
 }
 
 export function formatWorkCaseTimestamp(value: string): {
