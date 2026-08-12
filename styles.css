@@ -3,6 +3,8 @@
   --fd-yellow: var(--color-yellow);
   --fd-red: var(--color-red);
   --fd-blue: var(--color-blue);
+  --fd-parent: var(--color-purple, #8b5cf6);
+  --fd-child: var(--color-cyan, #0d9488);
   --fd-border: color-mix(in srgb, var(--background-modifier-border) 78%, transparent);
   --fd-soft: color-mix(in srgb, var(--background-secondary) 62%, transparent);
   color: var(--text-normal);
@@ -1531,11 +1533,23 @@
   justify-content: center;
   border: 1px solid var(--fd-border);
   border-radius: 50%;
-  background: color-mix(in srgb, var(--background-secondary) 72%, transparent);
+  background: transparent;
   color: var(--text-muted);
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-role.is-parent {
+  border-color: color-mix(in srgb, var(--fd-parent) 48%, var(--fd-border));
+  background: color-mix(in srgb, var(--fd-parent) 12%, transparent);
+  color: var(--fd-parent);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-role.is-child {
+  border-color: color-mix(in srgb, var(--fd-child) 48%, var(--fd-border));
+  background: color-mix(in srgb, var(--fd-child) 12%, transparent);
+  color: var(--fd-child);
 }
 
 .flowdesk-case-dashboard .flowdesk-case-status-list {
@@ -1601,16 +1615,74 @@
   border-left-color: var(--fd-red);
 }
 
-.flowdesk-case-dashboard .flowdesk-case-progress-item,
 .flowdesk-case-dashboard .flowdesk-case-record-entry {
   margin-top: 6px;
 }
 
-.flowdesk-case-dashboard .flowdesk-case-progress-time {
-  display: block;
+.flowdesk-case-dashboard .flowdesk-case-progress-list {
+  position: relative;
+  min-width: 0;
+  padding-left: 17px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-list::before {
+  content: "";
+  position: absolute;
+  top: 13px;
+  bottom: 13px;
+  left: 4px;
+  width: 1px;
+  background: var(--fd-border);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-item {
+  position: relative;
+  margin-top: 7px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-item::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: -17px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--background-primary-alt);
+  border-radius: 50%;
+  background: var(--text-muted);
+  box-sizing: border-box;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-item.is-latest {
+  border-color: color-mix(in srgb, var(--fd-blue) 42%, var(--fd-border));
+  background: color-mix(in srgb, var(--fd-blue) 7%, var(--background-primary));
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-item.is-latest::before {
+  background: var(--fd-blue);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
   margin-bottom: 3px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-time {
   color: var(--text-muted);
   font-size: 10.5px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-latest {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fd-blue) 14%, transparent);
+  color: var(--fd-blue);
+  padding: 1px 5px;
+  font-size: 9.5px;
+  font-weight: 750;
 }
 
 .flowdesk-case-dashboard .flowdesk-case-section-grid {
@@ -1618,6 +1690,55 @@
   min-width: 0;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 7px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-group,
+.flowdesk-case-dashboard .flowdesk-case-record-more {
+  border: 1px solid var(--fd-border);
+  border-radius: 7px;
+  background: var(--background-primary);
+  overflow: hidden;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-group.is-primary,
+.flowdesk-case-dashboard .flowdesk-case-record-more {
+  grid-column: 1 / -1;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-group > summary,
+.flowdesk-case-dashboard .flowdesk-case-record-more > summary {
+  padding: 8px;
+  color: var(--text-normal);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-group.is-goal {
+  border-left: 3px solid var(--fd-blue);
+  background: color-mix(in srgb, var(--fd-blue) 5%, var(--background-primary));
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-group.is-blockers {
+  border-left: 3px solid var(--fd-yellow);
+  background: color-mix(in srgb, var(--fd-yellow) 6%, var(--background-primary));
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-group.is-outcome {
+  border-left: 3px solid var(--fd-parent);
+  background: color-mix(in srgb, var(--fd-parent) 6%, var(--background-primary));
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-entry {
+  border-width: 1px 0 0;
+  border-radius: 0;
+  margin-top: 0;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-more-grid {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  padding: 0 8px 8px;
 }
 
 .flowdesk-case-dashboard .flowdesk-case-record-group,

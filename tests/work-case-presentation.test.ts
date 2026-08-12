@@ -62,6 +62,23 @@ test("header 时间使用稳定中文绝对格式并保留原始 tooltip", () =>
   assert.equal(result.header.dateTooltip, "2026-08-10T12:00:00+08:00");
 });
 
+test("最近 Progress 按新到旧展示且不改变 producer item", () => {
+  const snapshot = structuredClone(canonical);
+  const original = structuredClone(snapshot.recent_progress);
+
+  const result = presentation(snapshot);
+
+  assert.deepEqual(
+    result.recentProgress.map((item) => item.timestamp),
+    ["2026-08-10 13:00", "2026-08-10 12:00", "2026-08-10 11:00"]
+  );
+  assert.deepEqual(
+    result.recentProgress.map((item) => item.text),
+    ["第四条", "第三条", "第二条"]
+  );
+  assert.deepEqual(snapshot.recent_progress, original);
+});
+
 test("任务分组保留原始 status，并只显示不修复 Case/Task drift", () => {
   const snapshot = structuredClone(canonical);
   snapshot.work_case.status = "done";

@@ -6,6 +6,8 @@ import {
   type WorkCaseTaskPresentation,
 } from "./work-case-presentation";
 
+type WorkCaseSectionPresentation = WorkCasePresentation["sections"][number];
+
 export interface WorkCaseRendererDependencies {
   refresh(): Promise<void> | void;
   openTask(taskPath: string): Promise<void> | void;
@@ -231,9 +233,15 @@ export class WorkCaseDashboardRenderer {
       section.createDiv({ cls: "flowdesk-case-empty", text: "未记录结构化 Progress。" });
       return;
     }
-    for (const item of presentation.recentProgress) {
-      const row = section.createEl("button", { cls: "flowdesk-case-progress-item" });
-      if (item.timestamp) row.createSpan({ cls: "flowdesk-case-progress-time", text: item.timestamp });
+    const list = section.createDiv({ cls: "flowdesk-case-progress-list" });
+    for (const [index, item] of presentation.recentProgress.entries()) {
+      const row = list.createEl("button", {
+        cls: `flowdesk-case-progress-item${index === 0 ? " is-latest" : ""}`,
+        attr: { "aria-label": `${index === 0 ? "最新进展" : "历史进展"}：${item.text}` },
+      });
+      const meta = row.createSpan({ cls: "flowdesk-case-progress-meta" });
+      if (item.timestamp) meta.createSpan({ cls: "flowdesk-case-progress-time", text: item.timestamp });
+      if (index === 0) meta.createSpan({ cls: "flowdesk-case-progress-latest", text: "最新" });
       row.createSpan({ cls: "flowdesk-case-progress-text", text: item.text });
       row.addEventListener("click", () =>
         void this.dependencies.openCaseSource(state.casePath, item.source)
@@ -247,22 +255,65 @@ export class WorkCaseDashboardRenderer {
     presentation: WorkCasePresentation
   ): void {
     const section = createSection(container, "案卷内容", "flowdesk-case-record");
-    const grid = section.createDiv({ cls: "flowdesk-case-section-grid" });
-    for (const group of presentation.sections) {
-      const details = grid.createEl("details", { cls: "flowdesk-case-record-group" });
-      details.createEl("summary", { text: `${group.label} · ${group.items.length}` });
-      if (!group.items.length) {
-        details.createDiv({ cls: "flowdesk-case-empty", text: "未记录" });
-        continue;
-      }
-      for (const item of group.items) {
-        const entry = details.createEl("button", { cls: "flowdesk-case-record-entry" });
-        entry.createDiv({ cls: "flowdesk-case-record-heading", text: item.heading });
-        entry.createDiv({ cls: "flowdesk-case-record-text", text: item.text });
-        entry.addEventListener("click", () =>
-          void this.dependencies.openCaseSource(state.casePath, item.source)
+    const primaryKeys = ["goal", "blockers", "outcome"] as const;
+    const secondaryKeys = ["decisions", "discoveries"] as const;
+    const moreKeys = ["candidatePatterns", "definitionOfDone"] as const;
+    const byKey = new Map(presentation.sections.map((group) => [group.key, group]));
+    const selectVisible = (
+      keys: readonly WorkCaseSectionPresentation["key"][]
+    ): WorkCaseSectionPresentation[] =>
+      keys
+        .map((key) => byKey.get(key))
+        .filter(
+          (group): group is WorkCaseSectionPresentation =>
+            Boolean(group && group.items.length)
         );
+    const primary = selectVisible(primaryKeys);
+    const secondary = selectVisible(secondaryKeys);
+    const moreGroups = selectVisible(moreKeys);
+
+    if (!primary.length && !secondary.length && !moreGroups.length) {
+      section.createDiv({ cls: "flowdesk-case-empty", text: "暂无案卷内容。" });
+      return;
+    }
+
+    const grid = section.createDiv({ cls: "flowdesk-case-section-grid" });
+    for (const group of primary) {
+      this.renderRecordGroup(grid, state, group, true, true);
+    }
+    for (const group of secondary) {
+      this.renderRecordGroup(grid, state, group, false, false);
+    }
+    if (moreGroups.length) {
+      const more = grid.createEl("details", { cls: "flowdesk-case-record-more" });
+      const itemCount = moreGroups.reduce((total, group) => total + group.items.length, 0);
+      more.createEl("summary", { text: `更多案卷内容 · ${itemCount}` });
+      const moreGrid = more.createDiv({ cls: "flowdesk-case-record-more-grid" });
+      for (const group of moreGroups) {
+        this.renderRecordGroup(moreGrid, state, group, false, false);
       }
+    }
+  }
+
+  private renderRecordGroup(
+    container: HTMLElement,
+    state: WorkCaseRenderState,
+    group: WorkCaseSectionPresentation,
+    open: boolean,
+    primary: boolean
+  ): void {
+    const details = container.createEl("details", {
+      cls: `flowdesk-case-record-group is-${group.key}${primary ? " is-primary" : ""}`,
+    });
+    details.open = open;
+    details.createEl("summary", { text: `${group.label} · ${group.items.length}` });
+    for (const item of group.items) {
+      const entry = details.createEl("button", { cls: "flowdesk-case-record-entry" });
+      entry.createDiv({ cls: "flowdesk-case-record-heading", text: item.heading });
+      entry.createDiv({ cls: "flowdesk-case-record-text", text: item.text });
+      entry.addEventListener("click", () =>
+        void this.dependencies.openCaseSource(state.casePath, item.source)
+      );
     }
   }
 

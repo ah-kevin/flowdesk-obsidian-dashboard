@@ -1994,7 +1994,7 @@ function createWorkCasePresentation(model) {
       history,
       driftWarning
     },
-    recentProgress: model.recentProgress,
+    recentProgress: [...model.recentProgress].reverse().map((item) => ({ ...item, text: progressDisplayText(item.text, item.timestamp) })),
     sections: [
       { key: "goal", label: "Goal", items: model.sections.goal },
       { key: "decisions", label: "Decisions", items: model.sections.decisions },
@@ -2013,6 +2013,11 @@ function createWorkCasePresentation(model) {
     ].filter((group) => group.targets.length > 0),
     diagnostics: model.diagnostics
   };
+}
+function progressDisplayText(text2, timestamp) {
+  if (!timestamp || !text2.startsWith(timestamp)) return text2;
+  const remainder = text2.slice(timestamp.length).replace(/^\s*(?:[：:·—–-]\s*)?/, "").trim();
+  return remainder || text2;
 }
 function formatWorkCaseTimestamp(value) {
   const match = value.match(
@@ -2242,9 +2247,15 @@ var WorkCaseDashboardRenderer = class {
       section2.createDiv({ cls: "flowdesk-case-empty", text: "\u672A\u8BB0\u5F55\u7ED3\u6784\u5316 Progress\u3002" });
       return;
     }
-    for (const item of presentation.recentProgress) {
-      const row = section2.createEl("button", { cls: "flowdesk-case-progress-item" });
-      if (item.timestamp) row.createSpan({ cls: "flowdesk-case-progress-time", text: item.timestamp });
+    const list = section2.createDiv({ cls: "flowdesk-case-progress-list" });
+    for (const [index, item] of presentation.recentProgress.entries()) {
+      const row = list.createEl("button", {
+        cls: `flowdesk-case-progress-item${index === 0 ? " is-latest" : ""}`,
+        attr: { "aria-label": `${index === 0 ? "\u6700\u65B0\u8FDB\u5C55" : "\u5386\u53F2\u8FDB\u5C55"}\uFF1A${item.text}` }
+      });
+      const meta = row.createSpan({ cls: "flowdesk-case-progress-meta" });
+      if (item.timestamp) meta.createSpan({ cls: "flowdesk-case-progress-time", text: item.timestamp });
+      if (index === 0) meta.createSpan({ cls: "flowdesk-case-progress-latest", text: "\u6700\u65B0" });
       row.createSpan({ cls: "flowdesk-case-progress-text", text: item.text });
       row.addEventListener(
         "click",
@@ -2254,23 +2265,51 @@ var WorkCaseDashboardRenderer = class {
   }
   renderSections(container, state, presentation) {
     const section2 = createSection(container, "\u6848\u5377\u5185\u5BB9", "flowdesk-case-record");
+    const primaryKeys = ["goal", "blockers", "outcome"];
+    const secondaryKeys = ["decisions", "discoveries"];
+    const moreKeys = ["candidatePatterns", "definitionOfDone"];
+    const byKey = new Map(presentation.sections.map((group) => [group.key, group]));
+    const selectVisible = (keys) => keys.map((key) => byKey.get(key)).filter(
+      (group) => Boolean(group && group.items.length)
+    );
+    const primary = selectVisible(primaryKeys);
+    const secondary = selectVisible(secondaryKeys);
+    const moreGroups = selectVisible(moreKeys);
+    if (!primary.length && !secondary.length && !moreGroups.length) {
+      section2.createDiv({ cls: "flowdesk-case-empty", text: "\u6682\u65E0\u6848\u5377\u5185\u5BB9\u3002" });
+      return;
+    }
     const grid = section2.createDiv({ cls: "flowdesk-case-section-grid" });
-    for (const group of presentation.sections) {
-      const details = grid.createEl("details", { cls: "flowdesk-case-record-group" });
-      details.createEl("summary", { text: `${group.label} \xB7 ${group.items.length}` });
-      if (!group.items.length) {
-        details.createDiv({ cls: "flowdesk-case-empty", text: "\u672A\u8BB0\u5F55" });
-        continue;
+    for (const group of primary) {
+      this.renderRecordGroup(grid, state, group, true, true);
+    }
+    for (const group of secondary) {
+      this.renderRecordGroup(grid, state, group, false, false);
+    }
+    if (moreGroups.length) {
+      const more = grid.createEl("details", { cls: "flowdesk-case-record-more" });
+      const itemCount = moreGroups.reduce((total, group) => total + group.items.length, 0);
+      more.createEl("summary", { text: `\u66F4\u591A\u6848\u5377\u5185\u5BB9 \xB7 ${itemCount}` });
+      const moreGrid = more.createDiv({ cls: "flowdesk-case-record-more-grid" });
+      for (const group of moreGroups) {
+        this.renderRecordGroup(moreGrid, state, group, false, false);
       }
-      for (const item of group.items) {
-        const entry = details.createEl("button", { cls: "flowdesk-case-record-entry" });
-        entry.createDiv({ cls: "flowdesk-case-record-heading", text: item.heading });
-        entry.createDiv({ cls: "flowdesk-case-record-text", text: item.text });
-        entry.addEventListener(
-          "click",
-          () => void this.dependencies.openCaseSource(state.casePath, item.source)
-        );
-      }
+    }
+  }
+  renderRecordGroup(container, state, group, open, primary) {
+    const details = container.createEl("details", {
+      cls: `flowdesk-case-record-group is-${group.key}${primary ? " is-primary" : ""}`
+    });
+    details.open = open;
+    details.createEl("summary", { text: `${group.label} \xB7 ${group.items.length}` });
+    for (const item of group.items) {
+      const entry = details.createEl("button", { cls: "flowdesk-case-record-entry" });
+      entry.createDiv({ cls: "flowdesk-case-record-heading", text: item.heading });
+      entry.createDiv({ cls: "flowdesk-case-record-text", text: item.text });
+      entry.addEventListener(
+        "click",
+        () => void this.dependencies.openCaseSource(state.casePath, item.source)
+      );
     }
   }
   renderRelated(container, state, presentation) {

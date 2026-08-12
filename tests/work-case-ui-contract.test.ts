@@ -183,7 +183,7 @@ test("关联任务使用纯静态响应式层级与 tone 状态 tag", () => {
   assert.doesNotMatch(renderer, /createEl\("details", \{ cls: "flowdesk-case-status-list"/);
 });
 
-test("父子徽标为不占位的中性色圆形辅助信息", () => {
+test("父子徽标以紫色和青绿色区分但不复用状态色", () => {
   const roleRule = styles.match(
     /\.flowdesk-case-dashboard \.flowdesk-case-task-role\s*\{([^}]*)\}/
   );
@@ -192,12 +192,30 @@ test("父子徽标为不占位的中性色圆形辅助信息", () => {
     /border-radius:\s*50%/,
     /width:\s*18px/,
     /height:\s*18px/,
-    /color:\s*var\(--text-muted\)/,
-    /border:\s*1px solid var\(--fd-border\)/,
   ]) {
     assert.match(roleRule[1], declaration);
   }
-  assert.doesNotMatch(roleRule[1], /--fd-(?:blue|red|green|yellow)/);
+  for (const [role, token] of [["parent", "parent"], ["child", "child"]]) {
+    const rule = styles.match(
+      new RegExp(`\\.flowdesk-case-dashboard \\.flowdesk-case-task-role\\.is-${role}\\s*\\{([^}]*)\\}`)
+    );
+    assert.ok(rule, `${role} 徽标必须有独立颜色规则`);
+    assert.match(rule[1], new RegExp(`var\\(--fd-${token}\\)`));
+    assert.doesNotMatch(rule[1], /--fd-(?:blue|red|green|yellow)/);
+  }
   assert.match(renderer, /if \(task\.relationRoles\.length\)/);
   assert.match(renderer, /"aria-label": role === "parent" \? "父任务" : "子任务"/);
+});
+
+test("Progress 时间线与案卷重点层级均保持 Case scoped", () => {
+  assert.match(renderer, /flowdesk-case-progress-list/);
+  assert.match(renderer, /flowdesk-case-progress-item\$\{index === 0 \? " is-latest" : ""\}/);
+  assert.match(renderer, /flowdesk-case-progress-latest/);
+  assert.match(renderer, /const primaryKeys = \["goal", "blockers", "outcome"\]/);
+  assert.match(renderer, /const secondaryKeys = \["decisions", "discoveries"\]/);
+  assert.match(renderer, /const moreKeys = \["candidatePatterns", "definitionOfDone"\]/);
+  assert.match(styles, /\.flowdesk-case-dashboard \.flowdesk-case-progress-list\s*\{/);
+  assert.match(styles, /\.flowdesk-case-dashboard \.flowdesk-case-progress-item\.is-latest\s*\{/);
+  assert.match(styles, /\.flowdesk-case-dashboard \.flowdesk-case-record-group\.is-blockers\s*\{/);
+  assert.match(styles, /\.flowdesk-case-dashboard \.flowdesk-case-record-group\.is-outcome\s*\{/);
 });

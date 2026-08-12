@@ -19,6 +19,7 @@ class FakeElement {
   listeners = new Map<string, Array<() => void>>();
   text = "";
   disabled = false;
+  open = false;
   value = 0;
   attrs: Record<string, string> = {};
 
@@ -149,7 +150,7 @@ test("renderer 用 canonical model 渲染三层驾驶舱并接通只读导航", 
   assert.equal(root.classes.has("flowdesk-case-dashboard"), false);
 });
 
-test("关联任务按父、子固定顺序显示中性圆徽标，旧 snapshot 与空角色不占位", () => {
+test("关联任务按父、子固定顺序显示克制彩色圆徽标，旧 snapshot 与空角色不占位", () => {
   const snapshot = structuredClone(canonical);
   snapshot.tasks.counts = {
     total: 4,
@@ -222,6 +223,114 @@ test("关联任务按父、子固定顺序显示中性圆徽标，旧 snapshot �
     "Tasks/Both.md",
     "Tasks/Legacy.md",
   ]);
+});
+
+test("最近 Progress 使用新到旧时间线并只标记第一条为最新", () => {
+  const snapshot = structuredClone(canonical);
+  const openedSources: number[] = [];
+  const root = new FakeElement();
+  new WorkCaseDashboardRenderer({
+    refresh: () => {},
+    openTask: () => {},
+    openCaseSource: (_casePath, source) => openedSources.push(source.lineStart),
+    openRelated: () => {},
+  }).render(root as unknown as HTMLElement, {
+    casePath: snapshot.source.path,
+    model: createWorkCaseViewModel(snapshot, snapshot.source.path),
+    loadedAt: "12:00:00",
+    staleReason: "",
+    error: "",
+    loading: false,
+  });
+
+  const rows = root.findByClass("flowdesk-case-progress-item");
+  assert.deepEqual(
+    rows.map((row) => row.findByClass("flowdesk-case-progress-time")[0].text),
+    ["2026-08-10 13:00", "2026-08-10 12:00", "2026-08-10 11:00"]
+  );
+  assert.deepEqual(
+    rows.map((row) => row.findByClass("flowdesk-case-progress-text")[0].text),
+    ["第四条", "第三条", "第二条"]
+  );
+  assert.equal(rows[0].classes.has("is-latest"), true);
+  assert.equal(rows[1].classes.has("is-latest"), false);
+  assert.equal(rows[2].classes.has("is-latest"), false);
+  assert.deepEqual(
+    rows.map((row) => row.findByClass("flowdesk-case-progress-latest").map((item) => item.text)),
+    [["最新"], [], []]
+  );
+
+  for (const row of rows) row.click();
+  assert.deepEqual(openedSources, [75, 74, 73]);
+});
+
+test("案卷内容优先展开 Goal Blockers Outcome 并隐藏空分组", () => {
+  const snapshot = structuredClone(canonical);
+  snapshot.sections = {
+    goal: [{ heading: "Goal", level: 2, text: "目标", source: { line_start: 10, line_end: 11 } }],
+    decisions: [{ heading: "Decisions", level: 3, text: "决策", source: { line_start: 20, line_end: 21 } }],
+    discoveries: [],
+    blockers: [{ heading: "Blockers", level: 3, text: "阻塞", source: { line_start: 30, line_end: 31 } }],
+    outcome: [{ heading: "Outcome", level: 3, text: "结果", source: { line_start: 40, line_end: 41 } }],
+    candidate_patterns: [{ heading: "Candidate Patterns", level: 2, text: "模式", source: { line_start: 50, line_end: 51 } }],
+    definition_of_done: [],
+  };
+  const root = new FakeElement();
+  new WorkCaseDashboardRenderer({
+    refresh: () => {},
+    openTask: () => {},
+    openCaseSource: () => {},
+    openRelated: () => {},
+  }).render(root as unknown as HTMLElement, {
+    casePath: snapshot.source.path,
+    model: createWorkCaseViewModel(snapshot, snapshot.source.path),
+    loadedAt: "12:00:00",
+    staleReason: "",
+    error: "",
+    loading: false,
+  });
+
+  const groups = root.findByClass("flowdesk-case-record-group");
+  assert.deepEqual(
+    groups.map((group) => group.children[0].text),
+    ["Goal · 1", "Blockers · 1", "Outcome · 1", "Decisions · 1", "Candidate Patterns · 1"]
+  );
+  assert.deepEqual(groups.map((group) => group.open), [true, true, true, false, false]);
+  assert.deepEqual(
+    groups.slice(0, 3).map((group) => [
+      group.classes.has("is-primary"),
+      group.classes.has(`is-${group.children[0].text.split(" · ")[0].toLowerCase()}`),
+    ]),
+    [[true, true], [true, true], [true, true]]
+  );
+  assert.equal(root.allText().includes("Discoveries · 0"), false);
+  assert.equal(root.allText().includes("Definition of Done · 0"), false);
+  assert.ok(root.allText().includes("更多案卷内容 · 1"));
+});
+
+test("案卷内容全空时只显示一个空状态", () => {
+  const snapshot = structuredClone(canonical);
+  for (const key of Object.keys(snapshot.sections)) snapshot.sections[key] = [];
+  const root = new FakeElement();
+  new WorkCaseDashboardRenderer({
+    refresh: () => {},
+    openTask: () => {},
+    openCaseSource: () => {},
+    openRelated: () => {},
+  }).render(root as unknown as HTMLElement, {
+    casePath: snapshot.source.path,
+    model: createWorkCaseViewModel(snapshot, snapshot.source.path),
+    loadedAt: "12:00:00",
+    staleReason: "",
+    error: "",
+    loading: false,
+  });
+
+  assert.equal(root.findByClass("flowdesk-case-record-group").length, 0);
+  assert.deepEqual(
+    root.findByClass("flowdesk-case-record")[0].findByClass("flowdesk-case-empty").map((item) => item.text),
+    ["暂无案卷内容。"]
+  );
 });
 
 test("任务观察 unavailable 时正文仍渲染，任务区不伪装成零任务", () => {
