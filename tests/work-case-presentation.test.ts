@@ -4,7 +4,10 @@ import path from "node:path";
 import test from "node:test";
 
 import { createWorkCaseViewModel } from "../src/work-case-model";
-import { createWorkCasePresentation } from "../src/work-case-presentation";
+import {
+  createWorkCasePresentation,
+  formatWorkCaseTimestamp,
+} from "../src/work-case-presentation";
 
 const canonical = JSON.parse(
   readFileSync(
@@ -40,6 +43,25 @@ test("legacy 与 archived 身份均明确显示", () => {
   assert.deepEqual(result.header.badges, ["legacy", "已归档"]);
 });
 
+test("header 时间使用稳定中文绝对格式并保留原始 tooltip", () => {
+  assert.deepEqual(formatWorkCaseTimestamp("2026-08-12T12:30:21+08:00"), {
+    label: "2026年8月12日 12:30",
+    tooltip: "2026-08-12T12:30:21+08:00",
+  });
+  assert.deepEqual(formatWorkCaseTimestamp("not-an-iso-time"), {
+    label: "not-an-iso-time",
+    tooltip: "not-an-iso-time",
+  });
+  assert.deepEqual(formatWorkCaseTimestamp("2026-02-30T12:30:21+08:00"), {
+    label: "2026-02-30T12:30:21+08:00",
+    tooltip: "2026-02-30T12:30:21+08:00",
+  });
+
+  const result = presentation(canonical);
+  assert.equal(result.header.dateLabel, "2026年8月10日 12:00");
+  assert.equal(result.header.dateTooltip, "2026-08-10T12:00:00+08:00");
+});
+
 test("任务分组保留原始 status，并只显示不修复 Case/Task drift", () => {
   const snapshot = structuredClone(canonical);
   snapshot.work_case.status = "done";
@@ -52,8 +74,8 @@ test("任务分组保留原始 status，并只显示不修复 Case/Task drift", 
     by_status: { open: 1, blocked: 1, cancel: 1, done: 1 },
   };
   snapshot.tasks.items = [
-    { id: "Tasks/A.md", title: "A", status: "open", status_is_completed: false, archived: false, is_blocked: false, association_source: "canonical" },
-    { id: "Tasks/B.md", title: "B", status: "blocked", status_is_completed: false, archived: false, is_blocked: true, association_source: "canonical" },
+    { id: "Tasks/A.md", title: "A", status: "open", status_is_completed: false, archived: false, is_blocked: false, association_source: "canonical", relation_roles: ["parent"] },
+    { id: "Tasks/B.md", title: "B", status: "blocked", status_is_completed: false, archived: false, is_blocked: true, association_source: "canonical", relation_roles: ["child", "parent"] },
     { id: "Tasks/C.md", title: "C", status: "cancel", status_is_completed: true, archived: false, is_blocked: false, association_source: "canonical" },
     { id: "Tasks/D.md", title: "D", status: "done", status_is_completed: true, archived: true, is_blocked: false, association_source: "legacy" },
   ];
@@ -72,6 +94,10 @@ test("任务分组保留原始 status，并只显示不修复 Case/Task drift", 
     { status: "done", count: 1 },
   ]);
   assert.deepEqual(result.tasks.primary.map((item) => item.status), ["open", "blocked"]);
+  assert.deepEqual(result.tasks.primary.map((item) => item.relationRoles), [
+    ["parent"],
+    ["parent", "child"],
+  ]);
   assert.deepEqual(result.tasks.history.map((item) => item.status), ["cancel", "done"]);
   assert.match(result.tasks.driftWarning, /Case 状态为 done/);
 });

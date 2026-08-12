@@ -16,6 +16,7 @@ export interface WorkCasePresentation {
     status: string;
     project: string;
     dateLabel: string;
+    dateTooltip: string;
     badges: string[];
     recoveryContext: Array<{ label: string; value: string }>;
   };
@@ -66,6 +67,9 @@ export function createWorkCasePresentation(
       ? `Case 状态为 ${caseStatus}，但仍有 ${active} 个 active Task；两者均按原始事实显示。`
       : "";
   const currentSource = model.current.raw?.source ?? null;
+  const timestamp = formatWorkCaseTimestamp(
+    model.workCase.summaryLastUpdated || model.workCase.date || "时间未记录"
+  );
 
   return {
     header: {
@@ -73,8 +77,8 @@ export function createWorkCasePresentation(
       title: model.workCase.title,
       status: model.workCase.status || "未记录",
       project: model.workCase.project || "未关联 Project",
-      dateLabel:
-        model.workCase.summaryLastUpdated || model.workCase.date || "时间未记录",
+      dateLabel: timestamp.label,
+      dateTooltip: timestamp.tooltip,
       badges: [
         ...(model.source.type === "session" ? ["legacy"] : []),
         ...(model.source.archived ? ["已归档"] : []),
@@ -140,6 +144,41 @@ export function createWorkCasePresentation(
       { label: "Related", targets: model.related.related },
     ].filter((group) => group.targets.length > 0),
     diagnostics: model.diagnostics,
+  };
+}
+
+export function formatWorkCaseTimestamp(value: string): {
+  label: string;
+  tooltip: string;
+} {
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/
+  );
+  if (!match) return { label: value, tooltip: value };
+
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText = "00"] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const calendarCheck = new Date(Date.UTC(year, month - 1, day));
+  const valid =
+    calendarCheck.getUTCFullYear() === year &&
+    calendarCheck.getUTCMonth() === month - 1 &&
+    calendarCheck.getUTCDate() === day &&
+    hour >= 0 &&
+    hour <= 23 &&
+    minute >= 0 &&
+    minute <= 59 &&
+    second >= 0 &&
+    second <= 59;
+  if (!valid) return { label: value, tooltip: value };
+
+  return {
+    label: `${year}年${month}月${day}日 ${hourText}:${minuteText}`,
+    tooltip: value,
   };
 }
 

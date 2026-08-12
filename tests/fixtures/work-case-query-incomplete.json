@@ -1,0 +1,81 @@
+{
+  "snapshot_schema_version": 1,
+  "snapshot_model": "work-case-centric",
+  "protocol": {"producer_protocol_version": 1},
+  "source": {
+    "path": "Notes/Sessions/query-incomplete.md",
+    "type": "work-case",
+    "archived": false,
+    "identity_match": true
+  },
+  "work_case": {
+    "title": "Query Incomplete Case",
+    "status": "active",
+    "date": null,
+    "project": null,
+    "agent": null,
+    "workspace": null,
+    "agent_session_id": null,
+    "device": null,
+    "cwd": null,
+    "branch": null,
+    "summary_last_updated": null
+  },
+  "current": {
+    "progress_summary": "Case 主体仍可读取",
+    "next": "等待 TaskNotes 完整查询恢复",
+    "blockers": null,
+    "pending": null,
+    "raw": null
+  },
+  "tasks": {
+    "observation_health": "degraded",
+    "context_tag": "@query-incomplete",
+    "coverage": {"complete": false, "pages": 1},
+    "counts": {
+      "total": null,
+      "active": null,
+      "blocked": null,
+      "completed": null,
+      "archived": null,
+      "by_status": {}
+    },
+    "items": [
+      {
+        "id": "Tasks/partial-result.md",
+        "title": "Partial Result",
+        "status": "open",
+        "status_is_completed": false,
+        "archived": false,
+        "is_blocked": false,
+        "association_source": "canonical"
+      }
+    ],
+    "legacy_links": []
+  },
+  "recent_progress": [],
+  "sections": {
+    "goal": [],
+    "decisions": [],
+    "discoveries": [],
+    "blockers": [],
+    "outcome": [],
+    "candidate_patterns": [],
+    "definition_of_done": []
+  },
+  "related": {
+    "project": null,
+    "plans": [],
+    "docs": [],
+    "sessions": [],
+    "related": []
+  },
+  "diagnostics": [
+    {
+      "code": "task_query_incomplete",
+      "severity": "warning",
+      "path": "tasks",
+      "message": "TaskNotes query filtered=3，但仅返回 1 项"
+    }
+  ]
+}

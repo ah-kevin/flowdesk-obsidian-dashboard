@@ -1724,8 +1724,21 @@ function taskItem(value, at) {
     statusIsCompleted: completed,
     archived: boolean(item.archived, `${at}.archived`),
     isBlocked: boolean(item.is_blocked, `${at}.is_blocked`),
-    associationSource
+    associationSource,
+    relationRoles: relationRoles(item.relation_roles, `${at}.relation_roles`)
   };
+}
+function relationRoles(value, at) {
+  if (value === void 0) return [];
+  const roles = array(value, at).map(
+    (item, index) => string(item, `${at}[${index}]`)
+  );
+  for (const role of roles) {
+    if (role !== "parent" && role !== "child") {
+      invalid(`${at} \u53EA\u5141\u8BB8 parent \u6216 child`);
+    }
+  }
+  return ["parent", "child"].filter((role) => roles.includes(role));
 }
 function sectionArray(value, at) {
   return array(value, at).map((item, index) => section(item, `${at}[${index}]`));
@@ -1931,13 +1944,17 @@ function createWorkCasePresentation(model) {
   const caseStatus = ((_a = model.workCase.status) != null ? _a : "").trim();
   const driftWarning = active !== null && active > 0 && isClosedCaseStatus(caseStatus) ? `Case \u72B6\u6001\u4E3A ${caseStatus}\uFF0C\u4F46\u4ECD\u6709 ${active} \u4E2A active Task\uFF1B\u4E24\u8005\u5747\u6309\u539F\u59CB\u4E8B\u5B9E\u663E\u793A\u3002` : "";
   const currentSource = (_c = (_b = model.current.raw) == null ? void 0 : _b.source) != null ? _c : null;
+  const timestamp = formatWorkCaseTimestamp(
+    model.workCase.summaryLastUpdated || model.workCase.date || "\u65F6\u95F4\u672A\u8BB0\u5F55"
+  );
   return {
     header: {
       typeLabel: "WORK CASE",
       title: model.workCase.title,
       status: model.workCase.status || "\u672A\u8BB0\u5F55",
       project: model.workCase.project || "\u672A\u5173\u8054 Project",
-      dateLabel: model.workCase.summaryLastUpdated || model.workCase.date || "\u65F6\u95F4\u672A\u8BB0\u5F55",
+      dateLabel: timestamp.label,
+      dateTooltip: timestamp.tooltip,
       badges: [
         ...model.source.type === "session" ? ["legacy"] : [],
         ...model.source.archived ? ["\u5DF2\u5F52\u6863"] : []
@@ -1995,6 +2012,26 @@ function createWorkCasePresentation(model) {
       { label: "Related", targets: model.related.related }
     ].filter((group) => group.targets.length > 0),
     diagnostics: model.diagnostics
+  };
+}
+function formatWorkCaseTimestamp(value) {
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/
+  );
+  if (!match) return { label: value, tooltip: value };
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText = "00"] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const calendarCheck = new Date(Date.UTC(year, month - 1, day));
+  const valid = calendarCheck.getUTCFullYear() === year && calendarCheck.getUTCMonth() === month - 1 && calendarCheck.getUTCDate() === day && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59 && second >= 0 && second <= 59;
+  if (!valid) return { label: value, tooltip: value };
+  return {
+    label: `${year}\u5E74${month}\u6708${day}\u65E5 ${hourText}:${minuteText}`,
+    tooltip: value
   };
 }
 function taskPresentation(item) {
@@ -2078,7 +2115,11 @@ var WorkCaseDashboardRenderer = class {
     } else {
       metadata.createSpan({ cls: "flowdesk-case-muted", text: presentation.header.project });
     }
-    metadata.createSpan({ cls: "flowdesk-case-date", text: presentation.header.dateLabel });
+    metadata.createSpan({
+      cls: "flowdesk-case-date",
+      text: presentation.header.dateLabel,
+      attr: { title: presentation.header.dateTooltip }
+    });
     for (const badge of presentation.header.badges) {
       metadata.createSpan({ cls: "flowdesk-case-badge", text: badge });
     }
@@ -2166,12 +2207,28 @@ var WorkCaseDashboardRenderer = class {
     }
   }
   renderTask(container, task) {
+    const accessibleRelations = task.relationRoles.map((role) => role === "parent" ? "\u7236\u4EFB\u52A1" : "\u5B50\u4EFB\u52A1").join("\u3001");
     const row = container.createEl("button", {
       cls: `flowdesk-case-task-row is-${task.tone}`,
-      attr: { "aria-label": `\u6253\u5F00\u4EFB\u52A1\uFF1A${task.title}` }
+      attr: {
+        "aria-label": `\u6253\u5F00\u4EFB\u52A1\uFF1A${task.title}${accessibleRelations ? `\uFF1B\u5173\u7CFB\uFF1A${accessibleRelations}` : ""}`
+      }
     });
     const content = row.createDiv({ cls: "flowdesk-case-task-content" });
-    content.createDiv({ cls: "flowdesk-case-task-title", text: task.title });
+    const title = content.createDiv({ cls: "flowdesk-case-task-title" });
+    if (task.relationRoles.length) {
+      const roles = title.createSpan({ cls: "flowdesk-case-task-roles" });
+      for (const role of task.relationRoles) {
+        roles.createSpan({
+          cls: `flowdesk-case-task-role is-${role}`,
+          text: role === "parent" ? "\u7236" : "\u5B50",
+          attr: {
+            "aria-label": role === "parent" ? "\u7236\u4EFB\u52A1" : "\u5B50\u4EFB\u52A1"
+          }
+        });
+      }
+    }
+    title.createSpan({ cls: "flowdesk-case-task-title-text", text: task.title });
     content.createDiv({
       cls: "flowdesk-case-task-meta",
       text: `${task.associationSource}${task.archived ? " \xB7 archived" : ""}`
