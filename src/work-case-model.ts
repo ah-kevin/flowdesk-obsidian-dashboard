@@ -21,6 +21,7 @@ export interface WorkCaseTaskItem {
   archived: boolean;
   isBlocked: boolean;
   associationSource: "canonical" | "legacy";
+  relationRoles: Array<"parent" | "child">;
 }
 
 export interface WorkCaseDiagnostic {
@@ -296,7 +297,24 @@ function taskItem(value: unknown, at: string): WorkCaseTaskItem {
     archived: boolean(item.archived, `${at}.archived`),
     isBlocked: boolean(item.is_blocked, `${at}.is_blocked`),
     associationSource,
+    relationRoles: relationRoles(item.relation_roles, `${at}.relation_roles`),
   };
+}
+
+function relationRoles(
+  value: unknown,
+  at: string
+): Array<"parent" | "child"> {
+  if (value === undefined) return [];
+  const roles = array(value, at).map((item, index) =>
+    string(item, `${at}[${index}]`)
+  );
+  for (const role of roles) {
+    if (role !== "parent" && role !== "child") {
+      invalid(`${at} 只允许 parent 或 child`);
+    }
+  }
+  return (["parent", "child"] as const).filter((role) => roles.includes(role));
 }
 
 function sectionArray(value: unknown, at: string): WorkCaseSectionBlock[] {

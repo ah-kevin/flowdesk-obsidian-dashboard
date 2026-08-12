@@ -182,3 +182,22 @@ test("关联任务使用纯静态响应式层级与 tone 状态 tag", () => {
   assert.match(renderer, /const statuses = section\.createDiv\(\{ cls: "flowdesk-case-status-list" \}\)/);
   assert.doesNotMatch(renderer, /createEl\("details", \{ cls: "flowdesk-case-status-list"/);
 });
+
+test("父子徽标为不占位的中性色圆形辅助信息", () => {
+  const roleRule = styles.match(
+    /\.flowdesk-case-dashboard \.flowdesk-case-task-role\s*\{([^}]*)\}/
+  );
+  assert.ok(roleRule);
+  for (const declaration of [
+    /border-radius:\s*50%/,
+    /width:\s*18px/,
+    /height:\s*18px/,
+    /color:\s*var\(--text-muted\)/,
+    /border:\s*1px solid var\(--fd-border\)/,
+  ]) {
+    assert.match(roleRule[1], declaration);
+  }
+  assert.doesNotMatch(roleRule[1], /--fd-(?:blue|red|green|yellow)/);
+  assert.match(renderer, /if \(task\.relationRoles\.length\)/);
+  assert.match(renderer, /"aria-label": role === "parent" \? "父任务" : "子任务"/);
+});

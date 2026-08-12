@@ -88,7 +88,11 @@ export class WorkCaseDashboardRenderer {
     } else {
       metadata.createSpan({ cls: "flowdesk-case-muted", text: presentation.header.project });
     }
-    metadata.createSpan({ cls: "flowdesk-case-date", text: presentation.header.dateLabel });
+    metadata.createSpan({
+      cls: "flowdesk-case-date",
+      text: presentation.header.dateLabel,
+      attr: { title: presentation.header.dateTooltip },
+    });
     for (const badge of presentation.header.badges) {
       metadata.createSpan({ cls: "flowdesk-case-badge", text: badge });
     }
@@ -185,12 +189,30 @@ export class WorkCaseDashboardRenderer {
   }
 
   private renderTask(container: HTMLElement, task: WorkCaseTaskPresentation): void {
+    const accessibleRelations = task.relationRoles
+      .map((role) => (role === "parent" ? "父任务" : "子任务"))
+      .join("、");
     const row = container.createEl("button", {
       cls: `flowdesk-case-task-row is-${task.tone}`,
-      attr: { "aria-label": `打开任务：${task.title}` },
+      attr: {
+        "aria-label": `打开任务：${task.title}${accessibleRelations ? `；关系：${accessibleRelations}` : ""}`,
+      },
     });
     const content = row.createDiv({ cls: "flowdesk-case-task-content" });
-    content.createDiv({ cls: "flowdesk-case-task-title", text: task.title });
+    const title = content.createDiv({ cls: "flowdesk-case-task-title" });
+    if (task.relationRoles.length) {
+      const roles = title.createSpan({ cls: "flowdesk-case-task-roles" });
+      for (const role of task.relationRoles) {
+        roles.createSpan({
+          cls: `flowdesk-case-task-role is-${role}`,
+          text: role === "parent" ? "父" : "子",
+          attr: {
+            "aria-label": role === "parent" ? "父任务" : "子任务",
+          },
+        });
+      }
+    }
+    title.createSpan({ cls: "flowdesk-case-task-title-text", text: task.title });
     content.createDiv({
       cls: "flowdesk-case-task-meta",
       text: `${task.associationSource}${task.archived ? " · archived" : ""}`,

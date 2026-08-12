@@ -28,6 +28,31 @@ test("canonical schema 1 snapshot 保留 Case、Current、section 与来源事�
   );
   assert.equal(model.tasks.observationHealth, "healthy");
   assert.equal(model.related.plans[0], "[[Notes/Plans/Demo]]");
+  assert.deepEqual(model.tasks.items, []);
+});
+
+test("relation_roles 可选并固定归一化为父、子顺序", () => {
+  const snapshot = structuredClone(canonical);
+  snapshot.tasks.counts = {
+    total: 4,
+    active: 4,
+    blocked: 0,
+    completed: 0,
+    archived: 0,
+    by_status: { open: 4 },
+  };
+  snapshot.tasks.items = [
+    { id: "Tasks/Parent.md", title: "Parent", status: "open", status_is_completed: false, archived: false, is_blocked: false, association_source: "canonical", relation_roles: ["parent"] },
+    { id: "Tasks/Child.md", title: "Child", status: "open", status_is_completed: false, archived: false, is_blocked: false, association_source: "canonical", relation_roles: ["child"] },
+    { id: "Tasks/Both.md", title: "Both", status: "open", status_is_completed: false, archived: false, is_blocked: false, association_source: "canonical", relation_roles: ["child", "parent", "child"] },
+    { id: "Tasks/Legacy.md", title: "Legacy", status: "open", status_is_completed: false, archived: false, is_blocked: false, association_source: "canonical" },
+  ];
+
+  const model = createWorkCaseViewModel(snapshot, snapshot.source.path);
+  assert.deepEqual(
+    model.tasks.items.map((item) => item.relationRoles),
+    [["parent"], ["child"], ["parent", "child"], []]
+  );
 });
 
 test("source identity mismatch 与不兼容 envelope 均 fail closed", () => {

@@ -20,15 +20,17 @@ class FakeElement {
   text = "";
   disabled = false;
   value = 0;
+  attrs: Record<string, string> = {};
 
   constructor(
     readonly tag = "div",
-    options: { cls?: string; text?: string } = {}
+    options: { cls?: string; text?: string; attr?: Record<string, string> } = {}
   ) {
     for (const name of options.cls?.split(/\s+/).filter(Boolean) ?? []) {
       this.classes.add(name);
     }
     this.text = options.text ?? "";
+    this.attrs = { ...(options.attr ?? {}) };
   }
 
   addClass(name: string): void {
@@ -43,13 +45,13 @@ class FakeElement {
     return this.append(new FakeElement("div", options));
   }
 
-  createSpan(options: { cls?: string; text?: string } = {}): FakeElement {
+  createSpan(options: { cls?: string; text?: string; attr?: Record<string, string> } = {}): FakeElement {
     return this.append(new FakeElement("span", options));
   }
 
   createEl(
     tag: string,
-    options: { cls?: string; text?: string } = {}
+    options: { cls?: string; text?: string; attr?: Record<string, string> } = {}
   ): FakeElement {
     return this.append(new FakeElement(tag, options));
   }
@@ -139,9 +141,87 @@ test("renderer 用 canonical model 渲染三层驾驶舱并接通只读导航", 
       casePath: snapshot.source.path,
     },
   ]);
+  const date = root.findByClass("flowdesk-case-date")[0];
+  assert.equal(date.text, "2026年8月10日 12:00");
+  assert.equal(date.attrs.title, "2026-08-10T12:00:00+08:00");
 
   renderer.reset(root as unknown as HTMLElement);
   assert.equal(root.classes.has("flowdesk-case-dashboard"), false);
+});
+
+test("关联任务按父、子固定顺序显示中性圆徽标，旧 snapshot 与空角色不占位", () => {
+  const snapshot = structuredClone(canonical);
+  snapshot.tasks.counts = {
+    total: 4,
+    active: 4,
+    blocked: 0,
+    completed: 0,
+    archived: 0,
+    by_status: { open: 4 },
+  };
+  snapshot.tasks.items = [
+    { id: "Tasks/Parent.md", title: "Parent", status: "open", status_is_completed: false, archived: false, is_blocked: false, association_source: "canonical", relation_roles: ["parent"] },
+    { id: "Tasks/Child.md", title: "Child", status: "open", status_is_completed: false, archived: false, is_blocked: false, association_source: "canonical", relation_roles: ["child"] },
+    { id: "Tasks/Both.md", title: "Both", status: "open", status_is_completed: false, archived: false, is_blocked: false, association_source: "canonical", relation_roles: ["child", "parent"] },
+    { id: "Tasks/Legacy.md", title: "Legacy", status: "open", status_is_completed: false, archived: false, is_blocked: false, association_source: "canonical" },
+  ];
+  const openedTasks: string[] = [];
+  const root = new FakeElement();
+  new WorkCaseDashboardRenderer({
+    refresh: () => {},
+    openTask: (taskPath) => openedTasks.push(taskPath),
+    openCaseSource: () => {},
+    openRelated: () => {},
+  }).render(root as unknown as HTMLElement, {
+    casePath: snapshot.source.path,
+    model: createWorkCaseViewModel(snapshot, snapshot.source.path),
+    loadedAt: "12:00:00",
+    staleReason: "",
+    error: "",
+    loading: false,
+  });
+
+  const rows = root.findByClass("flowdesk-case-task-row");
+  assert.deepEqual(
+    rows.map((row) =>
+      row.findByClass("flowdesk-case-task-role").map((badge) => [
+        badge.text,
+        badge.attrs["aria-label"],
+      ])
+    ),
+    [
+      [["父", "父任务"]],
+      [["子", "子任务"]],
+      [["父", "父任务"], ["子", "子任务"]],
+      [],
+    ]
+  );
+  assert.equal(rows[3].findByClass("flowdesk-case-task-roles").length, 0);
+  assert.deepEqual(
+    rows.map((row) => row.findByClass("flowdesk-case-task-title-text")[0].text),
+    ["Parent", "Child", "Both", "Legacy"]
+  );
+  assert.deepEqual(
+    rows.map((row) => row.findByClass("flowdesk-case-task-status")[0].text),
+    ["open", "open", "open", "open"]
+  );
+  assert.deepEqual(
+    rows.map((row) => row.attrs["aria-label"]),
+    [
+      "打开任务：Parent；关系：父任务",
+      "打开任务：Child；关系：子任务",
+      "打开任务：Both；关系：父任务、子任务",
+      "打开任务：Legacy",
+    ]
+  );
+
+  for (const row of rows) row.click();
+  assert.deepEqual(openedTasks, [
+    "Tasks/Parent.md",
+    "Tasks/Child.md",
+    "Tasks/Both.md",
+    "Tasks/Legacy.md",
+  ]);
 });
 
 test("任务观察 unavailable 时正文仍渲染，任务区不伪装成零任务", () => {
