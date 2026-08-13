@@ -911,3 +911,74 @@ test("v4 review_required 与缺失证据使用增量 trust/diagnostic 文案", (
   assert.equal(missingPresentation.trust.label, "证据待补充");
   assert.equal(missingPresentation.primaryStatus.title, "结构化证据缺失");
 });
+
+// contract.status=not_applicable 表示「producer 不做语义判定」，不表示「没有结构化合同」。
+// producer 仍会把正文 ## Requirements / ## Scenarios 解析进 task_contract，
+// 因此 REQ/SCN chip 与 not_applicable 可以同时为真——判定层必须认这一点。
+function createNotApplicableWithContractSnapshot() {
+  const snapshot = createTasknotesOnlySnapshot();
+  snapshot.current_task.has_children = false;
+  snapshot.children = [];
+  snapshot.rollup = {
+    state: "running",
+    trusted_done: false,
+    has_children: false,
+    children_total: 0,
+    children_trusted_done: 0,
+    children_complete: false,
+    blocked_children: [],
+    incomplete_children: [],
+  };
+  snapshot.contract = {
+    status: "not_applicable",
+    task_contract: {
+      schema: "flowdesk.task-body-spec/1",
+      goal: "修复文案矛盾",
+      requirements: [
+        { id: "REQ-1", text: "第一条需求" },
+        { id: "REQ-2", text: "第二条需求" },
+      ],
+      scenarios: [{ id: "SCN-1", text: "第一个场景" }],
+      acceptance: [],
+    },
+  };
+  return snapshot;
+}
+
+test("not_applicable 与结构化 REQ/SCN 并存时，主状态讲进度而不误报规格问题", () => {
+  const model = createDashboardViewModel(createNotApplicableWithContractSnapshot(), {
+    expectedTaskPath: taskId,
+  });
+  const presentation = createDashboardPresentation(model);
+
+  // chip 侧是对的：producer 真的返回了 REQ/SCN，必须继续渲染。
+  assert.equal(model.contract.requirements.length, 2);
+  assert.equal(model.contract.scenarios.length, 1);
+  assert.equal(presentation.contract.coverage, "REQ 2 · SCN 1");
+
+  // 文案侧不得把「不做判定」说成「规格有问题」。
+  assert.notEqual(presentation.primaryStatus.title, "任务规格存在问题");
+  assert.equal(presentation.primaryStatus.location, "当前任务");
+  assert.equal(presentation.trust.contractLabel, "TaskNotes 状态为准");
+});
+
+test("completion.contract_status 缺失时仍以 contract.status 认定判定层不适用", () => {
+  const snapshot = createNotApplicableWithContractSnapshot();
+  // 模拟上游字段裁剪：completion 不再回传 contract_status，
+  // 但顶层 contract.status 仍然明确写着 not_applicable。
+  delete (snapshot.current_task.completion as { contract_status?: string })
+    .contract_status;
+
+  const model = createDashboardViewModel(snapshot, { expectedTaskPath: taskId });
+  const presentation = createDashboardPresentation(model);
+
+  assert.equal(model.currentTask.completion.contractStatus, "unknown");
+  assert.equal(model.contract.semanticStatus, "not_applicable");
+
+  // REQ/SCN chip 仍在，文案不得与之矛盾。
+  assert.equal(presentation.contract.coverage, "REQ 2 · SCN 1");
+  assert.notEqual(presentation.primaryStatus.title, "任务规格存在问题");
+  assert.notEqual(presentation.trust.contractLabel, "规格状态未知");
+  assert.equal(presentation.trust.contractLabel, "TaskNotes 状态为准");
+  assert.equal(presentation.trust.contractTone, "muted");
+});
