@@ -338,6 +338,7 @@ test("合同摘要默认展开，完整详情默认关闭，同 task 刷新保�
   assert.deepEqual(resolveDisclosureState(undefined, true), {
     summaryOpen: true,
     fullOpen: false,
+    scopeOpen: false,
     requirementsOpen: false,
     scenariosOpen: false,
     observationOpen: false,
@@ -348,6 +349,7 @@ test("合同摘要默认展开，完整详情默认关闭，同 task 刷新保�
   const previous = {
     summaryOpen: false,
     fullOpen: true,
+    scopeOpen: true,
     requirementsOpen: true,
     scenariosOpen: false,
     observationOpen: true,

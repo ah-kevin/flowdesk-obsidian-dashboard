@@ -147,21 +147,62 @@ test("schema 4 explicit legacy_v3 即使带 scope_text 也保持旧数组路径"
   });
 });
 
-test("Task renderer 按 presentation 分流文本与旧结构并保留多行", () => {
+test("Task renderer 将文本 Scope 默认折叠并交给 Obsidian MarkdownRenderer", () => {
   const source = readFileSync(path.join(process.cwd(), "src/main.ts"), "utf8");
-  const styles = readFileSync(path.join(process.cwd(), "styles.css"), "utf8");
 
   assert.match(
     source,
     /createDashboardScopePresentation\(\s*model\.contract\.scope\s*\)/
   );
   assert.match(source, /scopePresentation\.mode === "text"/);
+  assert.match(source, /MarkdownRenderer/);
+  assert.match(source, /cls:\s*"flowdesk-contract-scope-details"/);
   assert.match(
     source,
-    /scopeRow\(\s*contract,\s*"范围",\s*scopePresentation\.text\s*\?\s*\[scopePresentation\.text\]\s*:\s*\[\]\s*\)/
+    /details\.open\s*=\s*this\.disclosureState\.scopeOpen/
   );
-  assert.match(source, /text: scopePresentation\.status/);
   assert.match(
+    source,
+    /this\.disclosureState\.scopeOpen\s*=\s*details\.open/
+  );
+  assert.match(source, /MarkdownRenderer\.render\(/);
+  assert.match(source, /model\.currentTask\.id/);
+  assert.match(source, /cls:\s*"flowdesk-contract-scope-markdown markdown-rendered"/);
+  assert.doesNotMatch(
+    source,
+    /scopePresentation\.text\s*\?\s*\[scopePresentation\.text\]/
+  );
+});
+
+test("空文本 Scope 保留待补充预警，旧结构继续显示原 Scope chip", () => {
+  const source = readFileSync(path.join(process.cwd(), "src/main.ts"), "utf8");
+
+  assert.match(source, /cls:\s*"flowdesk-contract-scope-empty"/);
+  assert.match(source, /text:\s*"Scope 待补充"/);
+  assert.match(source, /scopeRow\(contract, "包含", scopePresentation\.included\)/);
+  assert.match(source, /scopeRow\(contract, "不包含", scopePresentation\.excluded\)/);
+  assert.match(
+    source,
+    /if\s*\(scopePresentation\.mode === "structured"\)\s*\{[\s\S]*?text:\s*scopePresentation\.status/
+  );
+  assert.match(source, /text:\s*`REQ \$\{model\.contract\.requirements\.length\}`/);
+  assert.match(source, /text:\s*`SCN \$\{model\.contract\.scenarios\.length\}`/);
+});
+
+test("Scope Markdown CSS 仅局部控制长内容、列表与代码换行", () => {
+  const styles = readFileSync(path.join(process.cwd(), "styles.css"), "utf8");
+
+  assert.match(styles, /\.flowdesk-contract-scope-details\s*\{/);
+  assert.match(styles, /\.flowdesk-contract-scope-markdown\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
+  assert.match(
+    styles,
+    /\.flowdesk-contract-scope-markdown ul,[\s\S]*?padding-inline-start:\s*20px;/
+  );
+  assert.match(
+    styles,
+    /\.flowdesk-contract-scope-markdown code\s*\{[^}]*white-space:\s*break-spaces;/s
+  );
+  assert.doesNotMatch(
     styles,
     /\.flowdesk-contract-scope-row > span:last-child\s*\{[^}]*white-space:\s*pre-wrap;/s
   );

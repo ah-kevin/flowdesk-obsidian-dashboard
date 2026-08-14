@@ -18,6 +18,7 @@ export type PresentationTone =
 export interface DisclosureState {
   summaryOpen: boolean;
   fullOpen: boolean;
+  scopeOpen: boolean;
   requirementsOpen: boolean;
   scenariosOpen: boolean;
   observationOpen: boolean;
@@ -228,6 +229,7 @@ export function resolveDisclosureState(
     return {
       summaryOpen: true,
       fullOpen: false,
+      scopeOpen: false,
       requirementsOpen: false,
       scenariosOpen: false,
       observationOpen: false,

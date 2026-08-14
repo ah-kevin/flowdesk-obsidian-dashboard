@@ -1,6 +1,7 @@
 import {
   App,
   ItemView,
+  MarkdownRenderer,
   MarkdownView,
   Modal,
   Notice,
@@ -996,11 +997,37 @@ class FlowDeskDashboardView extends ItemView {
       model.contract.scope
     );
     if (scopePresentation.mode === "text") {
-      scopeRow(
-        contract,
-        "范围",
-        scopePresentation.text ? [scopePresentation.text] : []
-      );
+      if (scopePresentation.text) {
+        const details = contract.createEl("details", {
+          cls: "flowdesk-contract-scope-details",
+        });
+        details.open = this.disclosureState.scopeOpen;
+        details.addEventListener("toggle", () => {
+          this.disclosureState.scopeOpen = details.open;
+        });
+        const summary = details.createEl("summary");
+        summary.createSpan({ text: "范围" });
+        summary.createSpan({
+          cls: "flowdesk-contract-scope-status",
+          text: "已提供",
+        });
+        const markdown = details.createDiv({
+          cls: "flowdesk-contract-scope-markdown markdown-rendered",
+        });
+        void MarkdownRenderer.render(
+          this.app,
+          scopePresentation.text,
+          markdown,
+          model.currentTask.id,
+          this
+        );
+      } else {
+        const row = contract.createDiv({
+          cls: "flowdesk-contract-scope-empty",
+        });
+        row.createSpan({ text: "范围" });
+        row.createSpan({ text: "Scope 待补充" });
+      }
     } else {
       scopeRow(contract, "包含", scopePresentation.included);
       scopeRow(contract, "不包含", scopePresentation.excluded);
@@ -1014,10 +1041,12 @@ class FlowDeskDashboardView extends ItemView {
       cls: "flowdesk-contract-chip",
       text: `SCN ${model.contract.scenarios.length}`,
     });
-    contractMeta.createSpan({
-      cls: "flowdesk-contract-chip",
-      text: scopePresentation.status,
-    });
+    if (scopePresentation.mode === "structured") {
+      contractMeta.createSpan({
+        cls: "flowdesk-contract-chip",
+        text: scopePresentation.status,
+      });
+    }
     renderContractItems(
       contract,
       "需求详情",
