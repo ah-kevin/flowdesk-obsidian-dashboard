@@ -46,6 +46,7 @@ import {
 import {
   createContractItemPresentation,
   createDashboardPresentation,
+  createDashboardScopePresentation,
   createDiagnosticDisclosureKey,
   formatSnapshotCompatibilityError,
   formatTaskShellStatus,
@@ -991,8 +992,19 @@ class FlowDeskDashboardView extends ItemView {
       formatSemanticStatus(model.contract.semanticStatus)
     );
     renderedSections.set("contract", contract);
-    scopeRow(contract, "包含", model.contract.scope.included);
-    scopeRow(contract, "不包含", model.contract.scope.excluded);
+    const scopePresentation = createDashboardScopePresentation(
+      model.contract.scope
+    );
+    if (scopePresentation.mode === "text") {
+      scopeRow(
+        contract,
+        "范围",
+        scopePresentation.text ? [scopePresentation.text] : []
+      );
+    } else {
+      scopeRow(contract, "包含", scopePresentation.included);
+      scopeRow(contract, "不包含", scopePresentation.excluded);
+    }
     const contractMeta = contract.createDiv({ cls: "flowdesk-contract-chip-row" });
     contractMeta.createSpan({
       cls: "flowdesk-contract-chip",
@@ -1004,9 +1016,7 @@ class FlowDeskDashboardView extends ItemView {
     });
     contractMeta.createSpan({
       cls: "flowdesk-contract-chip",
-      text: model.contract.scope.included.length && model.contract.scope.excluded.length
-        ? "Scope 完整"
-        : "Scope 待补充",
+      text: scopePresentation.status,
     });
     renderContractItems(
       contract,

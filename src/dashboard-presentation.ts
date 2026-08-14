@@ -119,6 +119,39 @@ export interface DashboardContractPresentation {
   metrics: Array<{ label: string; value: string }>;
 }
 
+export interface DashboardScopePresentation {
+  mode: "text" | "structured";
+  text: string;
+  included: string[];
+  excluded: string[];
+  status: "Scope 已提供" | "Scope 完整" | "Scope 待补充";
+}
+
+export function createDashboardScopePresentation(
+  scope: DashboardViewModel["contract"]["scope"]
+): DashboardScopePresentation {
+  if (Object.prototype.hasOwnProperty.call(scope, "text")) {
+    const text = scope.text?.trim() ?? "";
+    return {
+      mode: "text",
+      text,
+      included: [],
+      excluded: [],
+      status: text ? "Scope 已提供" : "Scope 待补充",
+    };
+  }
+  return {
+    mode: "structured",
+    text: "",
+    included: scope.included,
+    excluded: scope.excluded,
+    status:
+      scope.included.length && scope.excluded.length
+        ? "Scope 完整"
+        : "Scope 待补充",
+  };
+}
+
 export interface DashboardTechnicalDiagnosticGroup {
   kind: "current" | "child";
   taskId: string;
