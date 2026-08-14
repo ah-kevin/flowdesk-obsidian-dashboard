@@ -180,7 +180,7 @@ var TrailingRefreshScheduler = class {
 
 // src/snapshot-model.ts
 function createDashboardViewModel(value, options = {}) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, __, _$, _aa, _ba, _ca, _da, _ea, _fa, _ga, _ha, _ia, _ja, _ka, _la, _ma, _na, _oa, _pa, _qa, _ra, _sa;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, __, _$, _aa, _ba, _ca, _da, _ea, _fa, _ga, _ha, _ia, _ja, _ka, _la, _ma, _na, _oa, _pa, _qa;
   const snapshot = isRecord(value) ? value : {};
   const schemaVersion = snapshot.snapshot_schema_version;
   const isV4 = schemaVersion === 4;
@@ -221,6 +221,8 @@ function createDashboardViewModel(value, options = {}) {
   const children = ((_o = snapshot.children) != null ? _o : []).map(
     (child) => createChildViewModel(child)
   );
+  const v4TaskContract = (_p = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _p.task_contract;
+  const v4HasScopeText = isV4 && ((_q = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _q.status) !== "legacy_v3" && isRecord(v4TaskContract) && Object.prototype.hasOwnProperty.call(v4TaskContract, "scope_text");
   return {
     errorCode: !schemaSupported ? "unsupported_snapshot_schema" : !modelSupported ? "unsupported_snapshot_model" : !protocolSupported ? "unsupported_snapshot_protocol" : null,
     schemaSupported,
@@ -232,7 +234,7 @@ function createDashboardViewModel(value, options = {}) {
       status: normalizeText(currentTask.status, "unknown"),
       priority: normalizeText(currentTask.priority, "\u672A\u63D0\u4F9B"),
       isBlocked: currentTask.is_blocked === true,
-      blockedBy: ((_p = currentTask.blocked_by) != null ? _p : []).map(normalizeBlockedBy).filter(Boolean),
+      blockedBy: ((_r = currentTask.blocked_by) != null ? _r : []).map(normalizeBlockedBy).filter(Boolean),
       parentId: typeof currentTask.parent_id === "string" ? currentTask.parent_id : null,
       hasChildren: currentTask.has_children === true,
       rollupState: normalizeText(currentTask.rollup_state, "unknown"),
@@ -250,33 +252,34 @@ function createDashboardViewModel(value, options = {}) {
       childrenTotal: finiteNumber(rollup.children_total),
       childrenTrustedDone: finiteNumber(rollup.children_trusted_done),
       childrenComplete: rollup.children_complete === true,
-      blockedChildren: (_q = rollup.blocked_children) != null ? _q : [],
-      incompleteChildren: (_r = rollup.incomplete_children) != null ? _r : [],
-      contradictions: (_s = rollup.contradictions) != null ? _s : []
+      blockedChildren: (_s = rollup.blocked_children) != null ? _s : [],
+      incompleteChildren: (_t = rollup.incomplete_children) != null ? _t : [],
+      contradictions: (_u = rollup.contradictions) != null ? _u : []
     },
     contract: {
       version: isV4 ? normalizeText(
-        (_u = (_t = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _t.task_contract) == null ? void 0 : _u.schema,
+        (_w = (_v = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _v.task_contract) == null ? void 0 : _w.schema,
         normalizeText(
-          (_w = (_v = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _v.task_contract) == null ? void 0 : _w.version,
+          (_y = (_x = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _x.task_contract) == null ? void 0 : _y.version,
           "\u672A\u63D0\u4F9B"
         )
-      ) : normalizeText((_x = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _x.version, "\u672A\u63D0\u4F9B"),
-      goal: isV4 ? normalizeText((_z = (_y = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _y.task_contract) == null ? void 0 : _z.goal, "\u672A\u63D0\u4F9B") : normalizeText((_A = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _A.goal, "\u672A\u63D0\u4F9B"),
+      ) : normalizeText((_z = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _z.version, "\u672A\u63D0\u4F9B"),
+      goal: isV4 ? normalizeText((_B = (_A = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _A.task_contract) == null ? void 0 : _B.goal, "\u672A\u63D0\u4F9B") : normalizeText((_C = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _C.goal, "\u672A\u63D0\u4F9B"),
       scope: {
-        included: (_I = (_H = isV4 ? (_D = (_C = (_B = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _B.task_contract) == null ? void 0 : _C.scope) == null ? void 0 : _D.included : (_G = (_F = (_E = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _E.scope) == null ? void 0 : _F.included) != null ? _G : []) == null ? void 0 : _H.map(String)) != null ? _I : [],
-        excluded: (_Q = (_P = isV4 ? (_L = (_K = (_J = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _J.task_contract) == null ? void 0 : _K.scope) == null ? void 0 : _L.excluded : (_O = (_N = (_M = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _M.scope) == null ? void 0 : _N.excluded) != null ? _O : []) == null ? void 0 : _P.map(String)) != null ? _Q : []
+        included: (_I = (_H = v4HasScopeText ? [] : isV4 ? (_D = v4TaskContract == null ? void 0 : v4TaskContract.scope) == null ? void 0 : _D.included : (_G = (_F = (_E = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _E.scope) == null ? void 0 : _F.included) != null ? _G : []) == null ? void 0 : _H.map(String)) != null ? _I : [],
+        excluded: (_O = (_N = v4HasScopeText ? [] : isV4 ? (_J = v4TaskContract == null ? void 0 : v4TaskContract.scope) == null ? void 0 : _J.excluded : (_M = (_L = (_K = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _K.scope) == null ? void 0 : _L.excluded) != null ? _M : []) == null ? void 0 : _N.map(String)) != null ? _O : [],
+        ...v4HasScopeText ? { text: normalizeText(v4TaskContract == null ? void 0 : v4TaskContract.scope_text, "") } : {}
       },
-      semanticStatus: isV4 ? ((_R = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _R.status) === "legacy_v3" ? normalizeText(
-        (_S = v4Snapshot.contract.task_contract) == null ? void 0 : _S.semantic_status,
+      semanticStatus: isV4 ? ((_P = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _P.status) === "legacy_v3" ? normalizeText(
+        (_Q = v4Snapshot.contract.task_contract) == null ? void 0 : _Q.semantic_status,
         "unknown"
-      ) : normalizeText((_T = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _T.status, "unknown") : normalizeText(
-        (_U = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _U.semantic_status,
+      ) : normalizeText((_R = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _R.status, "unknown") : normalizeText(
+        (_S = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _S.semantic_status,
         "unknown"
       ),
-      requirements: isV4 ? (_X = (_W = (_V = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _V.task_contract) == null ? void 0 : _W.requirements) != null ? _X : [] : (_Z = (_Y = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _Y.requirements) != null ? _Z : [],
-      scenarios: isV4 ? (_aa = (_$ = (__ = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : __.task_contract) == null ? void 0 : _$.scenarios) != null ? _aa : [] : (_ca = (_ba = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _ba.scenarios) != null ? _ca : [],
-      acceptance: isV4 ? (_fa = (_ea = (_da = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _da.task_contract) == null ? void 0 : _ea.acceptance) != null ? _fa : [] : (_ha = (_ga = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _ga.acceptance) != null ? _ha : []
+      requirements: isV4 ? (_V = (_U = (_T = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _T.task_contract) == null ? void 0 : _U.requirements) != null ? _V : [] : (_X = (_W = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _W.requirements) != null ? _X : [],
+      scenarios: isV4 ? (__ = (_Z = (_Y = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _Y.task_contract) == null ? void 0 : _Z.scenarios) != null ? __ : [] : (_aa = (_$ = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _$.scenarios) != null ? _aa : [],
+      acceptance: isV4 ? (_da = (_ca = (_ba = v4Snapshot == null ? void 0 : v4Snapshot.contract) == null ? void 0 : _ba.task_contract) == null ? void 0 : _ca.acceptance) != null ? _da : [] : (_fa = (_ea = v3Snapshot == null ? void 0 : v3Snapshot.contract) == null ? void 0 : _ea.acceptance) != null ? _fa : []
     },
     evidenceRequirements,
     acceptance,
@@ -285,27 +288,27 @@ function createDashboardViewModel(value, options = {}) {
     evidence,
     observation: {
       health: observationHealth,
-      currentTask: normalizeText((_ia = snapshot.observation) == null ? void 0 : _ia.current_task, "unknown"),
-      parent: normalizeText((_ja = snapshot.observation) == null ? void 0 : _ja.parent, "unknown"),
-      children: normalizeText((_ka = snapshot.observation) == null ? void 0 : _ka.children, "unknown"),
-      tasknotesApi: normalizeText((_la = snapshot.observation) == null ? void 0 : _la.tasknotes_api, "unknown"),
+      currentTask: normalizeText((_ga = snapshot.observation) == null ? void 0 : _ga.current_task, "unknown"),
+      parent: normalizeText((_ha = snapshot.observation) == null ? void 0 : _ha.parent, "unknown"),
+      children: normalizeText((_ia = snapshot.observation) == null ? void 0 : _ia.children, "unknown"),
+      tasknotesApi: normalizeText((_ja = snapshot.observation) == null ? void 0 : _ja.tasknotes_api, "unknown"),
       sourceIdentityMatch,
       sourceTaskId: snapshotSourceTaskId(snapshot),
-      generatedAt: isV4 ? normalizeText((_ma = v4Snapshot == null ? void 0 : v4Snapshot.source) == null ? void 0 : _ma.generated_at, "\u672A\u63D0\u4F9B") : normalizeText(v3Snapshot == null ? void 0 : v3Snapshot.generated_at, "\u672A\u63D0\u4F9B"),
+      generatedAt: isV4 ? normalizeText((_ka = v4Snapshot == null ? void 0 : v4Snapshot.source) == null ? void 0 : _ka.generated_at, "\u672A\u63D0\u4F9B") : normalizeText(v3Snapshot == null ? void 0 : v3Snapshot.generated_at, "\u672A\u63D0\u4F9B"),
       isTrustworthy,
       trustMessage: isTrustworthy ? "\u89C2\u6D4B\u53EF\u4FE1" : "\u89C2\u6D4B\u4E0D\u53EF\u4FE1\uFF0C\u65E0\u6CD5\u5224\u65AD\u4EFB\u52A1\u662F\u5426\u6B63\u5E38",
-      isStale: Boolean(staleReason) || ((_na = snapshot.observation) == null ? void 0 : _na.stale) === true,
+      isStale: Boolean(staleReason) || ((_la = snapshot.observation) == null ? void 0 : _la.stale) === true,
       staleReason,
       loadedAt: normalizeText(options.loadedAt, "\u672A\u63D0\u4F9B"),
       sourceIdentity
     },
-    primaryDiagnostic: (_oa = diagnostics[0]) != null ? _oa : null,
+    primaryDiagnostic: (_ma = diagnostics[0]) != null ? _ma : null,
     diagnostics,
-    nextAction: formatNextAction((_pa = snapshot.next_actions) == null ? void 0 : _pa[0]),
+    nextAction: formatNextAction((_na = snapshot.next_actions) == null ? void 0 : _na[0]),
     records: {
-      execution: Array.isArray((_qa = currentTask.records) == null ? void 0 : _qa.execution) ? currentTask.records.execution.length : 0,
-      verification: Array.isArray((_ra = currentTask.records) == null ? void 0 : _ra.verification) ? currentTask.records.verification.length : 0,
-      delivery: Array.isArray((_sa = currentTask.records) == null ? void 0 : _sa.delivery) ? currentTask.records.delivery.length : 0
+      execution: Array.isArray((_oa = currentTask.records) == null ? void 0 : _oa.execution) ? currentTask.records.execution.length : 0,
+      verification: Array.isArray((_pa = currentTask.records) == null ? void 0 : _pa.verification) ? currentTask.records.verification.length : 0,
+      delivery: Array.isArray((_qa = currentTask.records) == null ? void 0 : _qa.delivery) ? currentTask.records.delivery.length : 0
     }
   };
 }
@@ -635,6 +638,26 @@ var DisclosureStateCache = class {
     this.states.clear();
   }
 };
+function createDashboardScopePresentation(scope) {
+  var _a, _b;
+  if (Object.prototype.hasOwnProperty.call(scope, "text")) {
+    const text2 = (_b = (_a = scope.text) == null ? void 0 : _a.trim()) != null ? _b : "";
+    return {
+      mode: "text",
+      text: text2,
+      included: [],
+      excluded: [],
+      status: text2 ? "Scope \u5DF2\u63D0\u4F9B" : "Scope \u5F85\u8865\u5145"
+    };
+  }
+  return {
+    mode: "structured",
+    text: "",
+    included: scope.included,
+    excluded: scope.excluded,
+    status: scope.included.length && scope.excluded.length ? "Scope \u5B8C\u6574" : "Scope \u5F85\u8865\u5145"
+  };
+}
 function createContractItemPresentation(item, kind) {
   const text2 = String(item.label || item.text || "\u672A\u63D0\u4F9B").trim() || "\u672A\u63D0\u4F9B";
   return {
@@ -797,9 +820,12 @@ function taskStatusTone(value, isBlocked = false) {
   if (["blocked", "error", "invalid"].includes(status)) return "error";
   return "muted";
 }
+function isContractJudgmentNotApplicable(model) {
+  return model.currentTask.completion.contractStatus === "not_applicable" || model.contract.semanticStatus === "not_applicable";
+}
 function createTrustSummary(model) {
   const isLegacy = model.currentTask.trustLevel === "legacy_v3";
-  const isTasknotesOnly = model.currentTask.completion.contractStatus === "not_applicable";
+  const isTasknotesOnly = isContractJudgmentNotApplicable(model);
   const contractLabel = isTasknotesOnly ? "TaskNotes \u72B6\u6001\u4E3A\u51C6" : isLegacy ? model.contract.semanticStatus === "valid" ? "v3 \u5386\u53F2\u5408\u540C\u6709\u6548" : "v3 \u5386\u53F2\u5408\u540C\u9700\u68C0\u67E5" : model.contract.semanticStatus === "valid" ? "\u89C4\u683C\u6709\u6548" : model.contract.semanticStatus === "invalid" ? "\u89C4\u683C\u5B58\u5728\u95EE\u9898" : "\u89C4\u683C\u72B6\u6001\u672A\u77E5";
   const contractTone = isTasknotesOnly ? "muted" : model.contract.semanticStatus === "valid" ? "healthy" : model.contract.semanticStatus === "invalid" ? "error" : "muted";
   if (model.observation.isStale) {
@@ -905,7 +931,7 @@ function createPrimaryStatus(model) {
   if (model.primaryDiagnostic) {
     return createDiagnosticStatus(model.primaryDiagnostic);
   }
-  if (model.currentTask.completion.contractStatus === "not_applicable") {
+  if (isContractJudgmentNotApplicable(model)) {
     return createProgressStatus(model);
   }
   if (model.contract.semanticStatus !== "valid") {
@@ -3111,8 +3137,19 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       formatSemanticStatus(model.contract.semanticStatus)
     );
     renderedSections.set("contract", contract);
-    scopeRow(contract, "\u5305\u542B", model.contract.scope.included);
-    scopeRow(contract, "\u4E0D\u5305\u542B", model.contract.scope.excluded);
+    const scopePresentation = createDashboardScopePresentation(
+      model.contract.scope
+    );
+    if (scopePresentation.mode === "text") {
+      scopeRow(
+        contract,
+        "\u8303\u56F4",
+        scopePresentation.text ? [scopePresentation.text] : []
+      );
+    } else {
+      scopeRow(contract, "\u5305\u542B", scopePresentation.included);
+      scopeRow(contract, "\u4E0D\u5305\u542B", scopePresentation.excluded);
+    }
     const contractMeta = contract.createDiv({ cls: "flowdesk-contract-chip-row" });
     contractMeta.createSpan({
       cls: "flowdesk-contract-chip",
@@ -3124,7 +3161,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     });
     contractMeta.createSpan({
       cls: "flowdesk-contract-chip",
-      text: model.contract.scope.included.length && model.contract.scope.excluded.length ? "Scope \u5B8C\u6574" : "Scope \u5F85\u8865\u5145"
+      text: scopePresentation.status
     });
     renderContractItems(
       contract,
