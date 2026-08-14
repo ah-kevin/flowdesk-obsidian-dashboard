@@ -690,6 +690,7 @@ function resolveDisclosureState(previous, taskChanged) {
     return {
       summaryOpen: true,
       fullOpen: false,
+      scopeOpen: false,
       requirementsOpen: false,
       scenariosOpen: false,
       observationOpen: false,
@@ -3141,11 +3142,37 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       model.contract.scope
     );
     if (scopePresentation.mode === "text") {
-      scopeRow(
-        contract,
-        "\u8303\u56F4",
-        scopePresentation.text ? [scopePresentation.text] : []
-      );
+      if (scopePresentation.text) {
+        const details2 = contract.createEl("details", {
+          cls: "flowdesk-contract-scope-details"
+        });
+        details2.open = this.disclosureState.scopeOpen;
+        details2.addEventListener("toggle", () => {
+          this.disclosureState.scopeOpen = details2.open;
+        });
+        const summary2 = details2.createEl("summary");
+        summary2.createSpan({ text: "\u8303\u56F4" });
+        summary2.createSpan({
+          cls: "flowdesk-contract-scope-status",
+          text: "\u5DF2\u63D0\u4F9B"
+        });
+        const markdown = details2.createDiv({
+          cls: "flowdesk-contract-scope-markdown markdown-rendered"
+        });
+        void import_obsidian.MarkdownRenderer.render(
+          this.app,
+          scopePresentation.text,
+          markdown,
+          model.currentTask.id,
+          this
+        );
+      } else {
+        const row = contract.createDiv({
+          cls: "flowdesk-contract-scope-empty"
+        });
+        row.createSpan({ text: "\u8303\u56F4" });
+        row.createSpan({ text: "Scope \u5F85\u8865\u5145" });
+      }
     } else {
       scopeRow(contract, "\u5305\u542B", scopePresentation.included);
       scopeRow(contract, "\u4E0D\u5305\u542B", scopePresentation.excluded);
@@ -3159,10 +3186,12 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       cls: "flowdesk-contract-chip",
       text: `SCN ${model.contract.scenarios.length}`
     });
-    contractMeta.createSpan({
-      cls: "flowdesk-contract-chip",
-      text: scopePresentation.status
-    });
+    if (scopePresentation.mode === "structured") {
+      contractMeta.createSpan({
+        cls: "flowdesk-contract-chip",
+        text: scopePresentation.status
+      });
+    }
     renderContractItems(
       contract,
       "\u9700\u6C42\u8BE6\u60C5",
