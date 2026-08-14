@@ -119,6 +119,39 @@ export interface DashboardContractPresentation {
   metrics: Array<{ label: string; value: string }>;
 }
 
+export interface DashboardScopePresentation {
+  mode: "text" | "structured";
+  text: string;
+  included: string[];
+  excluded: string[];
+  status: "Scope 已提供" | "Scope 完整" | "Scope 待补充";
+}
+
+export function createDashboardScopePresentation(
+  scope: DashboardViewModel["contract"]["scope"]
+): DashboardScopePresentation {
+  if (Object.prototype.hasOwnProperty.call(scope, "text")) {
+    const text = scope.text?.trim() ?? "";
+    return {
+      mode: "text",
+      text,
+      included: [],
+      excluded: [],
+      status: text ? "Scope 已提供" : "Scope 待补充",
+    };
+  }
+  return {
+    mode: "structured",
+    text: "",
+    included: scope.included,
+    excluded: scope.excluded,
+    status:
+      scope.included.length && scope.excluded.length
+        ? "Scope 完整"
+        : "Scope 待补充",
+  };
+}
+
 export interface DashboardTechnicalDiagnosticGroup {
   kind: "current" | "child";
   taskId: string;
@@ -358,14 +391,29 @@ export function taskStatusTone(
   return "muted";
 }
 
+/**
+ * 判定层是否不适用于当前任务。
+ *
+ * `not_applicable` 的语义是「producer 不对规格做语义判定，事实以 TaskNotes 为准」，
+ * **不是**「没有结构化合同」——producer 仍会把正文 ## Requirements / ## Scenarios
+ * 解析进 `task_contract`，所以 REQ/SCN chip 与 not_applicable 完全可以同时为真。
+ *
+ * `completion.contract_status` 与顶层 `contract.status` 是两个独立字段，任一写着
+ * not_applicable 都说明判定层不适用。只认前者会在上游裁剪掉 completion 字段时漏判，
+ * 把「不做判定」误报成「规格存在问题」，与同卡的 REQ/SCN chip 自相矛盾。
+ */
+function isContractJudgmentNotApplicable(model: DashboardViewModel): boolean {
+  return (
+    model.currentTask.completion.contractStatus === "not_applicable" ||
+    model.contract.semanticStatus === "not_applicable"
+  );
+}
+
 function createTrustSummary(
   model: DashboardViewModel
 ): DashboardTrustPresentation {
   const isLegacy = model.currentTask.trustLevel === "legacy_v3";
-  // contract.status=not_applicable 是判定层拆除后的常态：事实以 TaskNotes 为准，
-  // 既不是「有效」也不是「未知」。
-  const isTasknotesOnly =
-    model.currentTask.completion.contractStatus === "not_applicable";
+  const isTasknotesOnly = isContractJudgmentNotApplicable(model);
   const contractLabel = isTasknotesOnly
     ? "TaskNotes 状态为准"
     : isLegacy
@@ -498,7 +546,7 @@ function createPrimaryStatus(
   }
   // 判定层拆除后 contract.status=not_applicable 是常态，不是合同异常。
   // 这一支改为回答「做到哪了 / 下一步 / 卡在哪」。
-  if (model.currentTask.completion.contractStatus === "not_applicable") {
+  if (isContractJudgmentNotApplicable(model)) {
     return createProgressStatus(model);
   }
   if (model.contract.semanticStatus !== "valid") {

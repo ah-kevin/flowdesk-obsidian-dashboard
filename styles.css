@@ -685,6 +685,10 @@
   overflow-wrap: anywhere;
 }
 
+.flowdesk-contract-scope-row > span:last-child {
+  white-space: pre-wrap;
+}
+
 .flowdesk-contract-chip-row {
   display: flex;
   flex-wrap: wrap;

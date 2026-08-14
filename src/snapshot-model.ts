@@ -101,6 +101,7 @@ export interface SnapshotTaskContract {
   task_id?: string;
   version?: string;
   goal?: string;
+  scope_text?: string;
   scope?: {
     included?: string[];
     excluded?: string[];
@@ -335,7 +336,7 @@ export interface DashboardViewModel {
   contract: {
     version: string;
     goal: string;
-    scope: { included: string[]; excluded: string[] };
+    scope: { included: string[]; excluded: string[]; text?: string };
     semanticStatus: string;
     requirements: SnapshotContractItem[];
     scenarios: SnapshotContractItem[];
@@ -459,6 +460,12 @@ export function createDashboardViewModel(
   const children = (snapshot.children ?? []).map((child) =>
     createChildViewModel(child)
   );
+  const v4TaskContract = v4Snapshot?.contract?.task_contract;
+  const v4HasScopeText =
+    isV4 &&
+    v4Snapshot?.contract?.status !== "legacy_v3" &&
+    isRecord(v4TaskContract) &&
+    Object.prototype.hasOwnProperty.call(v4TaskContract, "scope_text");
 
   return {
     errorCode: !schemaSupported
@@ -523,14 +530,21 @@ export function createDashboardViewModel(
         ? normalizeText(v4Snapshot?.contract?.task_contract?.goal, "未提供")
         : normalizeText(v3Snapshot?.contract?.goal, "未提供"),
       scope: {
-        included: (isV4
-          ? v4Snapshot?.contract?.task_contract?.scope?.included
+        included: (v4HasScopeText
+          ? []
+          : isV4
+          ? v4TaskContract?.scope?.included
           : v3Snapshot?.contract?.scope?.included ?? []
         )?.map(String) ?? [],
-        excluded: (isV4
-          ? v4Snapshot?.contract?.task_contract?.scope?.excluded
+        excluded: (v4HasScopeText
+          ? []
+          : isV4
+          ? v4TaskContract?.scope?.excluded
           : v3Snapshot?.contract?.scope?.excluded ?? []
         )?.map(String) ?? [],
+        ...(v4HasScopeText
+          ? { text: normalizeText(v4TaskContract?.scope_text, "") }
+          : {}),
       },
       semanticStatus: isV4
         ? v4Snapshot?.contract?.status === "legacy_v3"
