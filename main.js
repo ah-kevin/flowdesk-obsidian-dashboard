@@ -1551,8 +1551,8 @@ function text(value, fallback) {
 }
 
 // src/task-navigation.ts
-function taskNavigationNewLeaf(origin) {
-  return origin === "child";
+function taskNavigationLeafType(origin) {
+  return origin === "current" ? false : "tab";
 }
 
 // src/diagnostic-clipboard.ts
@@ -2266,7 +2266,10 @@ var WorkCaseDashboardRenderer = class {
       text: `${task.associationSource}${task.archived ? " \xB7 archived" : ""}`
     });
     row.createSpan({ cls: "flowdesk-case-task-status", text: task.status || "\u672A\u8BB0\u5F55" });
-    row.addEventListener("click", () => void this.dependencies.openTask(task.id));
+    row.addEventListener(
+      "click",
+      () => void this.dependencies.openTask(task.id, "work-case")
+    );
   }
   renderProgress(container, state, presentation) {
     const section2 = createSection(container, "\u6700\u8FD1 Progress", "flowdesk-case-recent-progress");
@@ -2665,7 +2668,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     });
     this.caseRenderer = new WorkCaseDashboardRenderer({
       refresh: () => this.caseAdapter.refresh(),
-      openTask: (taskPath) => this.openTask(taskPath),
+      openTask: (taskPath, origin) => this.openTask(taskPath, origin),
       openCaseSource: (casePath, source) => this.openCaseSource(casePath, source),
       openRelated: (target, casePath) => this.openRelated(target, casePath)
     });
@@ -3442,7 +3445,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       new import_obsidian.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${taskPath}`);
       return;
     }
-    await this.app.workspace.getLeaf(taskNavigationNewLeaf(origin)).openFile(file);
+    await this.app.workspace.getLeaf(taskNavigationLeafType(origin)).openFile(file);
   }
   async openCaseSource(casePath, source) {
     var _a;
