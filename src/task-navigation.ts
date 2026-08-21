@@ -1,7 +1,11 @@
-export type TaskNavigationOrigin = "current" | "parent" | "child";
+export type TaskNavigationOrigin =
+  | "current"
+  | "parent"
+  | "child"
+  | "work-case";
 
-export function taskNavigationNewLeaf(
+export function taskNavigationLeafType(
   origin: TaskNavigationOrigin
-): boolean {
-  return origin === "child";
+): false | "tab" {
+  return origin === "current" ? false : "tab";
 }

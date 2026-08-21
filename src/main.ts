@@ -74,7 +74,7 @@ import {
   type SnapshotSource,
 } from "./snapshot-model";
 import {
-  taskNavigationNewLeaf,
+  taskNavigationLeafType,
   type TaskNavigationOrigin,
 } from "./task-navigation";
 import { formatDiagnosticClipboard } from "./diagnostic-clipboard";
@@ -443,7 +443,7 @@ class FlowDeskDashboardView extends ItemView {
     });
     this.caseRenderer = new WorkCaseDashboardRenderer({
       refresh: () => this.caseAdapter.refresh(),
-      openTask: (taskPath) => this.openTask(taskPath),
+      openTask: (taskPath, origin) => this.openTask(taskPath, origin),
       openCaseSource: (casePath, source) =>
         this.openCaseSource(casePath, source),
       openRelated: (target, casePath) => this.openRelated(target, casePath),
@@ -1319,7 +1319,7 @@ class FlowDeskDashboardView extends ItemView {
       return;
     }
     await this.app.workspace
-      .getLeaf(taskNavigationNewLeaf(origin))
+      .getLeaf(taskNavigationLeafType(origin))
       .openFile(file);
   }
 

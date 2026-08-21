@@ -107,12 +107,12 @@ test("renderer 用 canonical model 渲染三层驾驶舱并接通只读导航", 
   ];
   snapshot.current.next = "很长的中文内容".repeat(60);
   const model = createWorkCaseViewModel(snapshot, snapshot.source.path);
-  const openedTasks: string[] = [];
+  const openedTasks: Array<{ taskPath: string; origin: string }> = [];
   const openedSources: number[] = [];
   const openedRelated: Array<{ target: string; casePath: string }> = [];
   const renderer = new WorkCaseDashboardRenderer({
     refresh: () => {},
-    openTask: (taskPath) => openedTasks.push(taskPath),
+    openTask: (taskPath, origin) => openedTasks.push({ taskPath, origin }),
     openCaseSource: (_casePath, source) => openedSources.push(source.lineStart),
     openRelated: (target, casePath) => openedRelated.push({ target, casePath }),
   });
@@ -134,7 +134,9 @@ test("renderer 用 canonical model 渲染三层驾驶舱并接通只读导航", 
   root.findByClass("flowdesk-case-task-row")[0].click();
   root.findByClass("flowdesk-case-current-card")[0].click();
   root.findByClass("flowdesk-case-related-link")[0].click();
-  assert.deepEqual(openedTasks, ["Tasks/Long.md"]);
+  assert.deepEqual(openedTasks, [
+    { taskPath: "Tasks/Long.md", origin: "work-case" },
+  ]);
   assert.deepEqual(openedSources, [31]);
   assert.deepEqual(openedRelated, [
     {
