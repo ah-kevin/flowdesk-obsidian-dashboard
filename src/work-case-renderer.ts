@@ -1,5 +1,6 @@
 import type { WorkCaseRenderState } from "./work-case-adapter";
 import type { WorkCaseSourceRange } from "./work-case-model";
+import type { TaskNavigationOrigin } from "./task-navigation";
 import {
   createWorkCasePresentation,
   type WorkCasePresentation,
@@ -10,7 +11,10 @@ type WorkCaseSectionPresentation = WorkCasePresentation["sections"][number];
 
 export interface WorkCaseRendererDependencies {
   refresh(): Promise<void> | void;
-  openTask(taskPath: string): Promise<void> | void;
+  openTask(
+    taskPath: string,
+    origin: TaskNavigationOrigin
+  ): Promise<void> | void;
   openCaseSource(casePath: string, source: WorkCaseSourceRange): Promise<void> | void;
   openRelated(target: string, casePath: string): Promise<void> | void;
 }
@@ -220,7 +224,9 @@ export class WorkCaseDashboardRenderer {
       text: `${task.associationSource}${task.archived ? " · archived" : ""}`,
     });
     row.createSpan({ cls: "flowdesk-case-task-status", text: task.status || "未记录" });
-    row.addEventListener("click", () => void this.dependencies.openTask(task.id));
+    row.addEventListener("click", () =>
+      void this.dependencies.openTask(task.id, "work-case")
+    );
   }
 
   private renderProgress(

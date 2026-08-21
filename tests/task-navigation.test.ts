@@ -1,21 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { taskNavigationNewLeaf } from "../src/task-navigation";
+import { taskNavigationLeafType } from "../src/task-navigation";
 
-test("直接子任务使用新 leaf，当前任务与父任务复用当前 leaf", () => {
-  assert.equal(taskNavigationNewLeaf("child"), true);
-  assert.equal(taskNavigationNewLeaf("current"), false);
-  assert.equal(taskNavigationNewLeaf("parent"), false);
+test("当前任务复用现有 leaf，所有跨 Task 跳转显式创建新标签", () => {
+  assert.equal(taskNavigationLeafType("current"), false);
+  assert.equal(taskNavigationLeafType("parent"), "tab");
+  assert.equal(taskNavigationLeafType("child"), "tab");
+  assert.equal(taskNavigationLeafType("work-case"), "tab");
   assert.deepEqual(
-    (["current", "parent", "child"] as const).map((origin) => [
+    (["current", "parent", "child", "work-case"] as const).map((origin) => [
       origin,
-      taskNavigationNewLeaf(origin),
+      taskNavigationLeafType(origin),
     ]),
     [
       ["current", false],
-      ["parent", false],
-      ["child", true],
+      ["parent", "tab"],
+      ["child", "tab"],
+      ["work-case", "tab"],
     ]
   );
 });
