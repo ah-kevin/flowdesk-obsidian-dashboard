@@ -36,6 +36,65 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var import_child_process = require("child_process");
+
+// src/tasknotes-auth.ts
+function parseTaskNotesEnvironment(configuration) {
+  let value;
+  try {
+    value = JSON.parse(configuration.trim() || "{}");
+  } catch (e) {
+    throw new Error("\u73AF\u5883\u53D8\u91CF JSON \u683C\u5F0F\u65E0\u6548\uFF0C\u8BF7\u586B\u5199\u952E\u503C\u5BF9\u8C61\uFF0C\u503C\u4F7F\u7528\u5B57\u7B26\u4E32\u3002");
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("\u73AF\u5883\u53D8\u91CF JSON \u5FC5\u987B\u662F\u5BF9\u8C61\uFF0C\u503C\u4F7F\u7528\u5B57\u7B26\u4E32\u3002");
+  }
+  for (const [key, item] of Object.entries(value)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || typeof item !== "string" || item.includes("\0")) {
+      throw new Error("\u73AF\u5883\u53D8\u91CF JSON \u7684\u952E\u540D\u5FC5\u987B\u662F\u6709\u6548\u53D8\u91CF\u540D\uFF0C\u503C\u5FC5\u987B\u662F\u4E0D\u542B\u7A7A\u5B57\u7B26\u7684\u5B57\u7B26\u4E32\u3002");
+    }
+  }
+  return value;
+}
+function resolveTaskNotesAuth(configuration, inherited = process.env) {
+  const configured = parseTaskNotesEnvironment(configuration);
+  const env = { ...inherited, ...configured };
+  for (const key of ["TASKNOTES_API_TOKEN", "TASKNOTES_AUTH_TOKEN"]) {
+    if (env[key] !== void 0) env[key] = env[key].trim();
+    if (/[\r\n]/.test(env[key] || "")) {
+      throw new Error("TaskNotes token \u683C\u5F0F\u65E0\u6548\uFF0C\u4E0D\u80FD\u5305\u542B\u6362\u884C\u7B26\u3002");
+    }
+  }
+  const token = env.TASKNOTES_API_TOKEN || env.TASKNOTES_AUTH_TOKEN || "";
+  return { env, token };
+}
+function resolveTaskNotesApiUrl(configuredUrl, env) {
+  var _a;
+  return (configuredUrl.trim() || ((_a = env.TASKNOTES_API_URL) == null ? void 0 : _a.trim()) || "http://127.0.0.1:18090").replace(/\/+$/, "");
+}
+function formatTaskNotesAuthError(message, token) {
+  if (/TaskNotes API 401\b/.test(message)) {
+    return token ? "TaskNotes API 401\uFF1A\u5DF2\u53D1\u9001 token\uFF0C\u4F46\u670D\u52A1\u62D2\u7EDD\u9274\u6743\uFF0C\u8BF7\u68C0\u67E5 token \u662F\u5426\u6B63\u786E\u6216\u5DF2\u5931\u6548\u3002" : "TaskNotes API 401\uFF1Atoken \u672A\u914D\u7F6E\uFF0C\u8BF7\u5728\u63D2\u4EF6\u7684\u73AF\u5883\u53D8\u91CF JSON \u4E2D\u586B\u5199 TASKNOTES_API_TOKEN\u3002";
+  }
+  if (!token) return message;
+  for (const value of [JSON.stringify(token).slice(1, -1), token]) {
+    message = message.split(value).join("[REDACTED]");
+  }
+  return message;
+}
+function sanitizeTaskNotesSnapshot(snapshot, token) {
+  function visit(value) {
+    if (Array.isArray(value)) return value.map(visit);
+    if (!value || typeof value !== "object") return value;
+    const result = {};
+    for (const [key, item] of Object.entries(value)) {
+      result[key] = (key === "message" || key === "error") && typeof item === "string" ? formatTaskNotesAuthError(item, token) : visit(item);
+    }
+    return result;
+  }
+  return visit(snapshot);
+}
+
+// src/main.ts
 var import_fs = require("fs");
 var import_os = require("os");
 var path3 = __toESM(require("path"));
@@ -2389,9 +2448,9 @@ var execFileAsync = (0, import_util.promisify)(import_child_process.execFile);
 var DEFAULT_SETTINGS = {
   flowdeskRoot: "",
   workingDirectory: "",
-  apiUrl: ""
+  apiUrl: "",
+  tasknotesEnv: "{}"
 };
-var DEFAULT_TASKNOTES_API_URL = "http://127.0.0.1:18090";
 var EvidenceReviewCommandError = class extends Error {
   constructor(code, message) {
     super(message);
@@ -2498,42 +2557,49 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     workspace.revealLeaf(leaf);
   }
   async loadSnapshot(taskPath, signal) {
+    var _a;
+    const auth = resolveTaskNotesAuth((_a = this.settings.tasknotesEnv) != null ? _a : "{}");
     const invocation = this.createSnapshotInvocation(taskPath, "json");
     let stdout;
     try {
       const result = await execFileAsync(invocation.executable, invocation.args, {
-        ...createSnapshotExecutionOptions(invocation.cwd, signal)
+        ...createSnapshotExecutionOptions(invocation.cwd, signal),
+        env: auth.env
       });
       stdout = result.stdout;
     } catch (error) {
-      throw new Error(formatSnapshotCommandError(error));
+      throw new Error(formatTaskNotesAuthError(formatSnapshotCommandError(error), auth.token));
     }
     try {
-      return JSON.parse(stdout);
+      return sanitizeTaskNotesSnapshot(JSON.parse(stdout), auth.token);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Snapshot JSON \u89E3\u6790\u5931\u8D25\uFF1A${message}`);
+      throw new Error(formatTaskNotesAuthError(`Snapshot JSON \u89E3\u6790\u5931\u8D25\uFF1A${message}`, auth.token));
     }
   }
   async loadWorkCaseSnapshot(casePath, signal) {
+    var _a;
+    const auth = resolveTaskNotesAuth((_a = this.settings.tasknotesEnv) != null ? _a : "{}");
     const invocation = this.createWorkCaseSnapshotInvocation(casePath);
     let stdout;
     try {
       const result = await execFileAsync(invocation.executable, invocation.args, {
-        ...createSnapshotExecutionOptions(invocation.cwd, signal)
+        ...createSnapshotExecutionOptions(invocation.cwd, signal),
+        env: auth.env
       });
       stdout = result.stdout;
     } catch (error) {
-      throw new Error(formatWorkCaseCommandError(error));
+      throw new Error(formatTaskNotesAuthError(formatWorkCaseCommandError(error), auth.token));
     }
     try {
-      return JSON.parse(stdout);
+      return sanitizeTaskNotesSnapshot(JSON.parse(stdout), auth.token);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Work Case snapshot JSON \u89E3\u6790\u5931\u8D25\uFF1A${message}`);
+      throw new Error(formatTaskNotesAuthError(`Work Case snapshot JSON \u89E3\u6790\u5931\u8D25\uFF1A${message}`, auth.token));
     }
   }
   createSnapshotInvocation(taskPath, format) {
+    var _a;
     const flowdeskRoot = this.resolveFlowDeskRoot();
     const workingDirectory = expandHomePath(this.settings.workingDirectory.trim()) || flowdeskRoot;
     return buildSnapshotInvocation(
@@ -2541,17 +2607,18 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
         flowdeskRoot,
         taskPath,
         workingDirectory,
-        apiUrl: this.settings.apiUrl.trim()
+        apiUrl: resolveTaskNotesApiUrl(this.settings.apiUrl, resolveTaskNotesAuth((_a = this.settings.tasknotesEnv) != null ? _a : "{}").env)
       },
       format
     );
   }
   createWorkCaseSnapshotInvocation(casePath) {
+    var _a;
     return buildWorkCaseSnapshotInvocation({
       flowdeskRoot: this.resolveFlowDeskRoot(),
       casePath,
       workingDirectory: this.resolveVaultRoot(),
-      apiUrl: this.settings.apiUrl.trim()
+      apiUrl: resolveTaskNotesApiUrl(this.settings.apiUrl, resolveTaskNotesAuth((_a = this.settings.tasknotesEnv) != null ? _a : "{}").env)
     });
   }
   async copyDashboardCommand(taskPath) {
@@ -2587,21 +2654,33 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     }
   }
   async requestTaskNotes(method, endpoint, body) {
-    const baseUrl = (this.settings.apiUrl.trim() || DEFAULT_TASKNOTES_API_URL).replace(
-      /\/+$/,
-      ""
-    );
+    var _a;
+    const auth = resolveTaskNotesAuth((_a = this.settings.tasknotesEnv) != null ? _a : "{}");
+    const baseUrl = resolveTaskNotesApiUrl(this.settings.apiUrl, auth.env);
+    const headers = {};
+    if (body) headers["Content-Type"] = "application/json";
+    if (auth.token) headers.Authorization = `Bearer ${auth.token}`;
     const response = await fetch(`${baseUrl}${endpoint}`, {
       method,
-      headers: body ? { "Content-Type": "application/json" } : void 0,
+      headers,
       body: body ? JSON.stringify(body) : void 0
     });
     if (!response.ok) {
       const detail = await response.text().catch(() => "");
-      throw Object.assign(
-        new Error(`TaskNotes API ${response.status}: ${detail || response.statusText}`),
-        { stdout: detail }
+      let safeDetail;
+      try {
+        safeDetail = JSON.stringify(sanitizeTaskNotesSnapshot(JSON.parse(detail), auth.token));
+      } catch (e) {
+        safeDetail = formatTaskNotesAuthError(detail, auth.token);
+      }
+      const message = formatTaskNotesAuthError(
+        `TaskNotes API ${response.status}: ${safeDetail || response.statusText}`,
+        auth.token
       );
+      if (response.status === 401) {
+        safeDetail = JSON.stringify({ code: "tasknotes_auth_failed", error: message });
+      }
+      throw Object.assign(new Error(message), { stdout: safeDetail });
     }
     return await response.json().catch(() => ({}));
   }
@@ -3541,12 +3620,30 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian.PluginSettingTab
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("TaskNotes API \u5730\u5740").setDesc("\u53EF\u9009\uFF1B\u7559\u7A7A\u65F6\u4F7F\u7528 FlowDesk CLI \u9ED8\u8BA4\u503C\u3002").addText(
+    new import_obsidian.Setting(containerEl).setName("TaskNotes API \u5730\u5740").setDesc("\u53EF\u9009\uFF1B\u7559\u7A7A\u65F6\u4F7F\u7528\u73AF\u5883\u53D8\u91CF TASKNOTES_API_URL \u6216\u672C\u673A\u9ED8\u8BA4\u5730\u5740\u3002").addText(
       (text2) => text2.setPlaceholder("http://127.0.0.1:18090").setValue(this.plugin.settings.apiUrl).onChange(async (value) => {
         this.plugin.settings.apiUrl = value.trim();
         await this.plugin.saveSettings();
       })
     );
+    const environmentSetting = new import_obsidian.Setting(containerEl).setName("TaskNotes \u73AF\u5883\u53D8\u91CF\uFF08JSON\uFF09").setDesc("\u586B\u5199 JSON \u5BF9\u8C61\uFF0C\u503C\u4F7F\u7528\u5B57\u7B26\u4E32\u3002\u9010\u9879\u5408\u5E76\u5230\u672C\u6B21\u6267\u884C\u73AF\u5883\uFF0C\u4FDD\u7559\u672A\u914D\u7F6E\u7684\u73B0\u6709\u53D8\u91CF\uFF0C\u540C\u540D\u53D8\u91CF\u6309 JSON \u66F4\u65B0\u3002");
+    const environmentError = environmentSetting.descEl.createDiv({ attr: { role: "status" } });
+    environmentSetting.addTextArea((text2) => {
+      text2.inputEl.rows = 5;
+      text2.inputEl.cols = 38;
+      text2.inputEl.spellcheck = false;
+      text2.setPlaceholder('{\n  "TASKNOTES_API_TOKEN": "your-token"\n}').setValue(this.plugin.settings.tasknotesEnv).onChange(async (value) => {
+        try {
+          resolveTaskNotesAuth(value);
+        } catch (error) {
+          environmentError.setText(`${error instanceof Error ? error.message : "\u73AF\u5883\u53D8\u91CF\u914D\u7F6E\u65E0\u6548"} \u5C1A\u672A\u4FDD\u5B58\u3002`);
+          return;
+        }
+        environmentError.setText("");
+        this.plugin.settings.tasknotesEnv = value.trim() || "{}";
+        await this.plugin.saveSettings();
+      });
+    });
   }
 };
 function createSection2(container, title, meta = "", className = "") {

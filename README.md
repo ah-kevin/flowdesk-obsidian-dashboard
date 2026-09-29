@@ -23,6 +23,28 @@ Directory 作为发布路径。
   `/Users/bjke/workspaces/flowdesk-plugin`。如果 `workingDirectory` 留空，插件默认使用
   FlowDesk repo path 作为 snapshot 命令工作目录。
 
+## TaskNotes 鉴权配置
+
+在插件设置的 **TaskNotes 环境变量（JSON）** 中直接填写：
+
+```json
+{
+  "TASKNOTES_API_TOKEN": "your-token"
+}
+```
+
+- JSON 必须是对象，环境变量值必须是字符串；无效内容会显示错误，并保留上次有效配置。
+- JSON 逐项合并到现有进程环境，保留未配置的变量，同名变量按 JSON 更新。合并结果供
+  Dashboard 子进程和请求使用，不修改 Obsidian 的全局环境。
+- token 同时供 Task snapshot、Work Case snapshot 和复核请求使用，兼容 `TASKNOTES_AUTH_TOKEN`。
+  三个入口都从合并后的环境读取凭证：先读取非空的 `TASKNOTES_API_TOKEN`，再读取
+  `TASKNOTES_AUTH_TOKEN`。填写空字符串只清空对应变量。
+- 留空或填写 `{}` 时使用进程环境；不读取 env 文件。修改配置后，下一次刷新或复核立即生效。
+- 可在 JSON 中配置 `TASKNOTES_API_URL`；单独填写的“TaskNotes API 地址”优先级更高。
+- 设置保存在插件本地 `data.json` 中。token 不进入 CLI 参数、复制命令或鉴权错误内容。
+
+401 提示会区分“未配置 token”和“已发送 token 但服务拒绝鉴权”。
+
 ## GitHub Actions 发布
 
 发布由 GitHub Actions 执行，本地不直接创建 GitHub Release。

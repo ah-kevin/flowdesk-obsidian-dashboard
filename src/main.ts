@@ -13,6 +13,12 @@ import {
   WorkspaceLeaf,
 } from "obsidian";
 import { execFile } from "child_process";
+import {
+  formatTaskNotesAuthError,
+  resolveTaskNotesApiUrl,
+  resolveTaskNotesAuth,
+  sanitizeTaskNotesSnapshot,
+} from "./tasknotes-auth";
 import { existsSync } from "fs";
 import { homedir } from "os";
 import * as path from "path";
@@ -97,15 +103,15 @@ interface FlowDeskDashboardSettings {
   flowdeskRoot: string;
   workingDirectory: string;
   apiUrl: string;
+  tasknotesEnv: string;
 }
 
 const DEFAULT_SETTINGS: FlowDeskDashboardSettings = {
   flowdeskRoot: "",
   workingDirectory: "",
   apiUrl: "",
+  tasknotesEnv: "{}",
 };
-
-const DEFAULT_TASKNOTES_API_URL = "http://127.0.0.1:18090";
 
 interface ExecFileFailure extends Error {
   code?: number | string;
@@ -231,21 +237,23 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     taskPath: string,
     signal: AbortSignal
   ): Promise<ExecutionSnapshot> {
+    const auth = resolveTaskNotesAuth(this.settings.tasknotesEnv ?? "{}");
     const invocation = this.createSnapshotInvocation(taskPath, "json");
     let stdout: string;
     try {
       const result = await execFileAsync(invocation.executable, invocation.args, {
         ...createSnapshotExecutionOptions(invocation.cwd, signal),
+        env: auth.env,
       });
       stdout = result.stdout;
     } catch (error) {
-      throw new Error(formatSnapshotCommandError(error));
+      throw new Error(formatTaskNotesAuthError(formatSnapshotCommandError(error), auth.token));
     }
     try {
-      return JSON.parse(stdout) as ExecutionSnapshot;
+      return sanitizeTaskNotesSnapshot(JSON.parse(stdout) as ExecutionSnapshot, auth.token);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Snapshot JSON 解析失败：${message}`);
+      throw new Error(formatTaskNotesAuthError(`Snapshot JSON 解析失败：${message}`, auth.token));
     }
   }
 
@@ -253,21 +261,23 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     casePath: string,
     signal: AbortSignal
   ): Promise<unknown> {
+    const auth = resolveTaskNotesAuth(this.settings.tasknotesEnv ?? "{}");
     const invocation = this.createWorkCaseSnapshotInvocation(casePath);
     let stdout: string;
     try {
       const result = await execFileAsync(invocation.executable, invocation.args, {
         ...createSnapshotExecutionOptions(invocation.cwd, signal),
+        env: auth.env,
       });
       stdout = result.stdout;
     } catch (error) {
-      throw new Error(formatWorkCaseCommandError(error));
+      throw new Error(formatTaskNotesAuthError(formatWorkCaseCommandError(error), auth.token));
     }
     try {
-      return JSON.parse(stdout) as unknown;
+      return sanitizeTaskNotesSnapshot(JSON.parse(stdout) as unknown, auth.token);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Work Case snapshot JSON 解析失败：${message}`);
+      throw new Error(formatTaskNotesAuthError(`Work Case snapshot JSON 解析失败：${message}`, auth.token));
     }
   }
 
@@ -280,7 +290,7 @@ export default class FlowDeskDashboardPlugin extends Plugin {
         flowdeskRoot,
         taskPath,
         workingDirectory,
-        apiUrl: this.settings.apiUrl.trim(),
+        apiUrl: resolveTaskNotesApiUrl(this.settings.apiUrl, resolveTaskNotesAuth(this.settings.tasknotesEnv ?? "{}").env),
       },
       format
     );
@@ -291,7 +301,7 @@ export default class FlowDeskDashboardPlugin extends Plugin {
       flowdeskRoot: this.resolveFlowDeskRoot(),
       casePath,
       workingDirectory: this.resolveVaultRoot(),
-      apiUrl: this.settings.apiUrl.trim(),
+      apiUrl: resolveTaskNotesApiUrl(this.settings.apiUrl, resolveTaskNotesAuth(this.settings.tasknotesEnv ?? "{}").env),
     });
   }
 
@@ -342,21 +352,33 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     endpoint: string,
     body?: unknown
   ): Promise<T> {
-    const baseUrl = (this.settings.apiUrl.trim() || DEFAULT_TASKNOTES_API_URL).replace(
-      /\/+$/,
-      ""
-    );
+    const auth = resolveTaskNotesAuth(this.settings.tasknotesEnv ?? "{}");
+    const baseUrl = resolveTaskNotesApiUrl(this.settings.apiUrl, auth.env);
+    const headers: Record<string, string> = {};
+    if (body) headers["Content-Type"] = "application/json";
+    if (auth.token) headers.Authorization = `Bearer ${auth.token}`;
     const response = await fetch(`${baseUrl}${endpoint}`, {
       method,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers,
       body: body ? JSON.stringify(body) : undefined,
     });
     if (!response.ok) {
       const detail = await response.text().catch(() => "");
-      throw Object.assign(
-        new Error(`TaskNotes API ${response.status}: ${detail || response.statusText}`),
-        { stdout: detail }
+      let safeDetail: string;
+      try {
+        // Decode escaped credentials before redacting structured upstream errors.
+        safeDetail = JSON.stringify(sanitizeTaskNotesSnapshot(JSON.parse(detail), auth.token));
+      } catch {
+        safeDetail = formatTaskNotesAuthError(detail, auth.token);
+      }
+      const message = formatTaskNotesAuthError(
+        `TaskNotes API ${response.status}: ${safeDetail || response.statusText}`,
+        auth.token
       );
+      if (response.status === 401) {
+        safeDetail = JSON.stringify({ code: "tasknotes_auth_failed", error: message });
+      }
+      throw Object.assign(new Error(message), { stdout: safeDetail });
     }
     return (await response.json().catch(() => ({}))) as T;
   }
@@ -1442,13 +1464,35 @@ class FlowDeskDashboardSettingTab extends PluginSettingTab {
       );
     new Setting(containerEl)
       .setName("TaskNotes API 地址")
-      .setDesc("可选；留空时使用 FlowDesk CLI 默认值。")
+      .setDesc("可选；留空时使用环境变量 TASKNOTES_API_URL 或本机默认地址。")
       .addText((text) =>
         text.setPlaceholder("http://127.0.0.1:18090").setValue(this.plugin.settings.apiUrl).onChange(async (value) => {
           this.plugin.settings.apiUrl = value.trim();
           await this.plugin.saveSettings();
         })
       );
+    const environmentSetting = new Setting(containerEl)
+      .setName("TaskNotes 环境变量（JSON）")
+      .setDesc("填写 JSON 对象，值使用字符串。逐项合并到本次执行环境，保留未配置的现有变量，同名变量按 JSON 更新。");
+    const environmentError = environmentSetting.descEl.createDiv({ attr: { role: "status" } });
+    environmentSetting.addTextArea((text) => {
+      text.inputEl.rows = 5;
+      text.inputEl.cols = 38;
+      text.inputEl.spellcheck = false;
+      text.setPlaceholder('{\n  "TASKNOTES_API_TOKEN": "your-token"\n}')
+        .setValue(this.plugin.settings.tasknotesEnv)
+        .onChange(async (value) => {
+          try {
+            resolveTaskNotesAuth(value);
+          } catch (error) {
+            environmentError.setText(`${error instanceof Error ? error.message : "环境变量配置无效"} 尚未保存。`);
+            return;
+          }
+          environmentError.setText("");
+          this.plugin.settings.tasknotesEnv = value.trim() || "{}";
+          await this.plugin.saveSettings();
+        });
+    });
   }
 }
 
