@@ -1,3 +1,4 @@
+import { CORE_ROOT } from "./support/owned-environment.ts";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -354,7 +355,7 @@ test("当前任务进度文案区分 direct children 与 leaf 自身 gate", () =
 
 test("真实 producer fixture 完整等值并映射 task-centric 字段", () => {
   const producerPath = path.join(
-    process.env.FLOWDESK_PLUGIN_ROOT ?? "/Users/bjke/workspaces/flowdesk-plugin",
+    CORE_ROOT,
     "tests/fixtures/execution_snapshot/sdd_v3_real_root_snapshot.json"
   );
   const bundledPath = path.join(

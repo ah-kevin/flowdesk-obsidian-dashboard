@@ -55,11 +55,13 @@ CI 触发规则：
 - Push 到 `main`：同上，并上传 workflow artifact 便于检查。
 - Push `v*` tag：同上，然后创建或更新 GitHub Release 并上传 release assets。
 
-本地发布前检查可运行：
+本地完整发布前检查需要真实 Core checkout（含已安装的 `mcp` 依赖）、Python 3 和支持
+`--test-isolation=none` 的 Node（当前验证 Node 24）。可运行：
 
 ```bash
 npm install
-npm run release:prepare
+FLOWDESK_PLUGIN_ROOT="/path/to/flowdesk-plugin" \
+FLOWDESK_TEST_PYTHON="/path/to/python3" npm run release:prepare
 ```
 
 `release:prepare` 会依次执行：
@@ -239,14 +241,21 @@ Dashboard 已退出主动人工 review：没有复核 Modal、reviewed 标签 PA
 
 ## 源码测试与验收边界
 
-`npm test` 使用唯一 `tests/run-tests.mjs` runner（Node 22+ 的 node:test 无子进程隔离模式，
+`npm test` 使用唯一 `tests/run-tests.mjs` runner（支持 `--test-isolation=none` 的 node:test 无子进程隔离模式，
 当前已验证 Node 24）。runner 将 HOME/vault/state/tmp/auth/API 替换为临时 owned 环境，
 复用 Core 的 Node/Python cooperative guard，只允许精确 Node/esbuild/两条 producer argv/cwd
 及当前测试实际创建的 loopback 端口；真实 open、Obsidian、codex、claude、queue 与业务
 TaskNotes 地址被拒绝。guard 违规会令测试失败；不声称这是 native syscall 安全沙箱。
 
-真实 producer 依赖当前 `/Users/bjke/workspaces/flowdesk-plugin` 的源码及 guard；缺依赖会明确
-失败，不访问安装 cache 或用户 API，也不把跳过集成称为通过。默认 suite 已无 live Task 探针。
+真实 producer、writer 和 guard 使用同一个 canonical Core root：显式 `FLOWDESK_PLUGIN_ROOT`
+优先，未配置时仅查找仓库相邻的 `flowdesk-plugin`（同级或上一级目录中的同级 checkout）。
+显式配置无效或缺源码/依赖时明确失败，不访问安装 cache 或用户 API，不跳过真实集成。
+Python 由 `FLOWDESK_TEST_PYTHON` 或当前 PATH 的 `python3` 选择，owned launcher 保留所选
+解释器路径与 venv prefix；不继承宿主凭据、PYTHONPATH 或 NODE_OPTIONS。
+
+公开 GitHub CI 使用 Node 20，仅运行现有 build/typecheck/check:syntax/release:verify/release:package，
+不读取私有 Core、不运行完整测试。完整隔离 suite 与 Core 联调在本地 `release:prepare` 执行，
+CI 构建成功不能作为完整测试通过或真实 Obsidian 验收的证据。默认 suite 已无 live Task 探针。
 受控 HTTP→真实 producer→compiled Dashboard 的 host/DOM double 只证明 consumer 合同；
 构建产物不意味着插件已安装，真实 Obsidian 布局/安装/精确原文定位和宿主接续须另验收。
 

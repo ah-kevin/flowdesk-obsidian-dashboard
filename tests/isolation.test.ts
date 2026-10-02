@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
-import { ownedEnvironment } from "./support/owned-environment.ts";
+import { readFileSync, writeFileSync, realpathSync } from "node:fs";
+import { ownedEnvironment, updateCapabilities, CORE_ROOT } from "./support/owned-environment.ts";
 
 test("default runner has owned HOME/vault/auth and guards native, state and network", async (t) => {
   const fixture = await ownedEnvironment(t);
@@ -33,14 +33,29 @@ try{fetch('http://127.0.0.1:18090/api/tasks');process.exit(12);}catch(e){if(!/te
 
 test("real Python producer child refuses non-owned business API before connecting",async(t)=>{
   const fixture=await ownedEnvironment(t);
-  const executable="/Users/bjke/workspaces/flowdesk-plugin/bin/flowdesk-execution-snapshot";
+  const executable=CORE_ROOT+"/bin/flowdesk-execution-snapshot";
   const args=["Tasks/Owned negative.md","--api-url","http://127.0.0.1:18090","--working-directory",fixture.root,"--format","json"];
-  fixture.allowCommand([executable,...args],"/Users/bjke/workspaces/flowdesk-plugin");
-  const result=execFileSync(executable,args,{env:fixture.env,cwd:"/Users/bjke/workspaces/flowdesk-plugin",encoding:"utf8"});
+  fixture.allowCommand([executable,...args],CORE_ROOT);
+  const result=execFileSync(executable,args,{env:fixture.env,cwd:CORE_ROOT,encoding:"utf8"});
   const snapshot=JSON.parse(result);
   assert.notEqual(snapshot.observation.health,"healthy");
   const violations=fixture.violations();
   assert.ok(violations.length>0);
   assert.ok(violations.every((v:any)=>v.kind==="network"));
   fixture.expectViolations(violations.length);
+});
+
+test("owned Python keeps the selected interpreter prefix, dependency and guard", async (t) => {
+  const fixture = await ownedEnvironment(t);
+  const probe = fixture.path("flowdesk-execution-snapshot");
+  writeFileSync(probe, `#!/usr/bin/env python3
+import importlib.util, json, sys
+from support import guard
+pip = __import__("pip").__file__ if importlib.util.find_spec("pip") else None
+print(json.dumps({"prefix": sys.prefix, "base_prefix": sys.base_prefix, "pip": pip, "guard": guard.capabilities() is not None}))
+`, { mode: 0o755 });
+  updateCapabilities(fixture.file, data => data.commands.push({ executable: realpathSync(probe), args: [], cwd: realpathSync(fixture.root) }));
+  const actual = JSON.parse(execFileSync(probe, [], { env: fixture.env, cwd: fixture.root, encoding: "utf8" }));
+  assert.equal(actual.guard, true);
+  assert.deepEqual({ prefix: realpathSync(actual.prefix), base_prefix: realpathSync(actual.base_prefix), pip: actual.pip ? realpathSync(actual.pip) : null }, JSON.parse(process.env.FLOWDESK_TEST_PYTHON_IDENTITY ?? "null"));
 });

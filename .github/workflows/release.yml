@@ -32,7 +32,12 @@ jobs:
         run: npm ci --registry=https://registry.npmjs.org
 
       - name: Build and verify release package
-        run: npm run release:prepare
+        run: |
+          npm run build
+          npm run typecheck
+          npm run check:syntax
+          npm run release:verify
+          npm run release:package
 
       - name: Read plugin version
         id: plugin

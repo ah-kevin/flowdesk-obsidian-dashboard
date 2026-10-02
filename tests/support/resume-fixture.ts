@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { buildTaskUpdate, sha256 } from "/Users/bjke/workspaces/flowdesk-plugin/mcp/src/tools/task-update-details.ts";
+import { buildTaskUpdate, sha256 } from "@flowdesk-test/task-update-details";
 import { ownedEnvironment, CORE_ROOT } from "./owned-environment.ts";
 import { buildWorkCaseSnapshotInvocation } from "../../src/work-case-invocation.ts";
 const execAsync=promisify(execFile);

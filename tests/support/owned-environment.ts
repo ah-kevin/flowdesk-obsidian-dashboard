@@ -5,7 +5,8 @@ import { createServer, type RequestListener, type Server } from "node:http";
 import path from "node:path";
 import type { TestContext } from "node:test";
 
-export const CORE_ROOT = "/Users/bjke/workspaces/flowdesk-plugin";
+if (!process.env.FLOWDESK_PLUGIN_ROOT) throw new Error("Run tests with the isolated tests/run-tests.mjs runner");
+export const CORE_ROOT = process.env.FLOWDESK_PLUGIN_ROOT;
 export const PRODUCERS = ["flowdesk-execution-snapshot", "flowdesk-work-case-snapshot"];
 export function updateCapabilities(file: string, mutate: (data: any) => void) {
   const data = JSON.parse(readFileSync(file, "utf8"));
