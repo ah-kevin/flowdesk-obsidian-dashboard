@@ -3,6 +3,7 @@ import {
   ItemView,
   MarkdownRenderer,
   MarkdownView,
+  parseLinktext,
   Notice,
   Plugin,
   PluginSettingTab,
@@ -67,9 +68,9 @@ import {
 } from "./dashboard-presentation";
 import {
   createDashboardViewModel,
-  resolveDiagnosticNavigation,
   type DashboardViewModel,
   type ExecutionSnapshot,
+  type SnapshotBodySection,
   type SnapshotDiagnostic,
   type SnapshotSource,
 } from "./snapshot-model";
@@ -88,6 +89,11 @@ import {
 } from "./work-case-invocation";
 import type { WorkCaseSourceRange } from "./work-case-model";
 import { WorkCaseDashboardRenderer } from "./work-case-renderer";
+import { createWorkCaseViewModel } from "./work-case-model";
+import { locateTaskSource, resolveRelatedTarget, chooseTaskCase, type RelatedContext } from "./source-navigation";
+import { RepositoryMarkdownOpener, type RepositoryOpenDependencies, type RepositoryOpenResult } from "./repository-open";
+import { collectMarkdownLinkSources, renderedLinkSource } from "./markdown-link-source";
+import { createCaseContent, type CaseContentObservation } from "./case-content";
 
 export const FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
 
@@ -115,6 +121,11 @@ interface ExecFileFailure extends Error {
 
 export default class FlowDeskDashboardPlugin extends Plugin {
   settings!: FlowDeskDashboardSettings;
+  repositoryOpenDependencies: RepositoryOpenDependencies = {};
+
+  openRepositoryMarkdown(absolutePath: string): Promise<RepositoryOpenResult> {
+    return new RepositoryMarkdownOpener(this.repositoryOpenDependencies).open(absolutePath);
+  }
 
   async onload() {
     await this.loadSettings();
@@ -253,17 +264,23 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     const auth = resolveTaskNotesAuth(this.settings.tasknotesEnv ?? "{}");
     const invocation = this.createWorkCaseSnapshotInvocation(casePath);
     let stdout: string;
+    let resumeUnavailable = false;
+    const execute = (args: string[]) => execFileAsync(invocation.executable, args, {
+      ...createSnapshotExecutionOptions(invocation.cwd, signal), env: auth.env,
+    });
     try {
-      const result = await execFileAsync(invocation.executable, invocation.args, {
-        ...createSnapshotExecutionOptions(invocation.cwd, signal),
-        env: auth.env,
-      });
-      stdout = result.stdout;
+      const result = await execute(invocation.args);stdout = result.stdout;
     } catch (error) {
-      throw new Error(formatTaskNotesAuthError(formatWorkCaseCommandError(error), auth.token));
+      const failure = error as ExecFileFailure;
+      if (failure.code !== 2 || !/^.*: error: unrecognized arguments: --resume-bundle\s*$/m.test(failure.stderr ?? "")) throw new Error(formatTaskNotesAuthError(formatWorkCaseCommandError(error), auth.token));
+      // One read-only compatibility retry for this exact unsupported opt-in flag.
+      try { const result = await execute(invocation.args.filter(arg => arg !== "--resume-bundle")); stdout = result.stdout; resumeUnavailable = true; }
+      catch (retryError) { throw new Error(formatTaskNotesAuthError(formatWorkCaseCommandError(retryError), auth.token)); }
     }
     try {
-      return sanitizeTaskNotesSnapshot(JSON.parse(stdout) as unknown, auth.token);
+      const snapshot = sanitizeTaskNotesSnapshot(JSON.parse(stdout) as Record<string, unknown>, auth.token);
+      if (resumeUnavailable && Array.isArray(snapshot.diagnostics)) snapshot.diagnostics.push({code:"resume_bundle_unavailable",severity:"warning",path:"resume_bundle",message:"当前producer不支持恢复投影；默认schema1只读内容保留。"});
+      return snapshot;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(formatTaskNotesAuthError(`Work Case snapshot JSON 解析失败：${message}`, auth.token));
@@ -285,10 +302,11 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     );
   }
 
-  createWorkCaseSnapshotInvocation(casePath: string): WorkCaseSnapshotInvocation {
+  createWorkCaseSnapshotInvocation(casePath: string, includeResumeBundle = true): WorkCaseSnapshotInvocation {
     return buildWorkCaseSnapshotInvocation({
       flowdeskRoot: this.resolveFlowDeskRoot(),
       casePath,
+      includeResumeBundle,
       workingDirectory: this.resolveVaultRoot(),
       apiUrl: resolveTaskNotesApiUrl(this.settings.apiUrl, resolveTaskNotesAuth(this.settings.tasknotesEnv ?? "{}").env),
     });
@@ -303,6 +321,14 @@ export default class FlowDeskDashboardPlugin extends Plugin {
   async loadTaskDetails(taskPath: string, signal: AbortSignal): Promise<TaskDetailsRead> {
     const auth = resolveTaskNotesAuth(this.settings.tasknotesEnv ?? "{}");
     return readTaskDetails({ taskPath, signal, auth, apiUrl: resolveTaskNotesApiUrl(this.settings.apiUrl, auth.env) });
+  }
+
+  async loadCaseContent(casePath: string, signal: AbortSignal): Promise<CaseContentObservation> {
+    const file = this.app.vault.getAbstractFileByPath(casePath);
+    if (!(file instanceof TFile) || file.path !== casePath) throw new Error("未找到准确Case原文");
+    const details = await this.app.vault.cachedRead(file);
+    if (signal.aborted) throw new Error("Case原文请求已取消");
+    return createCaseContent(casePath, details, new Date().toISOString());
   }
 
   async loadSettings() {
@@ -342,6 +368,8 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     throw new Error("未找到 FlowDesk 仓库路径，请在插件设置里配置 FlowDesk repo path。");
   }
 
+  vaultRoot(): string { return this.resolveVaultRoot(); }
+
   private resolveVaultRoot(): string {
     const adapter = this.app.vault.adapter as unknown as {
       getBasePath?: () => string;
@@ -371,8 +399,17 @@ class FlowDeskDashboardView extends ItemView {
   private rawContentGeneration = 0;
   private rawContentLoading = false;
   private rawContentOpen = false;
+  private navigationController: AbortController | null = null;
+  private navigationOpening: {path:string;signal:AbortSignal} | null = null;
+  private relatedTargetPanel: HTMLElement | null = null;
 
-  private clearRawTaskContent(): void {
+  private cancelNavigation(): void {
+    this.navigationController?.abort();
+    this.navigationController = null;
+  }
+
+  private clearRawTaskContent(cancelNavigation = true): void {
+    if (cancelNavigation) this.cancelNavigation();
     this.rawContentGeneration += 1;
     this.rawContentController?.abort();
     this.rawContentController = null;
@@ -418,7 +455,7 @@ class FlowDeskDashboardView extends ItemView {
     read.disabled = this.rawContentLoading;
     read.addEventListener("click", () => { void this.loadRawTaskContent(model.currentTask.id); });
     const original = section.createEl("button", { text: "打开任务原文", cls: "flowdesk-content-source" });
-    original.addEventListener("click", () => { void this.openTask(model.currentTask.id); });
+    original.addEventListener("click", () => { void this.openSnapshotSource(model.currentTask.id, {line_start:1,line_end:1,excerpt:observationFirstLine(this.rawTaskContent)}, "完整原文"); });
     const observation = this.rawTaskContent;
     if (!observation || observation.taskId !== model.currentTask.id) return;
     if (observation.error) {
@@ -430,7 +467,7 @@ class FlowDeskDashboardView extends ItemView {
     if (observation.details === "") section.createDiv({ cls: "flowdesk-muted", text: "API原文为空；可打开整张任务原文。" });
     else {
       const markdown = section.createDiv({ cls: "flowdesk-contract-scope-markdown" });
-      void MarkdownRenderer.render(this.app, observation.details, markdown, observation.taskId, this).catch(() => { markdown.setText(observation.details); });
+      void this.renderSourceMarkdown(observation.details, markdown, observation.taskId).catch(() => { markdown.setText(observation.details); });
     }
   }
 
@@ -448,16 +485,20 @@ class FlowDeskDashboardView extends ItemView {
       shell: () => this.shell,
       loadSnapshot: (casePath, signal) =>
         this.plugin.loadWorkCaseSnapshot(casePath, signal),
+      loadCaseContent: (casePath, signal) => this.plugin.loadCaseContent(casePath, signal),
       render: (container, state) => this.renderWorkCase(container, state),
       requestRender: () => this.renderShell(),
       nowLabel: () => formatTime(new Date()),
     });
     this.caseRenderer = new WorkCaseDashboardRenderer({
-      refresh: () => this.caseAdapter.refresh(),
+      refresh: () => { this.cancelNavigation(); return this.caseAdapter.refresh(); },
       openTask: (taskPath, origin) => this.openTask(taskPath, origin),
       openCaseSource: (casePath, source) =>
         this.openCaseSource(casePath, source),
       openRelated: (target, casePath) => this.openRelated(target, casePath),
+      renderMarkdown: (text, element, sourcePath) => this.renderSourceMarkdown(text, element, sourcePath),
+      copyText: (text) => navigator.clipboard.writeText(text),
+      openTaskSource: (taskPath, source) => this.openSnapshotSource(taskPath, source, "恢复引用"),
     });
     this.shell = new ViewShellController([this.taskAdapter, this.caseAdapter]);
   }
@@ -497,7 +538,7 @@ class FlowDeskDashboardView extends ItemView {
       this.previousTaskPath,
       this.plugin.workCaseType(file)
     );
-    if (!("resourcePath" in nextContext) || nextContext.kind !== "task" || this.shell.context.kind !== "task" || !("resourcePath" in this.shell.context) || this.shell.context.resourcePath !== nextContext.resourcePath) this.clearRawTaskContent();
+    if (!("resourcePath" in nextContext) || nextContext.kind !== "task" || this.shell.context.kind !== "task" || !("resourcePath" in this.shell.context) || this.shell.context.resourcePath !== nextContext.resourcePath) this.clearRawTaskContent(!(this.navigationOpening && this.navigationOpening.path === file?.path && !this.navigationOpening.signal.aborted));
     if ("resourcePath" in nextContext) {
       this.previousTaskPath = nextContext.resourcePath;
       await this.shell.select(nextContext);
@@ -523,6 +564,7 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   scheduleRefresh() {
+    this.cancelNavigation();
     if (this.shell.context.kind === this.caseAdapter.kind) {
       this.caseAdapter.scheduleRefresh();
     } else {
@@ -849,40 +891,100 @@ class FlowDeskDashboardView extends ItemView {
     await this.openSnapshotSource(diagnostic.taskId, diagnostic.source, "诊断");
   }
 
-  private async openSnapshotSource(
-    taskPath: string,
-    source?: SnapshotSource,
-    sourceKind = "来源"
-  ) {
-    const navigation = resolveDiagnosticNavigation(
-      taskPath,
-      source
-    );
-    if (!navigation.canOpen) {
-      new Notice("producer 未提供可打开的 task ID。");
-      return;
-    }
-    const { target } = navigation;
+  private beginNavigation() {
+    this.cancelNavigation();
+    const controller = new AbortController();
+    this.navigationController = controller;
+    const context = this.shell.context;
+    return { signal: controller.signal, current: () => !controller.signal.aborted && this.shell.context === context };
+  }
+
+  private async openNavigationFile(file: TFile, signal: AbortSignal): Promise<boolean> {
+    const opening = {path:file.path,signal};this.navigationOpening = opening;
+    try { await this.app.workspace.getLeaf(false).openFile(file); return true; }
+    catch (error) { if (!signal.aborted) new Notice(`无法打开准确原文：${error instanceof Error ? error.message : String(error)}`); return false; }
+    finally { if (this.navigationOpening === opening) this.navigationOpening = null; }
+  }
+
+  private async openSnapshotSource(taskPath: string, source?: SnapshotSource, sourceKind = "来源", text = ""): Promise<void> {
+    if (!taskPath) { new Notice("producer未提供准确Task ID"); return; }
+    if (!source) { await this.openTask(taskPath); return; }
+    const request = this.beginNavigation();
+    const file = this.app.vault.getAbstractFileByPath(taskPath);
+    if (!(file instanceof TFile) || file.path !== taskPath) { new Notice(`未找到任务文件：${taskPath}`); return; }
+    let apiDetails: string | null = null;
+    let location: ReturnType<typeof locateTaskSource> = {kind:"note",reason:"来源无法核对；打开整张任务原文。"};
     try {
-      await this.app.workspace.openLinkText(target.linkText, taskPath, false);
-      if (target.editorLine === null) return;
-      const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (!view || view.file?.path !== taskPath) {
-        new Notice("任务已打开，但当前视图无法定位到具体行。");
-        return;
+      const [api, fileText] = await Promise.all([this.plugin.loadTaskDetails(taskPath, request.signal), this.app.vault.cachedRead(file)]);
+      apiDetails = api.details;
+      location = locateTaskSource(fileText, api.details, {heading:sourceKind,level:2,text,source});
+    } catch (error) { location = {kind:"note",reason:`来源核对失败：${error instanceof Error ? error.message : String(error)}；打开整张任务原文。`}; }
+    if (!request.current()) return;
+    if (!(await this.openNavigationFile(file, request.signal))) return;
+    if (request.signal.aborted) return;
+    if (location.kind === "note") { new Notice(location.reason); return; }
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!view || view.file?.path !== taskPath || view.getMode?.() === "preview" || location.editorLine >= view.editor.lineCount()) { new Notice("任务已打开；当前视图不能确认精确位置，请查看原文。"); return; }
+    if (apiDetails === null || typeof view.editor.getValue !== "function") { new Notice("当前编辑器不能核对原文；已打开整张任务。"); return; }
+    location = locateTaskSource(view.editor.getValue(), apiDetails, {heading:sourceKind,level:2,text,source});
+    if (location.kind === "note") { new Notice(location.reason); return; }
+    const position = {line:location.editorLine,ch:0};
+    view.editor.setCursor(position);view.editor.scrollIntoView({from:position,to:position},true);view.editor.focus();
+  }
+
+  private vaultLinkResolver(sourcePath: string): (linkText: string) => string | null {
+    return linkText => {
+      // A confirmed exact file keeps a literal # in its filename; only then parse subpaths.
+      const candidates = [linkText, path.posix.normalize(path.posix.join(path.posix.dirname(sourcePath), linkText))];
+      for (const candidate of candidates) {
+        const file = this.app.vault.getAbstractFileByPath(candidate);
+        if (file instanceof TFile && file.path === candidate) return file.path;
       }
-      if (target.editorLine >= view.editor.lineCount()) {
-        new Notice(`${sourceKind}行号已超出当前文件范围：${target.line}`);
-        return;
-      }
-      const position = { line: target.editorLine, ch: 0 };
-      view.editor.setCursor(position);
-      view.editor.scrollIntoView({ from: position, to: position }, true);
-      view.editor.focus();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      new Notice(`无法定位${sourceKind}位置：${message}`);
+      const {path:linkpath} = parseLinktext(linkText);
+      return this.app.metadataCache.getFirstLinkpathDest?.(linkpath, sourcePath)?.path ?? null;
+    };
+  }
+
+  private async renderSourceMarkdown(text: string, element: HTMLElement, sourcePath: string): Promise<void> {
+    const sources = collectMarkdownLinkSources(text);
+    let complete = false;
+    // Capture remains installed before async render; source is checked for this occurrence.
+    element.addEventListener("click", event => {
+      const anchor = (event.target as Element | null)?.closest?.("a");
+      if (!anchor || !element.contains(anchor)) return;
+      const href = anchor.getAttribute("data-href") || anchor.getAttribute("href");if (!href) return;
+      const anchors = Array.from(element.querySelectorAll<HTMLAnchorElement>("a"));
+      const origin = renderedLinkSource(sources, anchors.map(link => ({href:link.getAttribute("data-href") || link.getAttribute("href") || "",label:link.textContent ?? ""})), anchors.indexOf(anchor as HTMLAnchorElement), complete);
+      if (origin === "wiki") return;
+      const target = resolveRelatedTarget(href, {casePath:sourcePath,cwd:null,vaultRoot:this.plugin.vaultRoot(),resolveVaultLink:this.vaultLinkResolver(sourcePath)});
+      const explicitFile = /^file:/i.test(href) || path.isAbsolute(href);
+      const literalHashFile = target.kind === "vault" && target.exactFile === true && target.resolvedPath?.includes("#");
+      if ((target.kind === "vault" && !explicitFile && !literalHashFile) || target.kind === "url") return;
+      event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();
+      void this.openRelated(href, sourcePath, origin === "markdown" ? undefined : "链接语法来源无法唯一核对；请查看原文或复制引用。");
+    }, true);
+    await MarkdownRenderer.render(this.app, text, element, sourcePath, this);
+    complete = true;
+  }
+
+  private async relatedContext(sourcePath: string, signal: AbortSignal): Promise<RelatedContext> {
+    const vaultRoot = this.plugin.vaultRoot();
+    if (!isTaskPath(sourcePath)) {
+      const active = this.caseAdapter.getRenderState();
+      if (active?.model?.source.path === sourcePath) return {casePath:sourcePath,cwd:active.model.workCase.cwd,vaultRoot};
+      const model = createWorkCaseViewModel(await this.plugin.loadWorkCaseSnapshot(sourcePath, signal), sourcePath);
+      return {casePath:sourcePath,cwd:model.workCase.cwd,vaultRoot};
     }
+    const api = await this.plugin.loadTaskDetails(sourcePath, signal);
+    const contexts = api.contexts ?? null;
+    const candidates = contexts ? this.app.vault.getMarkdownFiles().filter(file => ["work-case","session"].includes(this.plugin.workCaseType(file)) && contexts.includes(`@${path.basename(file.path,".md")}`)) : [];
+    const chosen = chooseTaskCase(contexts, candidates.map(file => ({path:file.path,contextTag:`@${path.basename(file.path,".md")}`,cwd:null})));
+    if (!chosen.casePath) throw new Error(chosen.reason ?? "缺少唯一Case");
+    const model = createWorkCaseViewModel(await this.plugin.loadWorkCaseSnapshot(chosen.casePath, signal), chosen.casePath);
+    if (model.tasks.observationHealth !== "healthy" || !model.tasks.coverage.complete || !model.tasks.items.some(task => task.id === sourcePath)) throw new Error("Case关联读取不完整或未确认准确Task");
+    const result = chooseTaskCase(contexts, [{path:chosen.casePath,contextTag:model.tasks.contextTag,cwd:model.workCase.cwd}]);
+    if (!result.cwd) throw new Error(result.reason ?? "Case cwd不可用");
+    return {casePath:chosen.casePath,cwd:result.cwd,vaultRoot};
   }
 
   private renderChildren(
@@ -968,11 +1070,14 @@ class FlowDeskDashboardView extends ItemView {
     const contract = createSection(body, "任务规格与记录", "producer 投影");
     renderedSections.set("contract", contract);
     new TaskContentRenderer({
-      renderMarkdown: (text, element, taskPath) => MarkdownRenderer.render(this.app, text, element, taskPath, this),
-      // Accurate source line mapping is Task 3. Task 1 opens the task without guessing vault offsets.
-      openSource: (taskPath) => this.openTask(taskPath),
+      renderMarkdown: (text, element, taskPath) => this.renderSourceMarkdown(text, element, taskPath),
+      openSource: (taskPath, section) => this.openSnapshotSource(taskPath, section.source, section.heading, section.text),
     }).render(contract, model.content);
     this.renderRawTaskContent(contract, model);
+    const continuation = contract.createDiv({cls:"flowdesk-task-resume-reference"});
+    continuation.createDiv({cls:"flowdesk-muted",text:"Task可独立继续；引用不创建Case、不启动宿主。先由原owner读取最新TaskNotes正文。"});
+    const copyTask = continuation.createEl("button",{cls:"flowdesk-copy-task-reference",text:"复制Task引用与继续步骤"});
+    copyTask.addEventListener("click",()=>{void navigator.clipboard.writeText(`准确Task：${model.currentTask.id}\n在原owner会话使用 work 继续；先读最新TaskNotes/snapshot，区分已做结果与未完成Next，避免重复执行。换载体前先保存并回读进展并正常停止旧执行与已知后台工作；释放未知时只读或回原owner。`);});
 
     const observation = createSection(
       body,
@@ -1205,41 +1310,81 @@ class FlowDeskDashboardView extends ItemView {
       .openFile(file);
   }
 
-  private async openCaseSource(
-    casePath: string,
-    source: WorkCaseSourceRange
-  ): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(casePath);
-    if (!(file instanceof TFile)) {
-      new Notice(`未找到 Work Case 文件：${casePath}`);
+  private async openCaseSource(casePath: string, source: WorkCaseSourceRange): Promise<void> {
+    const request = this.beginNavigation(), file = this.app.vault.getAbstractFileByPath(casePath);
+    if (!(file instanceof TFile) || file.path !== casePath) { new Notice(`未找到Work Case文件：${casePath}`); return; }
+    let text: string;
+    try { text = await this.app.vault.cachedRead(file); }
+    catch (error) {
+      if (!request.current()) return;
+      const opened = await this.openNavigationFile(file, request.signal);
+      if (opened && !request.signal.aborted) new Notice(`Case来源读取失败，仅打开整张原文：${error instanceof Error ? error.message : String(error)}`);
       return;
     }
-    await this.app.workspace.getLeaf(false).openFile(file);
+    if (!request.current()) return;
+    if (!(await this.openNavigationFile(file, request.signal))) return;
+    if (request.signal.aborted) return;
+    const lines = text.replace(/\r\n/g,"\n").split("\n");
+    const model = this.caseAdapter.getRenderState()?.model;
+    const blocks = model ? [...Object.values(model.sections).flat(), ...(model.current.raw ? [model.current.raw] : []), ...model.recentProgress] : [];
+    const expected = blocks.find(block => block.source.lineStart === source.lineStart && block.source.lineEnd === source.lineEnd);
+    const validRange = Number.isInteger(source.lineStart) && source.lineStart >= 1 && Number.isInteger(source.lineEnd) && source.lineEnd >= source.lineStart && source.lineEnd <= lines.length;
+    const span = validRange ? lines.slice(source.lineStart - 1, source.lineEnd).join("\n") : "";
+    if (!validRange || !expected || !span.includes(expected.text.replace(/\r\n/g,"\n"))) { new Notice("Case来源已变化或越界；已打开整张Case原文。"); return; }
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!view || view.file?.path !== casePath) {
-      new Notice("Work Case 已打开，但当前视图无法定位到具体行。");
-      return;
-    }
-    const editorLine = Math.max(0, source.lineStart - 1);
-    if (editorLine >= view.editor.lineCount()) {
-      new Notice(`Work Case 来源行号已超出当前文件范围：${source.lineStart}`);
-      return;
-    }
-    const position = { line: editorLine, ch: 0 };
-    view.editor.setCursor(position);
-    view.editor.scrollIntoView({ from: position, to: position }, true);
-    view.editor.focus();
+    if (!view || view.file?.path !== casePath || view.getMode?.() === "preview" || source.lineStart - 1 >= view.editor.lineCount()) { new Notice("Case已打开；当前视图无法确认精确位置。"); return; }
+    const liveLines = view.editor.getValue().replace(/\r\n/g,"\n").split("\n");
+    const liveSpan = liveLines.slice(source.lineStart - 1, source.lineEnd).join("\n");
+    if (source.lineEnd > liveLines.length || (expected && !liveSpan.includes(expected.text.replace(/\r\n/g,"\n")))) { new Notice("Case编辑器原文已变化；不猜位置。"); return; }
+    const position = {line:source.lineStart - 1,ch:0};view.editor.setCursor(position);view.editor.scrollIntoView({from:position,to:position},true);view.editor.focus();
   }
 
-  private async openRelated(target: string, casePath: string): Promise<void> {
-    const linkText = normalizeWikiLink(target);
-    try {
-      await this.app.workspace.openLinkText(linkText, casePath, false);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      new Notice(`无法打开关联文件：${message}`);
+  private async openRelated(raw: string, sourcePath: string, sourceError?: string): Promise<void> {
+    const request = this.beginNavigation();
+    let context: RelatedContext = {casePath:sourcePath,cwd:null,vaultRoot:this.plugin.vaultRoot(),resolveVaultLink:this.vaultLinkResolver(sourcePath)};
+    let target = sourceError ? {kind:"unavailable" as const,label:raw,reason:sourceError} : resolveRelatedTarget(raw, context);
+    if ((target.kind === "unavailable" && target.reason.includes("cwd")) || (!isTaskPath(sourcePath) && target.kind === "repository")) {
+      try { context = {...await this.relatedContext(sourcePath, request.signal),resolveVaultLink:this.vaultLinkResolver(sourcePath)}; target = resolveRelatedTarget(raw, context); }
+      catch (error) { target = {kind:"unavailable",label:raw,reason:error instanceof Error ? error.message : String(error)}; }
+    }
+    if (!request.current()) return;
+    if (target.kind === "url") { window.open(target.url, "_blank"); return; }
+    if (target.kind === "vault") {
+      const literalHashFile = target.exactFile === true && target.resolvedPath?.includes("#");
+      if (literalHashFile) {
+        const file = this.app.vault.getAbstractFileByPath(target.resolvedPath!);
+        if (file instanceof TFile && file.path === target.resolvedPath) { await this.openNavigationFile(file, request.signal); return; }
+        target = {kind:"unavailable",label:target.label,reason:"已确认的vault原文件当前不可用；不把字面#重新解释为subpath。"};
+      } else {
+        const destination = this.vaultLinkResolver(sourcePath)(target.linkText);
+        if (destination) { await this.app.workspace.openLinkText(target.linkText, sourcePath, false);return; }
+        target = {kind:"unavailable",label:target.label,reason:`未找到vault原文：${target.linkText}；不会创建新笔记。`};
+      }
+    }
+    this.relatedTargetPanel?.remove();
+    const panel = this.contentEl.createDiv({cls:"flowdesk-dashboard-section flowdesk-related-target"});this.relatedTargetPanel = panel;
+    const pathText = target.kind === "repository" ? target.absolutePath : raw;
+    panel.createDiv({cls:"flowdesk-dashboard-section-title",text:target.kind === "repository" ? "仓库文档" : "引用定位缺口"});
+    panel.createDiv({cls:"flowdesk-muted",text:target.kind === "repository" ? `原文件：${pathText}；仓库引用：${target.repositoryPath}` : target.reason});
+    const copy = panel.createEl("button",{cls:"flowdesk-copy-related-path",text:target.kind === "repository" ? "复制原文件路径" : "复制原引用"});
+    copy.addEventListener("click",()=>{void navigator.clipboard.writeText(pathText);});
+    if (target.kind === "repository") {
+      const documentPath = target.absolutePath;
+      const result = panel.createDiv({cls:"flowdesk-repository-open-feedback",attr:{role:"status"},text:"点击后向 Obsidian 提交打开此原文件的请求。"});
+      const openDocument = panel.createEl("button",{cls:"flowdesk-open-repository-document",text:"在 Obsidian 打开文档",attr:{"aria-label":"明确向指定Obsidian提交此Markdown原文件"}});
+      openDocument.addEventListener("click",async()=>{
+        if(openDocument.disabled)return;
+        openDocument.disabled=true;result.setText("正在提交打开请求…");
+        try { const outcome=await this.plugin.openRepositoryMarkdown(documentPath); result.setText(outcome.message); }
+        catch { result.setText("打开请求结果未知；请核对原文件，保留复制路径，不自动重试。"); }
+        finally { openDocument.disabled=false; }
+      });
+      const steps = `${pathText}\n在Obsidian命令面板选择 Open file from outside the vault…，选择此路径对应的原文件。`;
+      panel.createDiv({cls:"flowdesk-muted",text:steps});
+      const copySteps = panel.createEl("button",{text:"复制打开步骤"});copySteps.addEventListener("click",()=>{void navigator.clipboard.writeText(steps);});
     }
   }
+
 }
 
 class FlowDeskDashboardSettingTab extends PluginSettingTab {
@@ -1384,3 +1529,5 @@ function normalizeWikiLink(value: string): string {
   const match = value.trim().match(/^\[\[([^\]]+)\]\]$/);
   return (match?.[1] ?? value).split("|", 1)[0].trim();
 }
+
+function observationFirstLine(observation: TaskRawContentObservation | null): string { return observation?.error ? "" : observation?.details.split(/\r?\n/)[0] ?? ""; }

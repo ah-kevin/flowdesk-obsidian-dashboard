@@ -36,7 +36,7 @@ test("Case renderer 只提供只读恢复驾驶舱与 Obsidian 导航", () => {
   ]) {
     assert.match(caseUiSource, new RegExp(visible));
   }
-  for (const forbidden of ["park", "resume", "completeCase", "updateCurrent", '"PATCH"', '"POST"']) {
+  for (const forbidden of ["completeCase", "updateCurrent", '"PATCH"', '"PUT"', 'details/append', 'nativeQueue', 'launchHost']) {
     assert.equal(caseImplementation.includes(forbidden), false, forbidden);
   }
   assert.match(renderer, /openTask/);

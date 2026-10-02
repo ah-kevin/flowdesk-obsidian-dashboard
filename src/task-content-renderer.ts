@@ -14,7 +14,7 @@ export class TaskContentRenderer {
       });
     };
     const source = (parent: HTMLElement, section: SnapshotBodySection) => {
-      const button = parent.createEl("button", { cls: "flowdesk-content-source", text: "打开任务原文", attr: { "aria-label": `打开任务原文：${section.heading}` } });
+      const button = parent.createEl("button", { cls: "flowdesk-content-source", text: section.source ? "打开这一条原文" : "打开任务原文", attr: { "aria-label": `${section.source ? "打开这一条原文" : "打开任务原文"}：${section.heading}` } });
       button.addEventListener("click", () => { void this.dependencies.openSource(content.taskId, section); });
       if (section.source) parent.createDiv({ cls: "flowdesk-muted", text: `${section.source.section ?? section.heading}${section.source.line_start ? ` · API details 第 ${section.source.line_start} 行` : ""}` });
     };

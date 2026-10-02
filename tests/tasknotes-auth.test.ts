@@ -228,3 +228,19 @@ test("escaped credential echoes in JSON read errors remain redacted after JSON d
     return true;
   });
 });
+
+test("legacy Case CLI only retries the unsupported opt-in flag and keeps schema1 read with visible resume gap",async(t)=>{
+  const {plugin,dir}=await setup(t);
+  const {readFileSync}=await import("node:fs");
+  const snapshot=JSON.parse(readFileSync("tests/fixtures/work-case-canonical.json","utf8"));
+  const producer=`#!/usr/bin/env node
+if(process.argv.includes('--resume-bundle')){process.stderr.write('flowdesk-work-case-snapshot: error: unrecognized arguments: --resume-bundle\\n');process.exit(2);}
+process.stdout.write(JSON.stringify(${JSON.stringify(snapshot)}));
+`;
+  await writeFile(path.join(dir,"bin/flowdesk-work-case-snapshot"),producer,{mode:0o755});
+  plugin.createWorkCaseSnapshotInvocation(snapshot.source.path,false); // exact legacy argv capability for the owned probe
+  const result=await plugin.loadWorkCaseSnapshot(snapshot.source.path,new AbortController().signal);
+  assert.equal(result.source.path,snapshot.source.path);
+  assert.equal(result.resume_bundle,undefined);
+  assert.ok(result.diagnostics.some((x:any)=>x.code==="resume_bundle_unavailable"));
+});

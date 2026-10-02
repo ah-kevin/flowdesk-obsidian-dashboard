@@ -190,8 +190,9 @@ GET 读取并完整渲染 `details`，不截断、不去重。成功空字符串
 观察健康。切换 Task、刷新、关闭面板会取消旧原文请求，晚响应不会落到另一张 Task。
 
 多轮记录保留 producer heading、时间与 API details 来源，最新一轮默认展开，较早轮可展开。
-“打开任务原文”目前打开整张 Task；API details 行号不直接当作 vault 文件行号。精确定位、
-Case 关联刷新和恢复入口属后续块，尚未验收。
+“打开这一条原文”先核对准确Task API身份、完整details唯一匹配与当前片段，再映射frontmatter偏移；
+同时检查当前编辑器正文。BOM/CRLF、重复heading、旧内容、缺来源或歧义不会产生猜测行号，
+无法确认时明确打开整张Task。Case来源行使用vault-file空间并检查当前片段；实际Obsidian定位仍需UI验收。
 
 Dashboard 已退出主动人工 review：没有复核 Modal、reviewed 标签 PATCH 或记录 append。
 已有 reviewed tags、Review Record 和历史记录继续可读。正文 checkbox 只表示“原文勾选”，
@@ -248,3 +249,38 @@ TaskNotes 地址被拒绝。guard 违规会令测试失败；不声称这是 nat
 失败，不访问安装 cache 或用户 API，也不把跳过集成称为通过。默认 suite 已无 live Task 探针。
 受控 HTTP→真实 producer→compiled Dashboard 的 host/DOM double 只证明 consumer 合同；
 构建产物不意味着插件已安装，真实 Obsidian 布局/安装/精确原文定位和宿主接续须另验收。
+
+## 导航与恢复（Task 3 源码能力）
+
+Task记录、诊断、完整API原文与Case正文/关联列表使用同一来源和路径边界。公开vault解析确认的已有笔记（含普通目录/相对路径）优先保留原语义。wiki与Markdown来源按实际链接逐条核对，代码/转义文本不产生豁免；无法唯一核对显示缺口。仓库相对引用只使用准确Case cwd。Task通过API原生contexts与Case路径的
+context标识核对唯一关联，再由真实Case producer确认Task关联与cwd。缺关联、多Case、
+缺checkout/文件或API不完整会显示缺口并提供原引用复制，不按进程cwd、标题或第一个Case猜。
+正文的repository链接也会拦截，避免误交给vault创建同名笔记；普通网页链接保留网页语义。
+
+仓库文件导航提供准确原文件路径和“Open file from outside the vault…”手工步骤。
+macOS用户明确点击“在Obsidian打开文档”后，通过已接的生产适配器校验本机.md与固定应用，
+按公开非shell argv向指定Obsidian提交请求。成功只显示“打开请求已提交”；失败/超时结果
+未知，不自动重试，保留复制路径。组合路线仍待实机验证，accepted不证明准确打开/保存。
+Windows/Linux不猜自动参数。真实打开方、tab影响、原位保存和无vault副本
+仍须单独UI验收，不通过file URL默认应用、私有API或系统关联改变代替。
+
+Case显式读取Core `--resume-bundle`，默认schema1保持兼容。仅在CLI精确拒绝该opt-in参数时，
+做一次默认只读调用并明确显示恢复投影不可用；其他失败不走此分支。bundle的source、准确
+Task状态/goal/result/blocker/next、resume_sources、resume_missing和operation refs原值保留。
+歧义候选、字节截断、omitted_count、401和partial均可见；操作refs只表示引用，不证明完成。
+
+Core不投影Context/Summary全文，因此“完整Case原文”独立使用vault.cachedRead，保留全部
+正文和Goal/Current/Context/Summary来源，标单独读取时间，不能证明与snapshot同轮一致。
+独立全文也可在snapshot失败时阅读；旧请求和取消响应仍受selection/controller/generation门禁，
+原有500ms关联事件合并刷新保持。读取时间只标本地观测，原来源时间只使用已有timestamp。
+
+恢复摘要包含Case决策及来源；继续工作复制包含当前观测的准确Task ID/原状态/结果/Next、cwd/branch、缺口与来源，并要求显式选择，不自动全部执行。
+
+“复制恢复摘要”“复制继续工作步骤”“复制原会话标识与查看步骤”都只读，不发消息、queue、
+启动或接管宿主。Case的sessions引用与原生agent_session_id/device历史指针分别保留；没有
+已验证的公开自动历史入口就提供准确标识及步骤。Task无Case时可复制准确Task引用给既有
+work入口，不强建Case或伪造bundle。换载体先保存并回读进展、正常停止旧执行及已知后台
+工作；释放未知只读或回原owner，多个未完Task需明确选择，不能自动全部开始。
+
+本块仍是源码/controlled integration交付；新构建不意味着已安装，真实UI/外部文件打开与
+跨宿主执行接续另验收。本轮不新增controller、broker或宿主控制桥。

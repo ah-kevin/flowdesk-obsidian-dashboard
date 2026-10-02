@@ -35,7 +35,7 @@ __export(main_exports, {
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
-var import_child_process = require("child_process");
+var import_child_process2 = require("child_process");
 
 // src/tasknotes-auth.ts
 function parseTaskNotesEnvironment(configuration) {
@@ -95,9 +95,9 @@ function sanitizeTaskNotesSnapshot(snapshot, token) {
 }
 
 // src/main.ts
-var import_fs = require("fs");
+var import_fs3 = require("fs");
 var import_os = require("os");
-var path3 = __toESM(require("path"));
+var path5 = __toESM(require("path"));
 var import_util = require("util");
 
 // src/dashboard-state.ts
@@ -273,8 +273,8 @@ function formatReferenceLabel(target) {
   const link = target.trim().replace(/^\[\[/, "").replace(/\]\]$/, "");
   const alias = link.indexOf("|");
   if (alias >= 0 && link.slice(alias + 1).trim()) return link.slice(alias + 1).trim();
-  const path4 = link.split("#")[0].replace(/\\/g, "/");
-  return (path4.split("/").pop() || path4).replace(/\.md$/i, "") || target;
+  const path6 = link.split("#")[0].replace(/\\/g, "/");
+  return (path6.split("/").pop() || path6).replace(/\.md$/i, "") || target;
 }
 
 // src/dashboard-presentation.ts
@@ -1020,7 +1020,7 @@ async function readTaskDetails({ taskPath, apiUrl, auth, signal }) {
   const identities = [value.id, value.path].filter((x) => x !== void 0);
   if (!identities.length || identities.some((x) => typeof x !== "string" || x !== taskPath)) return fail("TaskNotes \u539F\u6587\u8EAB\u4EFD\u4E0D\u5339\u914D\u6216\u7F3A\u5931");
   if (typeof value.details !== "string") return fail("TaskNotes \u539F\u6587 details \u5FC5\u987B\u662F\u5B57\u7B26\u4E32");
-  return { id: taskPath, details: value.details, source: { kind: "tasknotes-api", taskId: taskPath, readAt: (/* @__PURE__ */ new Date()).toISOString() } };
+  return { id: taskPath, details: value.details, ...value.contexts === void 0 ? {} : { contexts: Array.isArray(value.contexts) && value.contexts.every((x) => typeof x === "string") ? value.contexts : null }, source: { kind: "tasknotes-api", taskId: taskPath, readAt: (/* @__PURE__ */ new Date()).toISOString() } };
 }
 
 // src/task-content-renderer.ts
@@ -1038,7 +1038,7 @@ var TaskContentRenderer = class {
     };
     const source = (parent, section3) => {
       var _a2;
-      const button = parent.createEl("button", { cls: "flowdesk-content-source", text: "\u6253\u5F00\u4EFB\u52A1\u539F\u6587", attr: { "aria-label": `\u6253\u5F00\u4EFB\u52A1\u539F\u6587\uFF1A${section3.heading}` } });
+      const button = parent.createEl("button", { cls: "flowdesk-content-source", text: section3.source ? "\u6253\u5F00\u8FD9\u4E00\u6761\u539F\u6587" : "\u6253\u5F00\u4EFB\u52A1\u539F\u6587", attr: { "aria-label": `${section3.source ? "\u6253\u5F00\u8FD9\u4E00\u6761\u539F\u6587" : "\u6253\u5F00\u4EFB\u52A1\u539F\u6587"}\uFF1A${section3.heading}` } });
       button.addEventListener("click", () => {
         void this.dependencies.openSource(content.taskId, section3);
       });
@@ -1104,8 +1104,8 @@ function createTaskContent(snapshot, taskPath) {
 function rawContentDiffers(content, observation, snapshot) {
   var _a;
   if (observation.error || content.taskId !== observation.taskId) return false;
-  const normalize = (value) => value.replace(/\r\n/g, "\n").trim();
-  const details = normalize(observation.details);
+  const normalize2 = (value) => value.replace(/\r\n/g, "\n").trim();
+  const details = normalize2(observation.details);
   const contract = (snapshot == null ? void 0 : snapshot.snapshot_schema_version) === 4 ? snapshot.contract : null;
   const rawScope = (contract == null ? void 0 : contract.status) !== "legacy_v3" ? text((_a = contract == null ? void 0 : contract.task_contract) == null ? void 0 : _a.scope_text) : "";
   const fragments = [
@@ -1119,7 +1119,7 @@ function rawContentDiffers(content, observation, snapshot) {
     ...content.domainSections.map((x) => x.text),
     ...Object.values(content.records).flat().map((x) => x.text)
   ];
-  return fragments.some((x) => normalize(x) !== "" && !details.includes(normalize(x)));
+  return fragments.some((x) => normalize2(x) !== "" && !details.includes(normalize2(x)));
 }
 
 // src/snapshot-model.ts
@@ -1284,21 +1284,6 @@ function formatNextAction(action) {
   const label = (_a = labels[kind]) != null ? _a : kind;
   return taskIds.length ? `${label}\uFF1A${taskIds.join("\u3001")}` : label;
 }
-function resolveDiagnosticTarget(taskPath, source) {
-  const line = typeof (source == null ? void 0 : source.line_start) === "number" && source.line_start > 0 ? source.line_start : null;
-  const heading = line === null ? normalizeText(source == null ? void 0 : source.after_section, normalizeText(source == null ? void 0 : source.section, "")) : normalizeText(source == null ? void 0 : source.section, "");
-  return {
-    linkText: heading ? `${taskPath}#${heading}` : taskPath,
-    line,
-    editorLine: line === null ? null : line - 1
-  };
-}
-function resolveDiagnosticNavigation(taskPath, source) {
-  return {
-    canOpen: Boolean(taskPath.trim()),
-    target: resolveDiagnosticTarget(taskPath, source)
-  };
-}
 function snapshotSourceTaskId(snapshot) {
   var _a;
   return snapshot.snapshot_schema_version === 4 ? normalizeText((_a = snapshot.source) == null ? void 0 : _a.task_id, "") : normalizeText(snapshot.source_task_id, "");
@@ -1316,7 +1301,7 @@ function normalizeProtocol(value, isLegacyV3) {
     };
   }
   const protocol = value != null ? value : {};
-  const normalized = {
+  const normalized2 = {
     producerProtocolVersion: finiteNumber(protocol.producer_protocol_version),
     taskContractSchema: normalizeText(protocol.task_contract_schema, ""),
     evidenceContractSchema: normalizeText(protocol.evidence_contract_schema, ""),
@@ -1325,8 +1310,8 @@ function normalizeProtocol(value, isLegacyV3) {
     legacyPolicy: normalizeText(protocol.legacy_policy, "")
   };
   return {
-    supported: normalized.producerProtocolVersion === 4 && normalized.taskContractSchema === "flowdesk.task-contract/4" && normalized.evidenceContractSchema === "flowdesk.evidence-contract/1" && normalized.evidenceRecordSchema === "flowdesk.evidence-record/1" && normalized.reviewRecordSchema === "flowdesk.review-record/1" || normalized.producerProtocolVersion === 4 && normalized.taskContractSchema === "legacy_v3" && protocol.evidence_contract_schema === null && protocol.evidence_record_schema === null && protocol.review_record_schema === null && normalized.legacyPolicy === "explicit_legacy_v3",
-    ...normalized
+    supported: normalized2.producerProtocolVersion === 4 && normalized2.taskContractSchema === "flowdesk.task-contract/4" && normalized2.evidenceContractSchema === "flowdesk.evidence-contract/1" && normalized2.evidenceRecordSchema === "flowdesk.evidence-record/1" && normalized2.reviewRecordSchema === "flowdesk.review-record/1" || normalized2.producerProtocolVersion === 4 && normalized2.taskContractSchema === "legacy_v3" && protocol.evidence_contract_schema === null && protocol.evidence_record_schema === null && protocol.review_record_schema === null && normalized2.legacyPolicy === "explicit_legacy_v3",
+    ...normalized2
   };
 }
 function normalizeCompletion(value, fallbackStatus) {
@@ -1530,8 +1515,8 @@ function normalizeText(value, fallback) {
   return fallback;
 }
 function nullableText(value) {
-  const normalized = normalizeText(value, "");
-  return normalized || null;
+  const normalized2 = normalizeText(value, "");
+  return normalized2 || null;
 }
 function finiteNumber(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -1557,6 +1542,88 @@ function formatDiagnosticClipboard(input) {
     `\u5B57\u6BB5\uFF1A${input.path}`,
     `\u4F4D\u7F6E\uFF1A${location}`
   ].join("\n");
+}
+
+// src/resume-presentation.ts
+function validateResumeBundle(value, casePath, items) {
+  if (value === void 0 || value === null) return null;
+  const fail = () => {
+    throw Error("resume_bundle \u6765\u6E90\u3001\u8EAB\u4EFD\u6216\u5B57\u6BB5\u65E0\u6548");
+  };
+  const record2 = (x) => x && typeof x === "object" && !Array.isArray(x);
+  const strings = (x) => Array.isArray(x) && x.every((y) => typeof y === "string");
+  const integer = (x, min = 0) => Number.isInteger(x) && x >= min;
+  const b = value;
+  if (!record2(b) || b.source !== `TaskNotes API details via Work Case snapshot: ${casePath}` || !Array.isArray(b.tasks) || !record2(b.resume_observation)) return fail();
+  const o = b.resume_observation;
+  if (typeof o.api_health !== "string" || typeof o.api_complete !== "boolean" || typeof o.projection_truncated !== "boolean" || !integer(o.omitted_count) || !Array.isArray(o.diagnostics) || !o.diagnostics.every((d) => record2(d) && [d.code, d.path, d.message].every((x) => typeof x === "string"))) return fail();
+  const ids = /* @__PURE__ */ new Set();
+  for (const task of b.tasks) {
+    if (!record2(task) || ![task.id, task.title, task.status, task.source].every((x) => typeof x === "string") || ids.has(task.id) || task.source !== `TaskNotes API ${task.id} details`) return fail();
+    ids.add(task.id);
+    const owner = items.find((x) => x.id === task.id);
+    if (!owner || owner.status !== task.status) return fail();
+    for (const field of ["goal", "result", "next", "blocker"]) if (task[field] !== void 0 && typeof task[field] !== "string") return fail();
+    if (!strings(task.resume_missing) || !Array.isArray(task.resume_sources) || !Array.isArray(task.resume_operation_refs)) return fail();
+    for (const s of task.resume_sources) if (!record2(s) || s.task_id !== task.id || ![s.field, s.section].every((x) => typeof x === "string") || !integer(s.line_start, 1) || !integer(s.line_end, s.line_start) || typeof s.truncated !== "boolean" || !integer(s.original_bytes) || !integer(s.included_bytes) || s.included_bytes > s.original_bytes || s.timestamp !== void 0 && typeof s.timestamp !== "string") return fail();
+    for (const ref of task.resume_operation_refs) if (!record2(ref) || typeof ref.operation_id !== "string" || !integer(ref.line, 1)) return fail();
+  }
+  return value;
+}
+function createResumePresentation(bundle, caseModel) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
+  const c = caseModel.workCase;
+  const history = { agent: c.agent, nativeId: c.agentSessionId, device: c.device };
+  const continuationInstructions = `\u5728\u539Fowner\u4F1A\u8BDD\u4F7F\u7528 work \u7EE7\u7EED\u51C6\u786ECase/Task\uFF0C\u5148\u91CD\u65B0\u8BFB\u53D6TaskNotes\u72B6\u6001\u4E0E\u7ED3\u679C\uFF0C\u907F\u514D\u91CD\u505A\u5DF2\u5B8C\u6210\u9879\u3002\u6362\u8F7D\u4F53\u524D\u5148\u4FDD\u5B58\u5E76\u56DE\u8BFB\u8FDB\u5C55\uFF0C\u6B63\u5E38\u505C\u6B62\u65E7\u6267\u884C\u53CA\u5DF2\u77E5\u540E\u53F0\u5DE5\u4F5C\uFF1B\u91CA\u653E\u672A\u77E5\u65F6\u4EC5\u53EA\u8BFB\u6062\u590D\u6216\u56DE\u539Fowner\u3002\u591A\u4E2A\u672A\u5B8C\u6210Task\u9700\u660E\u786E\u9009\u62E9\u51C6\u786EID\u3002Dashboard\u6CA1\u6709\u5DF2\u9A8C\u8BC1\u7684\u5BBF\u4E3B\u5386\u53F2\u81EA\u52A8\u6253\u5F00/\u4E00\u952E\u63A5\u7BA1\u80FD\u529B\uFF1B\u539F\u6807\u8BC6\u4EC5\u4E3A\u5386\u53F2\u6307\u9488\u3002`;
+  const gaps = [];
+  if (!bundle) gaps.push("\u5F53\u524Dproducer\u672A\u63D0\u4F9Bresume_bundle\uFF1B\u6062\u590D\u6295\u5F71\u4E0D\u53EF\u7528\uFF0C\u4ECD\u53EF\u8BFB\u5B8C\u6574Case/Task\u539F\u6587\u3002");
+  else {
+    const o = bundle.resume_observation;
+    if (!o.api_complete || o.api_health !== "healthy") gaps.push(`\u6062\u590DAPI\u8BFB\u53D6\u4E0D\u5B8C\u6574\uFF1A${o.api_health} / api_complete=${o.api_complete}`);
+    if (o.projection_truncated) gaps.push("\u6062\u590D\u6295\u5F71\u88AB\u622A\u65AD\uFF1B\u5B8C\u6574\u6B63\u6587\u4ECD\u9700\u539F\u6587\u8BFB\u53D6\u3002");
+    if (o.omitted_count) gaps.push(`\u6062\u590D\u6295\u5F71\u7701\u7565 ${o.omitted_count} \u4E2ATask\uFF08omitted_count\uFF09\uFF1B\u4E0D\u662F\u96F6\u4EFB\u52A1\u3002`);
+    gaps.push(...o.diagnostics.map((d) => `${d.code} \xB7 ${d.path}\uFF1A${d.message}`));
+  }
+  if (!history.nativeId) gaps.push("\u539F\u751F\u4F1A\u8BDD\u6807\u8BC6\u7F3A\u5931\uFF0C\u4E0D\u80FD\u4ECEagent/workspace\u6216\u6807\u9898\u63A8\u65AD\u3002");
+  if (!c.cwd) gaps.push("Case cwd\u672A\u8BB0\u5F55\uFF0C\u4E0D\u80FD\u63A8\u65AD\u5F53\u524Dcheckout\u3002");
+  const tasks = ((_a = bundle == null ? void 0 : bundle.tasks) != null ? _a : []).map((task) => {
+    var _a2, _b2, _c2, _d2;
+    return { id: task.id, title: task.title, status: task.status, goal: (_a2 = task.goal) != null ? _a2 : null, result: (_b2 = task.result) != null ? _b2 : null, blocker: (_c2 = task.blocker) != null ? _c2 : null, next: (_d2 = task.next) != null ? _d2 : null, sources: task.resume_sources, missing: task.resume_missing, operationRefs: task.resume_operation_refs };
+  });
+  const lines = [
+    `Case\uFF1A${caseModel.source.path}`,
+    `Case\u539F\u751F\u72B6\u6001\uFF1A${(_b = c.status) != null ? _b : "\u672A\u8BB0\u5F55"}`,
+    `cwd\uFF1A${(_c = c.cwd) != null ? _c : "\u672A\u8BB0\u5F55"}`,
+    `branch\uFF1A${(_d = c.branch) != null ? _d : "\u672A\u8BB0\u5F55"}`,
+    ...caseModel.sections.goal.map((s) => `Case\u76EE\u6807\uFF1A
+${s.text}`),
+    ...caseModel.sections.decisions.map((s) => `Case\u51B3\u7B56\uFF1A
+${s.text}
+\u51B3\u7B56\u6765\u6E90\uFF1A${caseModel.source.path} \xB7 vault-file ${s.source.lineStart}\u2013${s.source.lineEnd}`),
+    `Case\u5F53\u524D\uFF1A${(_e = caseModel.current.progressSummary) != null ? _e : "\u672A\u8BB0\u5F55"}`,
+    `Case\u4E0B\u4E00\u6B65\uFF1A${(_f = caseModel.current.next) != null ? _f : "\u672A\u8BB0\u5F55"}`,
+    `\u6062\u590D\u6765\u6E90\uFF1A${(_g = bundle == null ? void 0 : bundle.source) != null ? _g : "\u672A\u63D0\u4F9B"}`,
+    ...tasks.flatMap((task) => {
+      var _a2, _b2, _c2, _d2;
+      return [
+        `
+Task\uFF1A${task.id} \xB7 \u539F\u751F\u72B6\u6001 ${task.status}`,
+        `\u76EE\u6807\uFF1A${(_a2 = task.goal) != null ? _a2 : "\u672A\u63D0\u4F9B"}`,
+        `\u7ED3\u679C\uFF1A${(_b2 = task.result) != null ? _b2 : "\u672A\u63D0\u4F9B"}`,
+        `\u963B\u585E\uFF1A${(_c2 = task.blocker) != null ? _c2 : "\u672A\u63D0\u4F9B"}`,
+        `\u4E0B\u4E00\u6B65\uFF1A${(_d2 = task.next) != null ? _d2 : "\u672A\u63D0\u4F9B"}`,
+        `\u7F3A\u5931\u5B57\u6BB5\uFF1A${task.missing.join("\u3001") || "\u65E0"}`,
+        ...task.sources.map((s) => `\u6765\u6E90 ${s.field}\uFF1A${s.task_id} / ${s.section} / API details ${s.line_start}\u2013${s.line_end}${s.timestamp ? ` / ${s.timestamp}` : ""} / \u5B57\u8282 ${s.included_bytes}/${s.original_bytes}${s.truncated ? "\uFF08\u622A\u65AD\u6216\u5019\u9009\u88AB\u62D2\uFF09" : ""}`),
+        ...task.operationRefs.map((ref) => `\u64CD\u4F5C\u4EC5\u5F15\u7528\uFF1A${ref.operation_id} \xB7 API details \u7B2C${ref.line}\u884C\uFF1B\u4E0D\u8BC1\u660E\u5DF2\u5B8C\u6210`)
+      ];
+    }),
+    `
+\u5386\u53F2\u6307\u9488\uFF1Aagent=${(_h = history.agent) != null ? _h : "\u7F3A\u5931"} / nativeId=${(_i = history.nativeId) != null ? _i : "\u7F3A\u5931"} / device=${(_j = history.device) != null ? _j : "\u7F3A\u5931"}`,
+    `\u8BFB\u53D6\u7F3A\u53E3\uFF1A
+${gaps.join("\n") || "producer\u672A\u62A5\u544A\u7F3A\u53E3"}`,
+    continuationInstructions
+  ];
+  return { summary: lines.join("\n"), gaps, tasks, history, continuationInstructions };
 }
 
 // src/work-case-model.ts
@@ -1629,7 +1696,8 @@ function createWorkCaseViewModel(snapshot, expectedPath) {
   const effectiveHealth = !complete && observationHealth === "healthy" ? "degraded" : observationHealth;
   const completeCounts = effectiveHealth === "healthy" && complete;
   for (const key of SECTION_KEYS) array(sections[key], `sections.${key}`);
-  return {
+  const model = {
+    resumeBundle: null,
     source: {
       path: sourcePath,
       type: source.type,
@@ -1726,6 +1794,12 @@ function createWorkCaseViewModel(snapshot, expectedPath) {
       };
     })
   };
+  try {
+    model.resumeBundle = validateResumeBundle(root.resume_bundle, sourcePath, model.tasks.items);
+  } catch (error) {
+    invalid(error instanceof Error ? error.message : "resume_bundle \u65E0\u6548");
+  }
+  return model;
 }
 function taskItem(value, at) {
   const item = record(value, at);
@@ -1840,12 +1914,13 @@ var WorkCaseAdapter = class {
     this.controller = null;
     this.requestGeneration = 0;
     this.dirtyReason = "";
+    this.caseContent = null;
     this.refreshScheduler = new TrailingRefreshScheduler(() => {
       void this.refresh();
     }, 500);
   }
   async activate(selection) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e, _f;
     if (selection.adapterKind !== this.kind) {
       throw new Error(`Work Case Adapter \u65E0\u6CD5\u5904\u7406\uFF1A${selection.adapterKind}`);
     }
@@ -1854,6 +1929,7 @@ var WorkCaseAdapter = class {
     const sameCase = ((_a = this.selection) == null ? void 0 : _a.resourcePath) === selection.resourcePath;
     this.selection = selection;
     if (!sameCase) {
+      this.caseContent = null;
       this.displayState = null;
       this.error = "";
       this.dirtyReason = "";
@@ -1866,11 +1942,15 @@ var WorkCaseAdapter = class {
     this.error = "";
     this.dependencies.requestRender();
     try {
-      const snapshot = await this.dependencies.loadSnapshot(
-        selection.resourcePath,
-        controller.signal
-      );
+      const [snapshotResult, contentResult] = await Promise.allSettled([
+        this.dependencies.loadSnapshot(selection.resourcePath, controller.signal),
+        (_e = (_d = (_c = this.dependencies).loadCaseContent) == null ? void 0 : _d.call(_c, selection.resourcePath, controller.signal)) != null ? _e : Promise.resolve(null)
+      ]);
       if (!isCurrent()) return;
+      this.caseContent = contentResult.status === "fulfilled" ? contentResult.value : { casePath: selection.resourcePath, details: "", readAt: "", source: "vault-cached-read", error: contentResult.reason instanceof Error ? contentResult.reason.message : String(contentResult.reason), sections: [] };
+      if (this.caseContent && this.caseContent.casePath !== selection.resourcePath) this.caseContent = { casePath: selection.resourcePath, details: "", readAt: "", source: "vault-cached-read", error: "Case\u72EC\u7ACB\u8BFB\u53D6\u6765\u6E90\u8EAB\u4EFD\u9519\u8BEF", sections: [] };
+      if (snapshotResult.status === "rejected") throw snapshotResult.reason;
+      const snapshot = snapshotResult.value;
       const model = createWorkCaseViewModel(snapshot, selection.resourcePath);
       this.dirtyReason = "";
       this.displayState = {
@@ -1884,7 +1964,7 @@ var WorkCaseAdapter = class {
       this.error = formatWorkCaseError(error);
       if (error instanceof WorkCaseSnapshotCompatibilityError) {
         this.displayState = null;
-      } else if (sameCase && ((_c = this.displayState) == null ? void 0 : _c.casePath) === selection.resourcePath) {
+      } else if (sameCase && ((_f = this.displayState) == null ? void 0 : _f.casePath) === selection.resourcePath) {
         this.displayState = {
           ...this.displayState,
           staleReason: this.error
@@ -1911,6 +1991,7 @@ var WorkCaseAdapter = class {
     this.error = "";
     this.loading = false;
     this.dirtyReason = "";
+    this.caseContent = null;
   }
   shouldReactivate(selection) {
     var _a;
@@ -1948,6 +2029,7 @@ var WorkCaseAdapter = class {
     const display = ((_b = this.displayState) == null ? void 0 : _b.casePath) === casePath ? this.displayState : null;
     return {
       casePath,
+      caseContent: this.caseContent,
       model: (_c = display == null ? void 0 : display.model) != null ? _c : null,
       loadedAt: (_d = display == null ? void 0 : display.loadedAt) != null ? _d : "",
       staleReason: (display == null ? void 0 : display.staleReason) || this.dirtyReason,
@@ -1970,6 +2052,7 @@ function buildWorkCaseSnapshotInvocation(input) {
   const args = [input.casePath];
   if (input.apiUrl) args.push("--api-url", input.apiUrl);
   args.push("--working-directory", workingDirectory, "--format", "json");
+  if (input.includeResumeBundle) args.push("--resume-bundle");
   return {
     executable: path2.join(flowdeskRoot, "bin", "flowdesk-work-case-snapshot"),
     args,
@@ -2106,6 +2189,7 @@ var WorkCaseDashboardRenderer = class {
     container.addClass("flowdesk-case-dashboard");
     if (!state.model) {
       this.renderShell(container, state);
+      this.renderFullCaseContent(container, state);
       return;
     }
     const presentation = createWorkCasePresentation(state.model);
@@ -2126,6 +2210,8 @@ var WorkCaseDashboardRenderer = class {
     this.renderProgress(container, state, presentation);
     this.renderSections(container, state, presentation);
     this.renderRelated(container, state, presentation);
+    this.renderFullCaseContent(container, state);
+    this.renderResume(container, state);
     this.renderTechnicalContext(container, presentation);
     this.renderDiagnostics(container, presentation);
   }
@@ -2372,6 +2458,66 @@ var WorkCaseDashboardRenderer = class {
       }
     }
   }
+  renderFullCaseContent(container, state) {
+    if (!state.caseContent) return;
+    const observation = state.caseContent;
+    const section2 = container.createEl("details", { cls: "flowdesk-case-recovery flowdesk-case-full-content" });
+    section2.createEl("summary", { text: "\u5B8C\u6574Case\u539F\u6587\uFF08\u5355\u72ECvault\u8BFB\u53D6\uFF09" });
+    if (observation.error) {
+      section2.createDiv({ cls: "flowdesk-case-error", text: `Case\u539F\u6587\u8BFB\u53D6\u5931\u8D25\uFF1A${observation.error}` });
+      return;
+    }
+    section2.createDiv({ cls: "flowdesk-muted", text: `${observation.source} \xB7 ${observation.casePath} \xB7 \u72EC\u7ACB\u8BFB\u53D6\u65F6\u95F4 ${observation.readAt}\uFF1B\u4E0D\u80FD\u8BC1\u660E\u4E0Esnapshot\u540C\u8F6E\u4E00\u81F4\u3002` });
+    const body = section2.createDiv({ cls: "flowdesk-contract-scope-markdown markdown-rendered" });
+    if (this.dependencies.renderMarkdown) void this.dependencies.renderMarkdown(observation.details, body, observation.casePath).catch(() => body.setText(observation.details));
+    else body.setText(observation.details);
+  }
+  renderResume(container, state) {
+    if (!state.model) return;
+    const presentation = createResumePresentation(state.model.resumeBundle, state.model);
+    const section2 = container.createEl("details", { cls: "flowdesk-case-recovery flowdesk-case-resume" });
+    section2.createEl("summary", { text: "\u6062\u590D\u6458\u8981\u4E0E\u7EE7\u7EED\u5DE5\u4F5C\u6B65\u9AA4" });
+    section2.createDiv({ cls: "flowdesk-muted", text: `\u672C\u5730snapshot\u8BFB\u53D6\u65F6\u95F4\uFF1A${state.loadedAt}\uFF1B\u6765\u6E90\u65F6\u95F4\u4EC5\u4FDD\u7559producer\u5DF2\u6709timestamp\u3002\u6062\u590D\u6458\u8981\u4E0D\u66FF\u4EE3\u5B8C\u6574Case/Task\u539F\u6587\u3002` });
+    const independent = state.caseContent;
+    const caseLines = (independent == null ? void 0 : independent.error) ? [`Case\u72EC\u7ACB\u539F\u6587\u8BFB\u53D6\u5931\u8D25\uFF1A${independent.error}`] : independent ? [`Case\u72EC\u7ACB\u539F\u6587\u8BFB\u53D6\u65F6\u95F4\uFF1A${independent.readAt}`, ...independent.sections.map((s) => `${s.heading}\uFF08vault-file ${s.source.lineStart}\u2013${s.source.lineEnd}\uFF09\uFF1A
+${s.text}`)] : ["Case\u72EC\u7ACB\u539F\u6587\u672A\u8BFB\u53D6\uFF1BContext/Summary\u9700\u67E5\u770B\u6574\u5F20Case\u3002"];
+    const summary = [presentation.summary, `\u672C\u5730snapshot\u8BFB\u53D6\u65F6\u95F4\uFF1A${state.loadedAt}`, state.staleReason ? `\u65E7\u89C2\u6D4B\uFF1A${state.staleReason}` : "", ...caseLines].filter(Boolean).join("\n\n");
+    section2.createDiv({ cls: "flowdesk-case-record-text", text: summary });
+    for (const task of presentation.tasks) {
+      const sources = section2.createEl("details", { cls: "flowdesk-case-recovery" });
+      sources.createEl("summary", { text: `Task\u6765\u6E90\u4E0E\u5B8C\u6574\u539F\u6587\uFF1A${task.title} \xB7 ${task.status}` });
+      const full = sources.createEl("button", { text: "\u6253\u5F00\u5B8C\u6574Task\u539F\u6587" });
+      full.addEventListener("click", () => {
+        void this.dependencies.openTask(task.id, "child");
+      });
+      for (const source of task.sources) {
+        const button = sources.createEl("button", { text: `\u67E5\u770B\u6765\u6E90\u4EFB\u52A1\uFF1A${source.field} \xB7 API details ${source.line_start}\u2013${source.line_end}` });
+        button.addEventListener("click", () => {
+          var _a, _b;
+          void ((_b = (_a = this.dependencies).openTaskSource) == null ? void 0 : _b.call(_a, task.id, { ...source }));
+        });
+      }
+    }
+    const copy = section2.createEl("button", { cls: "flowdesk-case-copy-resume", text: "\u590D\u5236\u6062\u590D\u6458\u8981" });
+    copy.addEventListener("click", () => {
+      var _a, _b;
+      void ((_b = (_a = this.dependencies).copyText) == null ? void 0 : _b.call(_a, summary));
+    });
+    const instructions = section2.createEl("button", { text: "\u590D\u5236\u7EE7\u7EED\u5DE5\u4F5C\u6B65\u9AA4" });
+    instructions.addEventListener("click", () => {
+      var _a, _b;
+      void ((_b = (_a = this.dependencies).copyText) == null ? void 0 : _b.call(_a, `\u7EE7\u7EED\u5DE5\u4F5C\u4E0A\u4E0B\u6587\uFF08\u53EA\u8BFB\uFF0C\u4E0D\u81EA\u52A8\u6267\u884C\u4EFB\u4F55Task\uFF09
+${summary}
+
+\u660E\u786E\u9009\u62E9\u8981\u7EE7\u7EED\u7684\u51C6\u786ETask ID\uFF1B\u5DF2\u5B8C\u6210\u9879\u4FDD\u7559\u7ED3\u679C\uFF0C\u4E0D\u91CD\u65B0\u6267\u884C\u3002`));
+    });
+    const history = section2.createEl("button", { text: "\u590D\u5236\u539F\u4F1A\u8BDD\u6807\u8BC6\u4E0E\u67E5\u770B\u6B65\u9AA4" });
+    history.addEventListener("click", () => {
+      var _a, _b;
+      void ((_b = (_a = this.dependencies).copyText) == null ? void 0 : _b.call(_a, `\u539F\u751F\u5386\u53F2\u6307\u9488\uFF1A${JSON.stringify(presentation.history)}
+\u5386\u53F2\u6307\u9488\u4E0D\u662F\u6267\u884C\u63A5\u624B\u6388\u6743\u3002\u5F53\u524D\u6CA1\u6709\u5DF2\u9A8C\u8BC1\u7684\u516C\u5F00\u81EA\u52A8\u5386\u53F2\u5165\u53E3\uFF1B\u56DE\u539F\u5BBF\u4E3B\u6309\u51C6\u786E\u6807\u8BC6\u67E5\u770B\u3002`));
+    });
+  }
   renderDiagnostics(container, presentation) {
     if (!presentation.diagnostics.length) return;
     const details = container.createEl("details", { cls: "flowdesk-case-diagnostics" });
@@ -2394,9 +2540,297 @@ function caseTitle(casePath) {
   return name.replace(/\.md$/i, "");
 }
 
+// src/source-navigation.ts
+var path3 = __toESM(require("path"));
+var import_fs = require("fs");
+var import_url = require("url");
+function locateTaskSource(fileText, details, section2) {
+  var _a;
+  const note = (reason) => ({ kind: "note", reason });
+  const normalize2 = (text3) => text3.replace(/\r\n/g, "\n").replace(/^\ufeff/, "");
+  const body = normalize2(details), file = normalize2(fileText);
+  if (!body) return note("API\u539F\u6587\u4E3A\u7A7A\uFF1B\u6253\u5F00\u6574\u5F20\u4EFB\u52A1\u539F\u6587\u3002");
+  const start = file.indexOf(body);
+  if (start < 0 || file.indexOf(body, start + 1) >= 0 || start > 0 && file[start - 1] !== "\n") return note("API\u539F\u6587\u4E0E\u5F53\u524D\u6587\u4EF6\u4E0D\u540C\u6B65\u6216\u5339\u914D\u4E0D\u552F\u4E00\uFF1B\u6253\u5F00\u6574\u5F20\u4EFB\u52A1\u539F\u6587\u3002");
+  const range = section2.source, startLine = range == null ? void 0 : range.line_start, endLine = (_a = range == null ? void 0 : range.line_end) != null ? _a : startLine;
+  const lines = body.split("\n");
+  if (typeof startLine !== "number" || typeof endLine !== "number" || !Number.isInteger(startLine) || !Number.isInteger(endLine) || startLine < 1 || endLine < startLine || endLine > lines.length) return note("\u6765\u6E90\u7F3A\u5C11\u6709\u6548API\u884C\u8303\u56F4\uFF1B\u6253\u5F00\u6574\u5F20\u4EFB\u52A1\u539F\u6587\u3002");
+  const span = lines.slice(startLine - 1, endLine).join("\n");
+  const excerpt = typeof (range == null ? void 0 : range.excerpt) === "string" ? normalize2(range.excerpt) : "";
+  const text2 = normalize2(section2.text);
+  if (!excerpt && !text2 || excerpt && !span.includes(excerpt) || text2 && !span.includes(text2)) return note("\u6765\u6E90\u7247\u6BB5\u4E0E\u5F53\u524DAPI\u8303\u56F4\u4E0D\u4E00\u81F4\uFF1B\u6253\u5F00\u6574\u5F20\u4EFB\u52A1\u539F\u6587\u3002");
+  const offset = file.slice(0, start).split("\n").length - 1;
+  return { kind: "line", editorLine: offset + startLine - 1 };
+}
+function resolveRelatedTarget(raw, context) {
+  var _a, _b, _c;
+  let target = raw.trim(), label = target;
+  const unavailable = (reason) => ({ kind: "unavailable", label, reason });
+  const wiki = target.match(/^\[\[([^\]]+)\]\]$/);
+  if (wiki) {
+    const parts = wiki[1].split("|");
+    return { kind: "vault", linkText: parts[0], label: (_a = parts[1]) != null ? _a : parts[0] };
+  }
+  const markdown = target.match(/^\[([^\]]*)\]\((.+)\)$/);
+  if (markdown) {
+    label = markdown[1];
+    target = markdown[2];
+    if (target.startsWith("<") && target.endsWith(">")) target = target.slice(1, -1);
+  }
+  if (/^https?:\/\//i.test(target)) {
+    try {
+      const url = new URL(target);
+      return { kind: "url", url: url.href, label };
+    } catch (e) {
+      return unavailable("\u7F51\u9875\u94FE\u63A5\u65E0\u6548");
+    }
+  }
+  if (/^file:/i.test(target)) {
+    try {
+      target = (0, import_url.fileURLToPath)(target);
+    } catch (e) {
+      return unavailable("\u6587\u4EF6URL\u65E0\u6548\u6216\u4E0D\u5C5E\u4E8E\u672C\u673A\u6587\u4EF6\u7CFB\u7EDF");
+    }
+  } else if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return unavailable("\u5F53\u524D\u4E0D\u652F\u6301\u6B64\u94FE\u63A5\u7C7B\u578B");
+  if (!path3.isAbsolute(target)) {
+    let decoded = target;
+    try {
+      decoded = decodeURIComponent(target);
+    } catch (e) {
+    }
+    const exactResolution = (_b = context.resolveVaultLink) == null ? void 0 : _b.call(context, target);
+    const decodedResolution = !exactResolution && decoded !== target ? (_c = context.resolveVaultLink) == null ? void 0 : _c.call(context, decoded) : null;
+    const resolvedPath = exactResolution || decodedResolution;
+    if (resolvedPath) {
+      const linkText = exactResolution ? target : decoded;
+      const exactFile = path3.posix.normalize(linkText) === resolvedPath || path3.posix.normalize(path3.posix.join(path3.posix.dirname(context.casePath), linkText)) === resolvedPath;
+      return { kind: "vault", linkText, label, resolvedPath, exactFile };
+    }
+  }
+  if (/^(?:Notes|Tasks|TaskNotes)\//.test(target) || target.startsWith("#")) return { kind: "vault", linkText: target, label };
+  if (!target || !path3.isAbsolute(target) && !/[./\\]/.test(target)) return unavailable("\u5F15\u7528\u6CA1\u6709\u660E\u786Evault\u6216\u4ED3\u5E93\u6765\u6E90\uFF1B\u53EF\u590D\u5236\u539F\u5F15\u7528\u6838\u5BF9");
+  if (!path3.isAbsolute(target) && (!context.cwd || !path3.isAbsolute(context.cwd))) return unavailable("\u7F3A\u5C11\u552F\u4E00\u660E\u786E\u7684Case cwd\uFF0C\u4E0D\u80FD\u5B9A\u4F4D\u4ED3\u5E93\u76F8\u5BF9\u8DEF\u5F84");
+  if (!path3.isAbsolute(target) && !(0, import_fs.existsSync)(context.cwd)) return unavailable("Case checkout\u76EE\u5F55\u5728\u672C\u673A\u4E0D\u5B58\u5728");
+  let absolutePath = path3.isAbsolute(target) ? path3.normalize(target) : path3.resolve(context.cwd, target);
+  if (!(0, import_fs.existsSync)(absolutePath) && /%[0-9a-f]{2}/i.test(target)) {
+    try {
+      const decoded = decodeURIComponent(target);
+      absolutePath = path3.isAbsolute(decoded) ? path3.normalize(decoded) : path3.resolve(context.cwd, decoded);
+    } catch (e) {
+      return unavailable("\u6587\u4EF6\u8DEF\u5F84\u7F16\u7801\u65E0\u6548");
+    }
+  }
+  const vaultRelative = path3.relative(context.vaultRoot, absolutePath);
+  if (vaultRelative && !vaultRelative.startsWith(".." + path3.sep) && vaultRelative !== ".." && !path3.isAbsolute(vaultRelative)) return { kind: "vault", linkText: vaultRelative.split(path3.sep).join("/"), label, resolvedPath: vaultRelative.split(path3.sep).join("/"), exactFile: true };
+  if (!(0, import_fs.existsSync)(absolutePath)) return unavailable(`\u4ED3\u5E93\u6587\u4EF6\u5728\u672C\u673A\u4E0D\u5B58\u5728\uFF1A${absolutePath}`);
+  try {
+    if (!(0, import_fs.statSync)(absolutePath).isFile()) return unavailable(`\u5F15\u7528\u4E0D\u662F\u6587\u4EF6\uFF1A${absolutePath}`);
+  } catch (e) {
+    return unavailable(`\u65E0\u6CD5\u786E\u8BA4\u4ED3\u5E93\u6587\u4EF6\uFF1A${absolutePath}`);
+  }
+  return { kind: "repository", absolutePath, repositoryPath: context.cwd ? path3.relative(context.cwd, absolutePath) : target, label, fileUrl: (0, import_url.pathToFileURL)(absolutePath).href };
+}
+function buildRepositoryOpenInvocation(target, platform) {
+  if (platform !== "darwin" || !path3.isAbsolute(target.absolutePath)) return null;
+  return { executable: "/usr/bin/open", args: ["-a", "/Applications/Obsidian.app", target.absolutePath] };
+}
+function chooseTaskCase(contexts, candidates) {
+  const matches = contexts ? candidates.filter((candidate) => contexts.includes(candidate.contextTag)) : [];
+  if (matches.length !== 1) return { casePath: null, cwd: null, reason: matches.length ? "Task\u5173\u8054\u591A\u4E2ACase\uFF0C\u4E0D\u80FD\u81EA\u52A8\u9009\u62E9cwd" : "Task\u6CA1\u6709\u552F\u4E00\u5DF2\u786E\u8BA4\u7684Case\u5173\u8054" };
+  const match = matches[0];
+  if (!match.cwd || !path3.isAbsolute(match.cwd)) return { casePath: match.path, cwd: null, reason: "Case\u672A\u63D0\u4F9B\u672C\u673A\u7EDD\u5BF9cwd" };
+  return { casePath: match.path, cwd: match.cwd, reason: null };
+}
+
+// src/repository-open.ts
+var import_child_process = require("child_process");
+var import_fs2 = require("fs");
+var path4 = __toESM(require("path"));
+var application = "/Applications/Obsidian.app";
+var RepositoryMarkdownOpener = class {
+  constructor(dependencies = {}) {
+    this.dependencies = dependencies;
+  }
+  async open(absolutePath) {
+    var _a, _b, _c;
+    const platform = (_a = this.dependencies.platform) != null ? _a : process.platform;
+    if (platform !== "darwin") return { kind: "unsupported", message: "\u5F53\u524D\u5E73\u53F0\u6CA1\u6709\u5DF2\u6838\u5BF9\u7684\u6307\u5B9AObsidian\u6253\u5F00\u53C2\u6570\uFF1B\u53EF\u590D\u5236\u8DEF\u5F84\u548C\u624B\u5DE5\u6B65\u9AA4\u3002" };
+    if (!path4.isAbsolute(absolutePath) || !/^\.md$/i.test(path4.extname(absolutePath)) || absolutePath.includes("\0")) return { kind: "unavailable", message: "\u4EC5\u652F\u6301\u51C6\u786E\u672C\u673A\u7EDD\u5BF9Markdown\u6587\u4EF6\u8DEF\u5F84\uFF1B\u53EF\u590D\u5236\u8DEF\u5F84\u6838\u5BF9\u3002" };
+    const inspect = (_b = this.dependencies.inspect) != null ? _b : import_fs2.statSync;
+    try {
+      if (!inspect(absolutePath).isFile()) return { kind: "unavailable", message: "\u76EE\u6807\u4E0D\u662F\u672C\u673AMarkdown\u6587\u4EF6\uFF1B\u8BF7\u6838\u5BF9\u539F\u8DEF\u5F84\u3002" };
+      if (!inspect(application).isDirectory() || !inspect(`${application}/Contents/MacOS/Obsidian`).isFile()) return { kind: "unavailable", message: "\u672A\u786E\u8BA4\u6307\u5B9AObsidian\u5E94\u7528\u4E0E\u53EF\u6267\u884C\u6587\u4EF6\uFF1B\u4FDD\u7559\u590D\u5236\u8DEF\u5F84\uFF0C\u4E0D\u6539\u7CFB\u7EDF\u5173\u8054\u3002" };
+    } catch (e) {
+      return { kind: "unavailable", message: "\u65E0\u6CD5\u786E\u8BA4\u672C\u673A\u539F\u6587\u4EF6\u6216\u6307\u5B9AObsidian\u5E94\u7528\uFF1B\u8BF7\u6838\u5BF9\u8DEF\u5F84\u3002" };
+    }
+    const invocation = buildRepositoryOpenInvocation({ kind: "repository", absolutePath, repositoryPath: absolutePath, label: absolutePath, fileUrl: "" }, platform);
+    const execute = (_c = this.dependencies.execute) != null ? _c : executePublicFileOpen;
+    try {
+      await execute(invocation.executable, invocation.args, { timeoutMs: 1e4 });
+      return { kind: "accepted", message: "\u6253\u5F00\u8BF7\u6C42\u5DF2\u63D0\u4EA4\uFF1B\u5B9E\u9645\u51C6\u786E\u6253\u5F00\u3001tab\u5F71\u54CD\u548C\u539F\u4F4D\u4FDD\u5B58\u5C1A\u672A\u9A8C\u8BC1\u3002" };
+    } catch (error) {
+      const failure = error;
+      const timeout = (failure == null ? void 0 : failure.code) === "ETIMEDOUT" || (failure == null ? void 0 : failure.killed) === true;
+      return { kind: "unknown", message: timeout ? "\u6253\u5F00\u8BF7\u6C42\u8D85\u65F6\uFF0C\u7ED3\u679C\u672A\u77E5\uFF1B\u6587\u4EF6\u53EF\u80FD\u5DF2\u6253\u5F00\uFF0C\u8BF7\u5148\u6838\u5BF9\uFF0C\u4E0D\u81EA\u52A8\u91CD\u8BD5\u3002" : "\u6253\u5F00\u8BF7\u6C42\u8FD4\u56DE\u9519\u8BEF\uFF0C\u5B9E\u9645\u662F\u5426\u6253\u5F00\u672A\u77E5\uFF1B\u4FDD\u7559\u590D\u5236\u8DEF\u5F84\uFF0C\u8BF7\u5148\u6838\u5BF9\uFF0C\u4E0D\u81EA\u52A8\u91CD\u8BD5\u3002" };
+    }
+  }
+};
+function executePublicFileOpen(executable, args, options) {
+  return new Promise((resolve5, reject) => {
+    (0, import_child_process.execFile)(executable, args, { timeout: options.timeoutMs, shell: false, windowsHide: true }, (error) => error ? reject(error) : resolve5());
+  });
+}
+
+// src/markdown-link-source.ts
+var normalized = (value) => {
+  try {
+    return decodeURIComponent(value).replace(/\\([\\[\]()<>|])/g, "$1");
+  } catch (e) {
+    return value;
+  }
+};
+var visibleLabel = (value) => value.replace(/\s+/g, " ").trim();
+var entityDecoder = null;
+function decodeEntities(value) {
+  return value.replace(/&(?:#x[0-9a-f]+|#[0-9]+|[a-z][a-z0-9]+);/gi, (entity) => {
+    var _a;
+    if (typeof document !== "undefined") {
+      entityDecoder != null ? entityDecoder : entityDecoder = document.createElement("textarea");
+      entityDecoder.innerHTML = entity;
+      return entityDecoder.value;
+    }
+    const numeric = entity.match(/^&#(x[0-9a-f]+|[0-9]+);$/i);
+    if (numeric) {
+      const token = numeric[1], point = parseInt(token[0].toLowerCase() === "x" ? token.slice(1) : token, token[0].toLowerCase() === "x" ? 16 : 10);
+      return point > 0 && point <= 1114111 && !(point >= 55296 && point <= 57343) ? String.fromCodePoint(point) : "\uFFFD";
+    }
+    const named = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\xA0" };
+    return (_a = named[entity.slice(1, -1)]) != null ? _a : entity;
+  });
+}
+var labelText = (value) => visibleLabel(decodeEntities(value.replace(/<[^>]*>/g, "").replace(/[*_~`]/g, "").replace(/\\(.)/g, "$1")));
+function collectMarkdownLinkSources(text2) {
+  var _a, _b;
+  let fence = null;
+  let masked = text2.split("\n").map((line) => {
+    const content = line.replace(/^ {0,3}(?:>\s*)+/, "");
+    const marker = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+    if (marker) {
+      if (!fence) fence = { marker: marker[1][0], length: marker[1].length };
+      else if (marker[1][0] === fence.marker && marker[1].length >= fence.length && !marker[2].trim()) fence = null;
+      return "";
+    }
+    return fence || /^(?: {4}|\t)/.test(content) ? "" : line;
+  }).join("\n").replace(/<!--[\s\S]*?(?:-->|$)/g, "").replace(/<(code|pre)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
+  const definitions = /* @__PURE__ */ new Map();
+  for (const match of masked.matchAll(/^ {0,3}\[([^\]^][^\]]*)\]:\s*(?:<([^>]+)>|(\S+))/gm)) definitions.set(match[1].toLowerCase(), (_a = match[2]) != null ? _a : match[3]);
+  masked = masked.replace(/^ {0,3}\[[^\]]+\]:.*$/gm, "");
+  const links = [];
+  const unescape = (value) => value.replace(/\\(.)/g, "$1");
+  for (let i = 0; i < masked.length; i++) {
+    if (masked[i] === "\\") {
+      i++;
+      continue;
+    }
+    if (masked[i] === "`") {
+      const run = masked.slice(i).match(/^`+/)[0], end = masked.indexOf(run, i + run.length);
+      if (end >= 0) {
+        i = end + run.length - 1;
+        continue;
+      }
+    }
+    if (masked[i] !== "[") continue;
+    if (masked[i - 1] === "!") continue;
+    if (masked[i + 1] === "[") {
+      const end = masked.indexOf("]]", i + 2);
+      if (end < 0) continue;
+      const parts = masked.slice(i + 2, end).split("|");
+      links.push({ kind: "wiki", href: unescape(parts[0]), label: labelText((_b = parts[1]) != null ? _b : parts[0]) });
+      i = end + 1;
+      continue;
+    }
+    let close = i + 1, depth = 1;
+    for (; close < masked.length; close++) {
+      if (masked[close] === "\\") {
+        close++;
+        continue;
+      }
+      if (masked[close] === "[") depth++;
+      if (masked[close] === "]" && --depth === 0) break;
+    }
+    if (depth) continue;
+    const label = masked.slice(i + 1, close);
+    if (masked[close + 1] === "(") {
+      let end = close + 2, paren = 1, angle = false;
+      for (; end < masked.length; end++) {
+        const char = masked[end];
+        if (char === "\\") {
+          end++;
+          continue;
+        }
+        if (char === "<") angle = true;
+        if (char === ">") angle = false;
+        if (!angle && char === "(") paren++;
+        if (!angle && char === ")" && --paren === 0) break;
+      }
+      if (paren) continue;
+      const value = masked.slice(close + 2, end).trim(), href2 = value.startsWith("<") ? value.slice(1, value.indexOf(">")) : value.replace(/\s+["'][\s\S]*["']$/, "");
+      links.push({ kind: "markdown", href: unescape(href2), label: labelText(label) });
+      i = end;
+      continue;
+    }
+    const reference = masked[close + 1] === "[" ? masked.slice(close + 2, masked.indexOf("]", close + 2)) : label;
+    const href = definitions.get((reference || label).toLowerCase());
+    if (href) {
+      links.push({ kind: "markdown", href, label: labelText(label) });
+      if (masked[close + 1] === "[") i = masked.indexOf("]", close + 2);
+      else i = close;
+    }
+  }
+  return links;
+}
+function renderedLinkSource(sources, rendered, index, complete) {
+  const clicked = rendered[index];
+  if (!clicked) return null;
+  const href = normalized(clicked.href);
+  const sourceGroup = sources.filter((source2) => normalized(source2.href) === href);
+  const actualGroup = rendered.map((link, i) => ({ link, i })).filter((x) => normalized(x.link.href) === href);
+  if (actualGroup.length > sourceGroup.length) return null;
+  const matching = sourceGroup.filter((source2) => source2.label === visibleLabel(clicked.label));
+  if (matching.length === 1 && sourceGroup.every((source2) => source2.kind === matching[0].kind)) return matching[0].kind;
+  if (!complete || sourceGroup.length !== actualGroup.length) return null;
+  const ordinal = actualGroup.findIndex((x) => x.i === index), source = sourceGroup[ordinal];
+  return source && source.label === visibleLabel(clicked.label) ? source.kind : null;
+}
+
+// src/case-content.ts
+function createCaseContent(casePath, details, readAt) {
+  const lines = details.replace(/\r\n/g, "\n").replace(/^\ufeff/, "").split("\n");
+  const headings = [];
+  let fence = null;
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index], match = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+    if (match) {
+      if (!fence) fence = { marker: match[1][0], size: match[1].length };
+      else if (match[1][0] === fence.marker && match[1].length >= fence.size && !match[2].trim()) fence = null;
+      continue;
+    }
+    if (fence) continue;
+    const heading = line.match(/^(#{1,6})\s+(.+?)\s*#*$/);
+    if (heading) headings.push({ heading: heading[2], level: heading[1].length, index });
+  }
+  const selected = /* @__PURE__ */ new Set(["Goal", "Current", "Context", "Summary", "Decisions", "\u76EE\u6807", "\u51B3\u7B56", "\u80CC\u666F", "\u6458\u8981"]);
+  const sections = headings.filter((h) => selected.has(h.heading)).map((h) => {
+    var _a, _b;
+    const end = (_b = (_a = headings.find((n) => n.index > h.index && n.level <= h.level)) == null ? void 0 : _a.index) != null ? _b : lines.length;
+    return { heading: h.heading, level: h.level, text: lines.slice(h.index + 1, end).join("\n"), source: { lineStart: h.index + 1, lineEnd: end } };
+  });
+  return { casePath, details, readAt, source: "vault-cached-read", error: null, sections };
+}
+
 // src/main.ts
 var FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
-var execFileAsync = (0, import_util.promisify)(import_child_process.execFile);
+var execFileAsync = (0, import_util.promisify)(import_child_process2.execFile);
 var DEFAULT_SETTINGS = {
   flowdeskRoot: "",
   workingDirectory: "",
@@ -2404,6 +2838,13 @@ var DEFAULT_SETTINGS = {
   tasknotesEnv: "{}"
 };
 var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
+  constructor() {
+    super(...arguments);
+    this.repositoryOpenDependencies = {};
+  }
+  openRepositoryMarkdown(absolutePath) {
+    return new RepositoryMarkdownOpener(this.repositoryOpenDependencies).open(absolutePath);
+  }
   async onload() {
     await this.loadSettings();
     this.registerView(
@@ -2528,21 +2969,33 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     }
   }
   async loadWorkCaseSnapshot(casePath, signal) {
-    var _a;
+    var _a, _b;
     const auth = resolveTaskNotesAuth((_a = this.settings.tasknotesEnv) != null ? _a : "{}");
     const invocation = this.createWorkCaseSnapshotInvocation(casePath);
     let stdout;
+    let resumeUnavailable = false;
+    const execute = (args) => execFileAsync(invocation.executable, args, {
+      ...createSnapshotExecutionOptions(invocation.cwd, signal),
+      env: auth.env
+    });
     try {
-      const result = await execFileAsync(invocation.executable, invocation.args, {
-        ...createSnapshotExecutionOptions(invocation.cwd, signal),
-        env: auth.env
-      });
+      const result = await execute(invocation.args);
       stdout = result.stdout;
     } catch (error) {
-      throw new Error(formatTaskNotesAuthError(formatWorkCaseCommandError(error), auth.token));
+      const failure = error;
+      if (failure.code !== 2 || !/^.*: error: unrecognized arguments: --resume-bundle\s*$/m.test((_b = failure.stderr) != null ? _b : "")) throw new Error(formatTaskNotesAuthError(formatWorkCaseCommandError(error), auth.token));
+      try {
+        const result = await execute(invocation.args.filter((arg) => arg !== "--resume-bundle"));
+        stdout = result.stdout;
+        resumeUnavailable = true;
+      } catch (retryError) {
+        throw new Error(formatTaskNotesAuthError(formatWorkCaseCommandError(retryError), auth.token));
+      }
     }
     try {
-      return sanitizeTaskNotesSnapshot(JSON.parse(stdout), auth.token);
+      const snapshot = sanitizeTaskNotesSnapshot(JSON.parse(stdout), auth.token);
+      if (resumeUnavailable && Array.isArray(snapshot.diagnostics)) snapshot.diagnostics.push({ code: "resume_bundle_unavailable", severity: "warning", path: "resume_bundle", message: "\u5F53\u524Dproducer\u4E0D\u652F\u6301\u6062\u590D\u6295\u5F71\uFF1B\u9ED8\u8BA4schema1\u53EA\u8BFB\u5185\u5BB9\u4FDD\u7559\u3002" });
+      return snapshot;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(formatTaskNotesAuthError(`Work Case snapshot JSON \u89E3\u6790\u5931\u8D25\uFF1A${message}`, auth.token));
@@ -2562,11 +3015,12 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
       format
     );
   }
-  createWorkCaseSnapshotInvocation(casePath) {
+  createWorkCaseSnapshotInvocation(casePath, includeResumeBundle = true) {
     var _a;
     return buildWorkCaseSnapshotInvocation({
       flowdeskRoot: this.resolveFlowDeskRoot(),
       casePath,
+      includeResumeBundle,
       workingDirectory: this.resolveVaultRoot(),
       apiUrl: resolveTaskNotesApiUrl(this.settings.apiUrl, resolveTaskNotesAuth((_a = this.settings.tasknotesEnv) != null ? _a : "{}").env)
     });
@@ -2580,6 +3034,13 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     var _a;
     const auth = resolveTaskNotesAuth((_a = this.settings.tasknotesEnv) != null ? _a : "{}");
     return readTaskDetails({ taskPath, signal, auth, apiUrl: resolveTaskNotesApiUrl(this.settings.apiUrl, auth.env) });
+  }
+  async loadCaseContent(casePath, signal) {
+    const file = this.app.vault.getAbstractFileByPath(casePath);
+    if (!(file instanceof import_obsidian.TFile) || file.path !== casePath) throw new Error("\u672A\u627E\u5230\u51C6\u786ECase\u539F\u6587");
+    const details = await this.app.vault.cachedRead(file);
+    if (signal.aborted) throw new Error("Case\u539F\u6587\u8BF7\u6C42\u5DF2\u53D6\u6D88");
+    return createCaseContent(casePath, details, (/* @__PURE__ */ new Date()).toISOString());
   }
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -2604,14 +3065,17 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     const candidates = [
       expandHomePath(this.settings.flowdeskRoot.trim()),
       expandHomePath(process.env.FLOWDESK_PLUGIN_ROOT || ""),
-      path3.resolve(__dirname, "..", "..")
+      path5.resolve(__dirname, "..", "..")
     ].filter(Boolean);
     for (const candidate of candidates) {
-      if ((0, import_fs.existsSync)(path3.join(candidate, "bin", "flowdesk-execution-snapshot"))) {
+      if ((0, import_fs3.existsSync)(path5.join(candidate, "bin", "flowdesk-execution-snapshot"))) {
         return candidate;
       }
     }
     throw new Error("\u672A\u627E\u5230 FlowDesk \u4ED3\u5E93\u8DEF\u5F84\uFF0C\u8BF7\u5728\u63D2\u4EF6\u8BBE\u7F6E\u91CC\u914D\u7F6E FlowDesk repo path\u3002");
+  }
+  vaultRoot() {
+    return this.resolveVaultRoot();
   }
   resolveVaultRoot() {
     const adapter = this.app.vault.adapter;
@@ -2619,7 +3083,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     if (!basePath) {
       throw new Error("Work Case Dashboard \u4EC5\u652F\u6301\u672C\u5730\u6587\u4EF6\u7CFB\u7EDF Vault\u3002");
     }
-    return path3.resolve(basePath);
+    return path5.resolve(basePath);
   }
 };
 var FlowDeskDashboardView = class extends import_obsidian.ItemView {
@@ -2633,6 +3097,9 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     this.rawContentGeneration = 0;
     this.rawContentLoading = false;
     this.rawContentOpen = false;
+    this.navigationController = null;
+    this.navigationOpening = null;
+    this.relatedTargetPanel = null;
     this.taskAdapter = new FrozenTaskAdapter({
       shell: () => this.shell,
       loadSnapshot: (taskPath, signal) => this.plugin.loadSnapshot(taskPath, signal),
@@ -2643,20 +3110,33 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     this.caseAdapter = new WorkCaseAdapter({
       shell: () => this.shell,
       loadSnapshot: (casePath, signal) => this.plugin.loadWorkCaseSnapshot(casePath, signal),
+      loadCaseContent: (casePath, signal) => this.plugin.loadCaseContent(casePath, signal),
       render: (container, state) => this.renderWorkCase(container, state),
       requestRender: () => this.renderShell(),
       nowLabel: () => formatTime(/* @__PURE__ */ new Date())
     });
     this.caseRenderer = new WorkCaseDashboardRenderer({
-      refresh: () => this.caseAdapter.refresh(),
+      refresh: () => {
+        this.cancelNavigation();
+        return this.caseAdapter.refresh();
+      },
       openTask: (taskPath, origin) => this.openTask(taskPath, origin),
       openCaseSource: (casePath, source) => this.openCaseSource(casePath, source),
-      openRelated: (target, casePath) => this.openRelated(target, casePath)
+      openRelated: (target, casePath) => this.openRelated(target, casePath),
+      renderMarkdown: (text2, element, sourcePath) => this.renderSourceMarkdown(text2, element, sourcePath),
+      copyText: (text2) => navigator.clipboard.writeText(text2),
+      openTaskSource: (taskPath, source) => this.openSnapshotSource(taskPath, source, "\u6062\u590D\u5F15\u7528")
     });
     this.shell = new ViewShellController([this.taskAdapter, this.caseAdapter]);
   }
-  clearRawTaskContent() {
+  cancelNavigation() {
     var _a;
+    (_a = this.navigationController) == null ? void 0 : _a.abort();
+    this.navigationController = null;
+  }
+  clearRawTaskContent(cancelNavigation = true) {
+    var _a;
+    if (cancelNavigation) this.cancelNavigation();
     this.rawContentGeneration += 1;
     (_a = this.rawContentController) == null ? void 0 : _a.abort();
     this.rawContentController = null;
@@ -2707,7 +3187,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     });
     const original = section2.createEl("button", { text: "\u6253\u5F00\u4EFB\u52A1\u539F\u6587", cls: "flowdesk-content-source" });
     original.addEventListener("click", () => {
-      void this.openTask(model.currentTask.id);
+      void this.openSnapshotSource(model.currentTask.id, { line_start: 1, line_end: 1, excerpt: observationFirstLine(this.rawTaskContent) }, "\u5B8C\u6574\u539F\u6587");
     });
     const observation = this.rawTaskContent;
     if (!observation || observation.taskId !== model.currentTask.id) return;
@@ -2720,7 +3200,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     if (observation.details === "") section2.createDiv({ cls: "flowdesk-muted", text: "API\u539F\u6587\u4E3A\u7A7A\uFF1B\u53EF\u6253\u5F00\u6574\u5F20\u4EFB\u52A1\u539F\u6587\u3002" });
     else {
       const markdown = section2.createDiv({ cls: "flowdesk-contract-scope-markdown" });
-      void import_obsidian.MarkdownRenderer.render(this.app, observation.details, markdown, observation.taskId, this).catch(() => {
+      void this.renderSourceMarkdown(observation.details, markdown, observation.taskId).catch(() => {
         markdown.setText(observation.details);
       });
     }
@@ -2757,7 +3237,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       this.previousTaskPath,
       this.plugin.workCaseType(file)
     );
-    if (!("resourcePath" in nextContext) || nextContext.kind !== "task" || this.shell.context.kind !== "task" || !("resourcePath" in this.shell.context) || this.shell.context.resourcePath !== nextContext.resourcePath) this.clearRawTaskContent();
+    if (!("resourcePath" in nextContext) || nextContext.kind !== "task" || this.shell.context.kind !== "task" || !("resourcePath" in this.shell.context) || this.shell.context.resourcePath !== nextContext.resourcePath) this.clearRawTaskContent(!(this.navigationOpening && this.navigationOpening.path === (file == null ? void 0 : file.path) && !this.navigationOpening.signal.aborted));
     if ("resourcePath" in nextContext) {
       this.previousTaskPath = nextContext.resourcePath;
       await this.shell.select(nextContext);
@@ -2780,6 +3260,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     await this.taskAdapter.refresh();
   }
   scheduleRefresh() {
+    this.cancelNavigation();
     if (this.shell.context.kind === this.caseAdapter.kind) {
       this.caseAdapter.scheduleRefresh();
     } else {
@@ -3065,37 +3546,135 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   async openDiagnosticLocation(diagnostic) {
     await this.openSnapshotSource(diagnostic.taskId, diagnostic.source, "\u8BCA\u65AD");
   }
-  async openSnapshotSource(taskPath, source, sourceKind = "\u6765\u6E90") {
-    var _a;
-    const navigation = resolveDiagnosticNavigation(
-      taskPath,
-      source
-    );
-    if (!navigation.canOpen) {
-      new import_obsidian.Notice("producer \u672A\u63D0\u4F9B\u53EF\u6253\u5F00\u7684 task ID\u3002");
+  beginNavigation() {
+    this.cancelNavigation();
+    const controller = new AbortController();
+    this.navigationController = controller;
+    const context = this.shell.context;
+    return { signal: controller.signal, current: () => !controller.signal.aborted && this.shell.context === context };
+  }
+  async openNavigationFile(file, signal) {
+    const opening = { path: file.path, signal };
+    this.navigationOpening = opening;
+    try {
+      await this.app.workspace.getLeaf(false).openFile(file);
+      return true;
+    } catch (error) {
+      if (!signal.aborted) new import_obsidian.Notice(`\u65E0\u6CD5\u6253\u5F00\u51C6\u786E\u539F\u6587\uFF1A${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    } finally {
+      if (this.navigationOpening === opening) this.navigationOpening = null;
+    }
+  }
+  async openSnapshotSource(taskPath, source, sourceKind = "\u6765\u6E90", text2 = "") {
+    var _a, _b;
+    if (!taskPath) {
+      new import_obsidian.Notice("producer\u672A\u63D0\u4F9B\u51C6\u786ETask ID");
       return;
     }
-    const { target } = navigation;
-    try {
-      await this.app.workspace.openLinkText(target.linkText, taskPath, false);
-      if (target.editorLine === null) return;
-      const view = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
-      if (!view || ((_a = view.file) == null ? void 0 : _a.path) !== taskPath) {
-        new import_obsidian.Notice("\u4EFB\u52A1\u5DF2\u6253\u5F00\uFF0C\u4F46\u5F53\u524D\u89C6\u56FE\u65E0\u6CD5\u5B9A\u4F4D\u5230\u5177\u4F53\u884C\u3002");
-        return;
-      }
-      if (target.editorLine >= view.editor.lineCount()) {
-        new import_obsidian.Notice(`${sourceKind}\u884C\u53F7\u5DF2\u8D85\u51FA\u5F53\u524D\u6587\u4EF6\u8303\u56F4\uFF1A${target.line}`);
-        return;
-      }
-      const position = { line: target.editorLine, ch: 0 };
-      view.editor.setCursor(position);
-      view.editor.scrollIntoView({ from: position, to: position }, true);
-      view.editor.focus();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      new import_obsidian.Notice(`\u65E0\u6CD5\u5B9A\u4F4D${sourceKind}\u4F4D\u7F6E\uFF1A${message}`);
+    if (!source) {
+      await this.openTask(taskPath);
+      return;
     }
+    const request = this.beginNavigation();
+    const file = this.app.vault.getAbstractFileByPath(taskPath);
+    if (!(file instanceof import_obsidian.TFile) || file.path !== taskPath) {
+      new import_obsidian.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${taskPath}`);
+      return;
+    }
+    let apiDetails = null;
+    let location = { kind: "note", reason: "\u6765\u6E90\u65E0\u6CD5\u6838\u5BF9\uFF1B\u6253\u5F00\u6574\u5F20\u4EFB\u52A1\u539F\u6587\u3002" };
+    try {
+      const [api, fileText] = await Promise.all([this.plugin.loadTaskDetails(taskPath, request.signal), this.app.vault.cachedRead(file)]);
+      apiDetails = api.details;
+      location = locateTaskSource(fileText, api.details, { heading: sourceKind, level: 2, text: text2, source });
+    } catch (error) {
+      location = { kind: "note", reason: `\u6765\u6E90\u6838\u5BF9\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}\uFF1B\u6253\u5F00\u6574\u5F20\u4EFB\u52A1\u539F\u6587\u3002` };
+    }
+    if (!request.current()) return;
+    if (!await this.openNavigationFile(file, request.signal)) return;
+    if (request.signal.aborted) return;
+    if (location.kind === "note") {
+      new import_obsidian.Notice(location.reason);
+      return;
+    }
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+    if (!view || ((_a = view.file) == null ? void 0 : _a.path) !== taskPath || ((_b = view.getMode) == null ? void 0 : _b.call(view)) === "preview" || location.editorLine >= view.editor.lineCount()) {
+      new import_obsidian.Notice("\u4EFB\u52A1\u5DF2\u6253\u5F00\uFF1B\u5F53\u524D\u89C6\u56FE\u4E0D\u80FD\u786E\u8BA4\u7CBE\u786E\u4F4D\u7F6E\uFF0C\u8BF7\u67E5\u770B\u539F\u6587\u3002");
+      return;
+    }
+    if (apiDetails === null || typeof view.editor.getValue !== "function") {
+      new import_obsidian.Notice("\u5F53\u524D\u7F16\u8F91\u5668\u4E0D\u80FD\u6838\u5BF9\u539F\u6587\uFF1B\u5DF2\u6253\u5F00\u6574\u5F20\u4EFB\u52A1\u3002");
+      return;
+    }
+    location = locateTaskSource(view.editor.getValue(), apiDetails, { heading: sourceKind, level: 2, text: text2, source });
+    if (location.kind === "note") {
+      new import_obsidian.Notice(location.reason);
+      return;
+    }
+    const position = { line: location.editorLine, ch: 0 };
+    view.editor.setCursor(position);
+    view.editor.scrollIntoView({ from: position, to: position }, true);
+    view.editor.focus();
+  }
+  vaultLinkResolver(sourcePath) {
+    return (linkText) => {
+      var _a, _b, _c, _d;
+      const candidates = [linkText, path5.posix.normalize(path5.posix.join(path5.posix.dirname(sourcePath), linkText))];
+      for (const candidate of candidates) {
+        const file = this.app.vault.getAbstractFileByPath(candidate);
+        if (file instanceof import_obsidian.TFile && file.path === candidate) return file.path;
+      }
+      const { path: linkpath } = (0, import_obsidian.parseLinktext)(linkText);
+      return (_d = (_c = (_b = (_a = this.app.metadataCache).getFirstLinkpathDest) == null ? void 0 : _b.call(_a, linkpath, sourcePath)) == null ? void 0 : _c.path) != null ? _d : null;
+    };
+  }
+  async renderSourceMarkdown(text2, element, sourcePath) {
+    const sources = collectMarkdownLinkSources(text2);
+    let complete = false;
+    element.addEventListener("click", (event) => {
+      var _a, _b, _c;
+      const anchor = (_b = (_a = event.target) == null ? void 0 : _a.closest) == null ? void 0 : _b.call(_a, "a");
+      if (!anchor || !element.contains(anchor)) return;
+      const href = anchor.getAttribute("data-href") || anchor.getAttribute("href");
+      if (!href) return;
+      const anchors = Array.from(element.querySelectorAll("a"));
+      const origin = renderedLinkSource(sources, anchors.map((link) => {
+        var _a2;
+        return { href: link.getAttribute("data-href") || link.getAttribute("href") || "", label: (_a2 = link.textContent) != null ? _a2 : "" };
+      }), anchors.indexOf(anchor), complete);
+      if (origin === "wiki") return;
+      const target = resolveRelatedTarget(href, { casePath: sourcePath, cwd: null, vaultRoot: this.plugin.vaultRoot(), resolveVaultLink: this.vaultLinkResolver(sourcePath) });
+      const explicitFile = /^file:/i.test(href) || path5.isAbsolute(href);
+      const literalHashFile = target.kind === "vault" && target.exactFile === true && ((_c = target.resolvedPath) == null ? void 0 : _c.includes("#"));
+      if (target.kind === "vault" && !explicitFile && !literalHashFile || target.kind === "url") return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      void this.openRelated(href, sourcePath, origin === "markdown" ? void 0 : "\u94FE\u63A5\u8BED\u6CD5\u6765\u6E90\u65E0\u6CD5\u552F\u4E00\u6838\u5BF9\uFF1B\u8BF7\u67E5\u770B\u539F\u6587\u6216\u590D\u5236\u5F15\u7528\u3002");
+    }, true);
+    await import_obsidian.MarkdownRenderer.render(this.app, text2, element, sourcePath, this);
+    complete = true;
+  }
+  async relatedContext(sourcePath, signal) {
+    var _a, _b, _c, _d;
+    const vaultRoot = this.plugin.vaultRoot();
+    if (!isTaskPath(sourcePath)) {
+      const active = this.caseAdapter.getRenderState();
+      if (((_a = active == null ? void 0 : active.model) == null ? void 0 : _a.source.path) === sourcePath) return { casePath: sourcePath, cwd: active.model.workCase.cwd, vaultRoot };
+      const model2 = createWorkCaseViewModel(await this.plugin.loadWorkCaseSnapshot(sourcePath, signal), sourcePath);
+      return { casePath: sourcePath, cwd: model2.workCase.cwd, vaultRoot };
+    }
+    const api = await this.plugin.loadTaskDetails(sourcePath, signal);
+    const contexts = (_b = api.contexts) != null ? _b : null;
+    const candidates = contexts ? this.app.vault.getMarkdownFiles().filter((file) => ["work-case", "session"].includes(this.plugin.workCaseType(file)) && contexts.includes(`@${path5.basename(file.path, ".md")}`)) : [];
+    const chosen = chooseTaskCase(contexts, candidates.map((file) => ({ path: file.path, contextTag: `@${path5.basename(file.path, ".md")}`, cwd: null })));
+    if (!chosen.casePath) throw new Error((_c = chosen.reason) != null ? _c : "\u7F3A\u5C11\u552F\u4E00Case");
+    const model = createWorkCaseViewModel(await this.plugin.loadWorkCaseSnapshot(chosen.casePath, signal), chosen.casePath);
+    if (model.tasks.observationHealth !== "healthy" || !model.tasks.coverage.complete || !model.tasks.items.some((task) => task.id === sourcePath)) throw new Error("Case\u5173\u8054\u8BFB\u53D6\u4E0D\u5B8C\u6574\u6216\u672A\u786E\u8BA4\u51C6\u786ETask");
+    const result = chooseTaskCase(contexts, [{ path: chosen.casePath, contextTag: model.tasks.contextTag, cwd: model.workCase.cwd }]);
+    if (!result.cwd) throw new Error((_d = result.reason) != null ? _d : "Case cwd\u4E0D\u53EF\u7528");
+    return { casePath: chosen.casePath, cwd: result.cwd, vaultRoot };
   }
   renderChildren(container, model, children) {
     var _a;
@@ -3171,11 +3750,17 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     const contract = createSection2(body, "\u4EFB\u52A1\u89C4\u683C\u4E0E\u8BB0\u5F55", "producer \u6295\u5F71");
     renderedSections.set("contract", contract);
     new TaskContentRenderer({
-      renderMarkdown: (text2, element, taskPath) => import_obsidian.MarkdownRenderer.render(this.app, text2, element, taskPath, this),
-      // Accurate source line mapping is Task 3. Task 1 opens the task without guessing vault offsets.
-      openSource: (taskPath) => this.openTask(taskPath)
+      renderMarkdown: (text2, element, taskPath) => this.renderSourceMarkdown(text2, element, taskPath),
+      openSource: (taskPath, section2) => this.openSnapshotSource(taskPath, section2.source, section2.heading, section2.text)
     }).render(contract, model.content);
     this.renderRawTaskContent(contract, model);
+    const continuation = contract.createDiv({ cls: "flowdesk-task-resume-reference" });
+    continuation.createDiv({ cls: "flowdesk-muted", text: "Task\u53EF\u72EC\u7ACB\u7EE7\u7EED\uFF1B\u5F15\u7528\u4E0D\u521B\u5EFACase\u3001\u4E0D\u542F\u52A8\u5BBF\u4E3B\u3002\u5148\u7531\u539Fowner\u8BFB\u53D6\u6700\u65B0TaskNotes\u6B63\u6587\u3002" });
+    const copyTask = continuation.createEl("button", { cls: "flowdesk-copy-task-reference", text: "\u590D\u5236Task\u5F15\u7528\u4E0E\u7EE7\u7EED\u6B65\u9AA4" });
+    copyTask.addEventListener("click", () => {
+      void navigator.clipboard.writeText(`\u51C6\u786ETask\uFF1A${model.currentTask.id}
+\u5728\u539Fowner\u4F1A\u8BDD\u4F7F\u7528 work \u7EE7\u7EED\uFF1B\u5148\u8BFB\u6700\u65B0TaskNotes/snapshot\uFF0C\u533A\u5206\u5DF2\u505A\u7ED3\u679C\u4E0E\u672A\u5B8C\u6210Next\uFF0C\u907F\u514D\u91CD\u590D\u6267\u884C\u3002\u6362\u8F7D\u4F53\u524D\u5148\u4FDD\u5B58\u5E76\u56DE\u8BFB\u8FDB\u5C55\u5E76\u6B63\u5E38\u505C\u6B62\u65E7\u6267\u884C\u4E0E\u5DF2\u77E5\u540E\u53F0\u5DE5\u4F5C\uFF1B\u91CA\u653E\u672A\u77E5\u65F6\u53EA\u8BFB\u6216\u56DE\u539Fowner\u3002`);
+    });
     const observation = createSection2(
       body,
       "\u89C2\u5BDF\u4E0E\u6765\u6E90",
@@ -3387,35 +3972,120 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     await this.app.workspace.getLeaf(taskNavigationLeafType(origin)).openFile(file);
   }
   async openCaseSource(casePath, source) {
-    var _a;
-    const file = this.app.vault.getAbstractFileByPath(casePath);
-    if (!(file instanceof import_obsidian.TFile)) {
-      new import_obsidian.Notice(`\u672A\u627E\u5230 Work Case \u6587\u4EF6\uFF1A${casePath}`);
+    var _a, _b, _c;
+    const request = this.beginNavigation(), file = this.app.vault.getAbstractFileByPath(casePath);
+    if (!(file instanceof import_obsidian.TFile) || file.path !== casePath) {
+      new import_obsidian.Notice(`\u672A\u627E\u5230Work Case\u6587\u4EF6\uFF1A${casePath}`);
       return;
     }
-    await this.app.workspace.getLeaf(false).openFile(file);
+    let text2;
+    try {
+      text2 = await this.app.vault.cachedRead(file);
+    } catch (error) {
+      if (!request.current()) return;
+      const opened = await this.openNavigationFile(file, request.signal);
+      if (opened && !request.signal.aborted) new import_obsidian.Notice(`Case\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF0C\u4EC5\u6253\u5F00\u6574\u5F20\u539F\u6587\uFF1A${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    if (!request.current()) return;
+    if (!await this.openNavigationFile(file, request.signal)) return;
+    if (request.signal.aborted) return;
+    const lines = text2.replace(/\r\n/g, "\n").split("\n");
+    const model = (_a = this.caseAdapter.getRenderState()) == null ? void 0 : _a.model;
+    const blocks = model ? [...Object.values(model.sections).flat(), ...model.current.raw ? [model.current.raw] : [], ...model.recentProgress] : [];
+    const expected = blocks.find((block) => block.source.lineStart === source.lineStart && block.source.lineEnd === source.lineEnd);
+    const validRange = Number.isInteger(source.lineStart) && source.lineStart >= 1 && Number.isInteger(source.lineEnd) && source.lineEnd >= source.lineStart && source.lineEnd <= lines.length;
+    const span = validRange ? lines.slice(source.lineStart - 1, source.lineEnd).join("\n") : "";
+    if (!validRange || !expected || !span.includes(expected.text.replace(/\r\n/g, "\n"))) {
+      new import_obsidian.Notice("Case\u6765\u6E90\u5DF2\u53D8\u5316\u6216\u8D8A\u754C\uFF1B\u5DF2\u6253\u5F00\u6574\u5F20Case\u539F\u6587\u3002");
+      return;
+    }
     const view = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
-    if (!view || ((_a = view.file) == null ? void 0 : _a.path) !== casePath) {
-      new import_obsidian.Notice("Work Case \u5DF2\u6253\u5F00\uFF0C\u4F46\u5F53\u524D\u89C6\u56FE\u65E0\u6CD5\u5B9A\u4F4D\u5230\u5177\u4F53\u884C\u3002");
+    if (!view || ((_b = view.file) == null ? void 0 : _b.path) !== casePath || ((_c = view.getMode) == null ? void 0 : _c.call(view)) === "preview" || source.lineStart - 1 >= view.editor.lineCount()) {
+      new import_obsidian.Notice("Case\u5DF2\u6253\u5F00\uFF1B\u5F53\u524D\u89C6\u56FE\u65E0\u6CD5\u786E\u8BA4\u7CBE\u786E\u4F4D\u7F6E\u3002");
       return;
     }
-    const editorLine = Math.max(0, source.lineStart - 1);
-    if (editorLine >= view.editor.lineCount()) {
-      new import_obsidian.Notice(`Work Case \u6765\u6E90\u884C\u53F7\u5DF2\u8D85\u51FA\u5F53\u524D\u6587\u4EF6\u8303\u56F4\uFF1A${source.lineStart}`);
+    const liveLines = view.editor.getValue().replace(/\r\n/g, "\n").split("\n");
+    const liveSpan = liveLines.slice(source.lineStart - 1, source.lineEnd).join("\n");
+    if (source.lineEnd > liveLines.length || expected && !liveSpan.includes(expected.text.replace(/\r\n/g, "\n"))) {
+      new import_obsidian.Notice("Case\u7F16\u8F91\u5668\u539F\u6587\u5DF2\u53D8\u5316\uFF1B\u4E0D\u731C\u4F4D\u7F6E\u3002");
       return;
     }
-    const position = { line: editorLine, ch: 0 };
+    const position = { line: source.lineStart - 1, ch: 0 };
     view.editor.setCursor(position);
     view.editor.scrollIntoView({ from: position, to: position }, true);
     view.editor.focus();
   }
-  async openRelated(target, casePath) {
-    const linkText = normalizeWikiLink(target);
-    try {
-      await this.app.workspace.openLinkText(linkText, casePath, false);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      new import_obsidian.Notice(`\u65E0\u6CD5\u6253\u5F00\u5173\u8054\u6587\u4EF6\uFF1A${message}`);
+  async openRelated(raw, sourcePath, sourceError) {
+    var _a, _b;
+    const request = this.beginNavigation();
+    let context = { casePath: sourcePath, cwd: null, vaultRoot: this.plugin.vaultRoot(), resolveVaultLink: this.vaultLinkResolver(sourcePath) };
+    let target = sourceError ? { kind: "unavailable", label: raw, reason: sourceError } : resolveRelatedTarget(raw, context);
+    if (target.kind === "unavailable" && target.reason.includes("cwd") || !isTaskPath(sourcePath) && target.kind === "repository") {
+      try {
+        context = { ...await this.relatedContext(sourcePath, request.signal), resolveVaultLink: this.vaultLinkResolver(sourcePath) };
+        target = resolveRelatedTarget(raw, context);
+      } catch (error) {
+        target = { kind: "unavailable", label: raw, reason: error instanceof Error ? error.message : String(error) };
+      }
+    }
+    if (!request.current()) return;
+    if (target.kind === "url") {
+      window.open(target.url, "_blank");
+      return;
+    }
+    if (target.kind === "vault") {
+      const literalHashFile = target.exactFile === true && ((_a = target.resolvedPath) == null ? void 0 : _a.includes("#"));
+      if (literalHashFile) {
+        const file = this.app.vault.getAbstractFileByPath(target.resolvedPath);
+        if (file instanceof import_obsidian.TFile && file.path === target.resolvedPath) {
+          await this.openNavigationFile(file, request.signal);
+          return;
+        }
+        target = { kind: "unavailable", label: target.label, reason: "\u5DF2\u786E\u8BA4\u7684vault\u539F\u6587\u4EF6\u5F53\u524D\u4E0D\u53EF\u7528\uFF1B\u4E0D\u628A\u5B57\u9762#\u91CD\u65B0\u89E3\u91CA\u4E3Asubpath\u3002" };
+      } else {
+        const destination = this.vaultLinkResolver(sourcePath)(target.linkText);
+        if (destination) {
+          await this.app.workspace.openLinkText(target.linkText, sourcePath, false);
+          return;
+        }
+        target = { kind: "unavailable", label: target.label, reason: `\u672A\u627E\u5230vault\u539F\u6587\uFF1A${target.linkText}\uFF1B\u4E0D\u4F1A\u521B\u5EFA\u65B0\u7B14\u8BB0\u3002` };
+      }
+    }
+    (_b = this.relatedTargetPanel) == null ? void 0 : _b.remove();
+    const panel = this.contentEl.createDiv({ cls: "flowdesk-dashboard-section flowdesk-related-target" });
+    this.relatedTargetPanel = panel;
+    const pathText = target.kind === "repository" ? target.absolutePath : raw;
+    panel.createDiv({ cls: "flowdesk-dashboard-section-title", text: target.kind === "repository" ? "\u4ED3\u5E93\u6587\u6863" : "\u5F15\u7528\u5B9A\u4F4D\u7F3A\u53E3" });
+    panel.createDiv({ cls: "flowdesk-muted", text: target.kind === "repository" ? `\u539F\u6587\u4EF6\uFF1A${pathText}\uFF1B\u4ED3\u5E93\u5F15\u7528\uFF1A${target.repositoryPath}` : target.reason });
+    const copy = panel.createEl("button", { cls: "flowdesk-copy-related-path", text: target.kind === "repository" ? "\u590D\u5236\u539F\u6587\u4EF6\u8DEF\u5F84" : "\u590D\u5236\u539F\u5F15\u7528" });
+    copy.addEventListener("click", () => {
+      void navigator.clipboard.writeText(pathText);
+    });
+    if (target.kind === "repository") {
+      const documentPath = target.absolutePath;
+      const result = panel.createDiv({ cls: "flowdesk-repository-open-feedback", attr: { role: "status" }, text: "\u70B9\u51FB\u540E\u5411 Obsidian \u63D0\u4EA4\u6253\u5F00\u6B64\u539F\u6587\u4EF6\u7684\u8BF7\u6C42\u3002" });
+      const openDocument = panel.createEl("button", { cls: "flowdesk-open-repository-document", text: "\u5728 Obsidian \u6253\u5F00\u6587\u6863", attr: { "aria-label": "\u660E\u786E\u5411\u6307\u5B9AObsidian\u63D0\u4EA4\u6B64Markdown\u539F\u6587\u4EF6" } });
+      openDocument.addEventListener("click", async () => {
+        if (openDocument.disabled) return;
+        openDocument.disabled = true;
+        result.setText("\u6B63\u5728\u63D0\u4EA4\u6253\u5F00\u8BF7\u6C42\u2026");
+        try {
+          const outcome = await this.plugin.openRepositoryMarkdown(documentPath);
+          result.setText(outcome.message);
+        } catch (e) {
+          result.setText("\u6253\u5F00\u8BF7\u6C42\u7ED3\u679C\u672A\u77E5\uFF1B\u8BF7\u6838\u5BF9\u539F\u6587\u4EF6\uFF0C\u4FDD\u7559\u590D\u5236\u8DEF\u5F84\uFF0C\u4E0D\u81EA\u52A8\u91CD\u8BD5\u3002");
+        } finally {
+          openDocument.disabled = false;
+        }
+      });
+      const steps = `${pathText}
+\u5728Obsidian\u547D\u4EE4\u9762\u677F\u9009\u62E9 Open file from outside the vault\u2026\uFF0C\u9009\u62E9\u6B64\u8DEF\u5F84\u5BF9\u5E94\u7684\u539F\u6587\u4EF6\u3002`;
+      panel.createDiv({ cls: "flowdesk-muted", text: steps });
+      const copySteps = panel.createEl("button", { text: "\u590D\u5236\u6253\u5F00\u6B65\u9AA4" });
+      copySteps.addEventListener("click", () => {
+        void navigator.clipboard.writeText(steps);
+      });
     }
   }
 };
@@ -3488,11 +4158,11 @@ function observationField(container, label, value) {
   cell.createDiv({ cls: "flowdesk-observation-value", text: value });
 }
 function taskTitleFromPath(taskPath) {
-  return path3.basename(taskPath, path3.extname(taskPath));
+  return path5.basename(taskPath, path5.extname(taskPath));
 }
 function expandHomePath(value) {
   if (value === "~") return (0, import_os.homedir)();
-  if (value.startsWith("~/")) return path3.join((0, import_os.homedir)(), value.slice(2));
+  if (value.startsWith("~/")) return path5.join((0, import_os.homedir)(), value.slice(2));
   return value;
 }
 function formatTime(date) {
@@ -3522,10 +4192,9 @@ function formatWorkCaseCommandError(error) {
   const message = error instanceof Error ? error.message : String(error);
   return `Work Case snapshot \u547D\u4EE4\u5931\u8D25\uFF1A${stderr || stdout || message}`;
 }
-function normalizeWikiLink(value) {
+function observationFirstLine(observation) {
   var _a;
-  const match = value.trim().match(/^\[\[([^\]]+)\]\]$/);
-  return ((_a = match == null ? void 0 : match[1]) != null ? _a : value).split("|", 1)[0].trim();
+  return (observation == null ? void 0 : observation.error) ? "" : (_a = observation == null ? void 0 : observation.details.split(/\r?\n/)[0]) != null ? _a : "";
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

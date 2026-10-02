@@ -1,3 +1,5 @@
+import { validateResumeBundle, type ResumeBundle } from "./resume-presentation";
+
 export type WorkCaseSourceType = "work-case" | "session";
 export type WorkCaseObservationHealth = "healthy" | "degraded" | "unavailable";
 
@@ -32,6 +34,7 @@ export interface WorkCaseDiagnostic {
 }
 
 export interface WorkCaseViewModel {
+  resumeBundle: ResumeBundle | null;
   source: {
     path: string;
     type: WorkCaseSourceType;
@@ -184,7 +187,8 @@ export function createWorkCaseViewModel(
 
   for (const key of SECTION_KEYS) array(sections[key], `sections.${key}`);
 
-  return {
+  const model: WorkCaseViewModel = {
+    resumeBundle: null,
     source: {
       path: sourcePath,
       type: source.type,
@@ -281,6 +285,9 @@ export function createWorkCaseViewModel(
       };
     }),
   };
+  try { model.resumeBundle = validateResumeBundle(root.resume_bundle, sourcePath, model.tasks.items); }
+  catch (error) { invalid(error instanceof Error ? error.message : "resume_bundle 无效"); }
+  return model;
 }
 
 function taskItem(value: unknown, at: string): WorkCaseTaskItem {

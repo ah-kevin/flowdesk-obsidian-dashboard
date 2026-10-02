@@ -1,3 +1,4 @@
+import {readFileSync} from "node:fs";
 import assert from "node:assert/strict";
 import {createRequire} from "node:module";
 import {mkdirSync,writeFileSync} from "node:fs";
@@ -29,10 +30,10 @@ async function setup(t:any) {
  });
  const bundle=fixture.path("plugin.cjs");compilePlugin(bundle);const Plugin=createRequire(import.meta.url)(bundle).default;
  const plugin=new Plugin();const root=new TestElement();const callbacks=new Map<string,Function>();let active:any=null;let view:any;
- plugin.app={vault:{adapter:{getBasePath:()=>fixture.env.OBSIDIAN_VAULT},on(event:string,callback:Function){callbacks.set(`vault:${event}`,callback);},getAbstractFileByPath:(p:string)=>({path:p,extension:"md"})},metadataCache:{on(event:string,callback:Function){callbacks.set(`metadata:${event}`,callback);},getFileCache(file:any){return {frontmatter:{type:file.path===casePath?"work-case":"note"}};}},workspace:{on(){},onLayoutReady(){},getActiveFile:()=>active,getLeavesOfType:()=>view?[{view}]:[],getLeaf:()=>({async openFile(){}}),async openLinkText(){}}};
+ plugin.app={vault:{adapter:{getBasePath:()=>fixture.env.OBSIDIAN_VAULT},on(event:string,callback:Function){callbacks.set(`vault:${event}`,callback);},getAbstractFileByPath:(p:string)=>({path:p,extension:"md"}),cachedRead:async(file:any)=>readFileSync(path.join(fixture.env.OBSIDIAN_VAULT!,file.path),"utf8")},metadataCache:{on(event:string,callback:Function){callbacks.set(`metadata:${event}`,callback);},getFileCache(file:any){return {frontmatter:{type:file.path===casePath?"work-case":"note"}};}},workspace:{on(){},onLayoutReady(){},getActiveFile:()=>active,getLeavesOfType:()=>view?[{view}]:[],getLeaf:()=>({async openFile(){}}),async openLinkText(){}}};
  await plugin.onload();
  plugin.settings={flowdeskRoot:CORE_ROOT,workingDirectory:fixture.root,apiUrl:url,tasknotesEnv:JSON.stringify({TASKNOTES_API_TOKEN:"owned-token",OBSIDIAN_VAULT:fixture.env.OBSIDIAN_VAULT})};
- const invocation=buildWorkCaseSnapshotInvocation({flowdeskRoot:CORE_ROOT,casePath,workingDirectory:fixture.env.OBSIDIAN_VAULT!,apiUrl:url});
+ const invocation=buildWorkCaseSnapshotInvocation({flowdeskRoot:CORE_ROOT,casePath,workingDirectory:fixture.env.OBSIDIAN_VAULT!,apiUrl:url,includeResumeBundle:true});
  fixture.allowParentProducer([invocation.executable,...invocation.args],invocation.cwd);
  const taskInvocation=buildSnapshotInvocation({flowdeskRoot:CORE_ROOT,taskPath:taskRoot.id,workingDirectory:fixture.root,apiUrl:url},"json");
  fixture.allowParentProducer([taskInvocation.executable,...taskInvocation.args],taskInvocation.cwd);

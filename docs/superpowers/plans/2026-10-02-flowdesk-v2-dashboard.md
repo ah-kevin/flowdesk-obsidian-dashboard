@@ -117,7 +117,7 @@
 - [ ] **Step 2: RED—恢复事实与动作边界。** `producer_bundle_keeps_latest_canonical_next_and_sources`/`ambiguous_next_does_not_become_instruction`/`resume_read_has_zero_side_effects` 使用真实coreproducer进controlled HTTP。断言done结果/未完成Next来自其投影，API缺口/utf8截断/omitted_count显式呈现；缺bundle非空猜摘要。原文操作引用写“仅引用”，不证明完成。idle/pid/TTL/queued/surface==nativeID/codex agent均不能产生released/host kind或接手授权。多个未完Task须用户显式选准确ID，绝不自动start全部。
 - [ ] **Step 3: 跑RED。** `npm test -- source-navigation.test.ts resume-presentation.test.ts work-case-invocation.test.ts work-case-model.test.ts dashboard-resume-integration.test.ts`；缺核心producer时标依赖未完成，不靠dummy bundle令集成绿。
 - [ ] **Step 4: 接精确原文与三类引用。** main统一Task/Case source导航，调用 `readTaskDetails` 确认API身份+局部原文，vault.cachedRead确认fileText；仅在匹配时使用public MarkdownView.editor setCursor/scrollIntoView/focus，阅读模式不能定位则明确开原文，不假称精准成功。records每条有自己的“打开这一条原文”；关联文件经resolver分流。MarkdownRenderer中的repo引用同样采用已解析target，不留仅Case related列表修好而Task正文继续误路由的洞；只拦识别出的repo引用，其余现有vault/web语义保持。
-- [ ] **Step 5: 实际验证 Obsidian 外部Markdown公开候选后接线。** 在后续已授权UI验收中先对临时测试checkout使用macOS公开LaunchServices的 `execFile("/usr/bin/open",["-a","/Applications/Obsidian.app",absolutePath])`，把准确原文件明确交给Obsidian；不改系统关联。核实打开原文件、tab影响、编辑后原位保存、无vault副本/无同名误定位。该第一候选不是“系统默认打开”；exit0仅表示accepted，不称打开/保存成功。若需另验 `obsidian open path=<绝对md> newtab`，仅用公开CLI且结果仍由UI确认；不支持即停该候选，不试eval/CDP私有打开API。真实UI确认支持后接一步“在Obsidian打开”，失败反馈not_opened与真实原生命令/复制路径；没有已证参数入口时自动能力标未通过，不用file URL fallback冒充目标。Windows/Linux无证据返回不支持，不猜启动参数。系统默认打开作为单独目的地明确的动作，只在用户显式选择时使用标准URL。当前安装包Open with菜单另记受阻/未测，不把这等同指定App路径已失败，也不声称其已成功。
+- [ ] **Step 5: 源码先接公开外部Markdown打开适配器，联合升级再实机验证。** 按支持vault外文件的Obsidian目标版本开发，安装/UI不是源码接线前置。沿已选公开 `execFile("/usr/bin/open",["-a","/Applications/Obsidian.app",absolutePath])` 接实际main消费者，仅明确点击“在Obsidian打开文档”触发，校验准确本机.md文件与固定App/可执行文件，非shell、不改系统关联，不用默认应用、--args/-n/-F或私有桥，不自动重试。bounded timeout；进程成功只反馈accepted/打开请求已提交，错误与超时反馈结果未知，不能保证失败绝未打开，并保留复制路径。其他平台不猜命令。默认suite仍禁止真实native，只注入owned元数据/执行边界验证生产适配器与compiled点击的一次调用、精确argv和反馈。官方1.14.2外部文件支持与man open -a指定应用的组合为待实机验证路线，不能证明准确打开/保存。当前不安装或实际执行open/Obsidian；2.0联合发布/整体升级时核实准确原文件、打开方、tab影响、原位保存与无vault副本，未测不记PASS。源码文档打开不混成Agent启动或跨宿主接管。
 - [ ] **Step 6: 接同源恢复预览与显式复制。** Case刷新同次获取opt-in bundle；用renderer列目标/Current/决策/准确Task结果和Next、cwd/branch、缺口、来源原文。复制摘要使用该bundle的原值，注明其bounds/时间/来源；不得调用context-builder写临时文件才可查看，也不复制整个聊天。Task-only无Case时保留完整Task内容/原文入口及复制准确Task引用给现有work入口，由host读最新API，不能为恢复强建Case或伪造Case bundle。预览/复制本身均不改Task/Case、不启动/发送/native queue。
 - [ ] **Step 7: 历史与继续工作分别给真实能力。** vault导出历史按文件打开，并注明“导出记录”；原nativeID/device保留历史指针，缺失不从surface/workspace/title猜。Dashboard不存在Codex App MCP app tools或Claude Desktop控制入口，不能直接照抄agent的App工具当Obsidian能力。未经验证provider-aware公开历史入口时按钮为“复制原会话标识与查看步骤”，不是运行CLI resume（它可能启动writer）。继续工作展示/复制明确Case/Task path、已完成项、待做项、cwd/branch和当前core work恢复指令；要求既有owner原链继续，换载体先完成已授权写回及正常停止旧执行/已知后台工作。unknown保留只读/回原owner分支，不自动接管/kill/标blocked。CLI resume命令仅在实际host/nativeID/cwd已核对后作为明确执行指令复制；App/Claude Desktop未验证能力分别标不可自动控制，不声称四宿主对称。无公开能力不造桥；此交付不承诺一键跨宿主执行。
 - [ ] **Step 8: GREEN—生产链及无副作用。** `dashboard-resume-integration.test.ts`临时HTTP返回真实writer正文/状态与filter definitions→真实Task/Case CLI→compiledDashboard adapter/model/content/resume renderer→复制相同summary。正常canonical progress-only最新Next须自动来自核心；歧义显示sources/gap，done缺结果显示status+missing。恢复阶段Task PUT/PATCH/details append=0、native queue/host create/launch=0，临时Case bytes不变。覆盖401/partial/错误身份/缺目录/缺外部文件/原history不可用。只证明读取投影消费，不证明真实writer释放或执行不重复。
@@ -151,3 +151,24 @@
 - 已核对 recognized-but-unparsed：普通Requirements列表不会进入REQ结构，并被typed heading过滤排除domain_sections。完整性改由真实API details全文入口保证；投影与单独API原文观测分别标身份、时间和差异，不扩核心worker范围、不加散文parser/新完成状态。
 - details非字符串/身份或envelope错误拒绝；details=""是合法成功读取，只表示无正文和无可定位片段，不降级为API故障，不伪造空任务状态。
 - 默认suite隔离HOME/vault/auth/api与native executable，沿唯一node:test runner复用低层guard/owned fixture；真实LaunchServices只留真人UI验收。三块顺序、review退役和公开指定Obsidian打开第一候选保留。本批未实施产品、未运行产品测试/宿主/UI，未修改Task/vault/core/已安装插件。
+
+
+## Task 3 实施前接口核对（2026-10-02 checkpoint后）
+
+- 当前Core checkpoint为3157475874240ecfc7a93f6272a9e7a728403c91，Dashboard前两块checkpoint为1f649f1170ec14df2d5f28fe0c9502616c2dc0e3；均仅本地提交。Task3后续改动保持未提交，Core只读。
+- 已核对真实producer：bundle仅source/tasks/resume_observation；Task源字段使用resume_sources/resume_missing/resume_operation_refs。没有bounds、生成时间或source_space字段；预算是当前producer合同，本地loadedAt只能标本地观测时间，原文时间仅用可选source.timestamp，不制造字段。
+- Core snapshot/model没有Context和Summary全文投影；Task3沿vault.cachedRead提供准确Case原文/恢复展示，保留Goal/Current/Context/Summary及来源，不改Core、Task或Case。独立读取与同次snapshot不能证实时分别标示，旧响应不得覆盖新选择。
+- Task API details行号不能直接作为vault editor行号；修复Task正文/记录/诊断全部入口。Case source行号已含frontmatter偏移。匹配失败/歧义明确退整张原文，不猜位置。
+- work-case-ui-contract旧测试对任何resume字串的禁止收窄为真实写入/host create/launch/send/queue边界；允许读取resume_bundle，保留合法只读POST /api/tasks/query。
+- 外部Markdown准确打开、tab影响、原位保存尚未真实UI验收。默认suite只验证owned adapter参数/失败，能力不能用exit0或file URL默认应用冒充；这一UI门与Task3源码/受控集成交付分开记录。
+
+## 联合发布与整体升级时点调整（2026-10-02 14:31）
+
+用户最新约束为“Obsidian现在没法安装，跟2.0一起发布，到时候整体升级”。当前继续已批准源码/controlled验证；不安装/升级Obsidian或Dashboard，不替换已安装构建、不切运行版本，不再请求当前本地安装。真实Obsidian UI、精确外部Markdown打开/tab影响/原位保存与安装后恢复接续，移到FlowDesk2.0联合发布/整体升级阶段验收，保持未验收。此未来安排不是当前commit/push/install/release/bump授权，也不是源码开发前置阻塞。
+
+源码状态分开记录：Task精确来源、普通vault链接/明确repo分流、同源恢复/决策/具体接续上下文复制及只读保护已实际接线并受控验证，尚未实机验证。外部Markdown自动指定Obsidian打开仍只有准确路径解析、argv候选和说明/复制的源码，执行适配器及accepted/not_opened反馈尚未接线；原Task3 Step5“先验证公开候选再接线”仍有源码工作未完成，须联合升级阶段继续完成并验证，不能仅标“未验收”冒充自动功能已实现，也不以手工复制替代取消原自动目标。原生历史/跨宿主自动控制不在本Task承诺范围，指针与明确步骤已接线，实际接续验收仍联合阶段单列。
+
+
+## Step5源码时序补充裁定（2026-10-02）
+
+按主控转达的用户原目标“按支持外部md的版本开发，后面整体升级默认支持”及最新“不提前安装”，先完成外部文档生产执行适配器与明确点击消费者，不能将自动目标源码开发留到发布以后。上面的14:31“适配器尚未接线”是当时状态，现由本补充与最新报告覆盖；不采用手工复制缩水替代。其他范围/4项review/只读/身份/权限/协作默认保持。依据：[官方1.14.2](https://obsidian.md/changelog/2026-09-15-desktop-v1.14.2/)确认桌面vault外文件支持，系统Open with需新installer；本机公开man open确认-a指定应用。组合路由仍是推断候选，源码已接与实机未验收分别记录。未来一起发布仍不是当前安装/发布授权。

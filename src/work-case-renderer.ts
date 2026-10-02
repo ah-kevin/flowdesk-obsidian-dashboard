@@ -1,3 +1,5 @@
+import { createResumePresentation } from "./resume-presentation";
+import type { SnapshotSource } from "./snapshot-model";
 import {formatEntityStatus, formatReferenceLabel} from "./entity-presentation";
 import type { WorkCaseRenderState } from "./work-case-adapter";
 import type { WorkCaseSourceRange } from "./work-case-model";
@@ -18,6 +20,9 @@ export interface WorkCaseRendererDependencies {
   ): Promise<void> | void;
   openCaseSource(casePath: string, source: WorkCaseSourceRange): Promise<void> | void;
   openRelated(target: string, casePath: string): Promise<void> | void;
+  renderMarkdown?(text: string, element: HTMLElement, sourcePath: string): Promise<void>;
+  copyText?(text: string): Promise<void>;
+  openTaskSource?(taskPath: string, source: SnapshotSource): Promise<void>;
 }
 
 export class WorkCaseDashboardRenderer {
@@ -31,6 +36,7 @@ export class WorkCaseDashboardRenderer {
     container.addClass("flowdesk-case-dashboard");
     if (!state.model) {
       this.renderShell(container, state);
+      this.renderFullCaseContent(container, state);
       return;
     }
     const presentation = createWorkCasePresentation(state.model);
@@ -51,6 +57,8 @@ export class WorkCaseDashboardRenderer {
     this.renderProgress(container, state, presentation);
     this.renderSections(container, state, presentation);
     this.renderRelated(container, state, presentation);
+    this.renderFullCaseContent(container, state);
+    this.renderResume(container, state);
     this.renderTechnicalContext(container, presentation);
     this.renderDiagnostics(container, presentation);
   }
@@ -339,6 +347,45 @@ export class WorkCaseDashboardRenderer {
         );
       }
     }
+  }
+
+  private renderFullCaseContent(container: HTMLElement, state: WorkCaseRenderState): void {
+    if (!state.caseContent) return;
+    const observation = state.caseContent;
+    const section = container.createEl("details", {cls:"flowdesk-case-recovery flowdesk-case-full-content"});
+    section.createEl("summary", {text:"完整Case原文（单独vault读取）"});
+    if (observation.error) { section.createDiv({cls:"flowdesk-case-error",text:`Case原文读取失败：${observation.error}`}); return; }
+    section.createDiv({cls:"flowdesk-muted",text:`${observation.source} · ${observation.casePath} · 独立读取时间 ${observation.readAt}；不能证明与snapshot同轮一致。`});
+    const body = section.createDiv({cls:"flowdesk-contract-scope-markdown markdown-rendered"});
+    if (this.dependencies.renderMarkdown) void this.dependencies.renderMarkdown(observation.details, body, observation.casePath).catch(() => body.setText(observation.details));
+    else body.setText(observation.details);
+  }
+
+  private renderResume(container: HTMLElement, state: WorkCaseRenderState): void {
+    if (!state.model) return;
+    const presentation = createResumePresentation(state.model.resumeBundle, state.model);
+    const section = container.createEl("details", {cls:"flowdesk-case-recovery flowdesk-case-resume"});
+    section.createEl("summary", {text:"恢复摘要与继续工作步骤"});
+    section.createDiv({cls:"flowdesk-muted",text:`本地snapshot读取时间：${state.loadedAt}；来源时间仅保留producer已有timestamp。恢复摘要不替代完整Case/Task原文。`});
+    const independent = state.caseContent;
+    const caseLines = independent?.error ? [`Case独立原文读取失败：${independent.error}`] : independent ? [`Case独立原文读取时间：${independent.readAt}`, ...independent.sections.map(s => `${s.heading}（vault-file ${s.source.lineStart}–${s.source.lineEnd}）：\n${s.text}`)] : ["Case独立原文未读取；Context/Summary需查看整张Case。"];
+    const summary = [presentation.summary, `本地snapshot读取时间：${state.loadedAt}`, state.staleReason ? `旧观测：${state.staleReason}` : "", ...caseLines].filter(Boolean).join("\n\n");
+    section.createDiv({cls:"flowdesk-case-record-text",text:summary});
+    for (const task of presentation.tasks) {
+      const sources = section.createEl("details", {cls:"flowdesk-case-recovery"});
+      sources.createEl("summary", {text:`Task来源与完整原文：${task.title} · ${task.status}`});
+      const full = sources.createEl("button", {text:"打开完整Task原文"});full.addEventListener("click",()=>{void this.dependencies.openTask(task.id,"child");});
+      for (const source of task.sources) {
+        const button = sources.createEl("button", {text:`查看来源任务：${source.field} · API details ${source.line_start}–${source.line_end}`});
+        button.addEventListener("click",()=>{void this.dependencies.openTaskSource?.(task.id,{...source});});
+      }
+    }
+    const copy = section.createEl("button", {cls:"flowdesk-case-copy-resume",text:"复制恢复摘要"});
+    copy.addEventListener("click",()=>{void this.dependencies.copyText?.(summary);});
+    const instructions = section.createEl("button", {text:"复制继续工作步骤"});
+    instructions.addEventListener("click",()=>{void this.dependencies.copyText?.(`继续工作上下文（只读，不自动执行任何Task）\n${summary}\n\n明确选择要继续的准确Task ID；已完成项保留结果，不重新执行。`);});
+    const history = section.createEl("button", {text:"复制原会话标识与查看步骤"});
+    history.addEventListener("click",()=>{void this.dependencies.copyText?.(`原生历史指针：${JSON.stringify(presentation.history)}\n历史指针不是执行接手授权。当前没有已验证的公开自动历史入口；回原宿主按准确标识查看。`);});
   }
 
   private renderDiagnostics(

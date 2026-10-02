@@ -5,6 +5,7 @@ export interface WorkCaseSnapshotInvocationInput {
   casePath: string;
   workingDirectory: string;
   apiUrl: string;
+  includeResumeBundle?: boolean;
 }
 
 export interface WorkCaseSnapshotInvocation {
@@ -21,6 +22,7 @@ export function buildWorkCaseSnapshotInvocation(
   const args = [input.casePath];
   if (input.apiUrl) args.push("--api-url", input.apiUrl);
   args.push("--working-directory", workingDirectory, "--format", "json");
+  if (input.includeResumeBundle) args.push("--resume-bundle");
   return {
     executable: path.join(flowdeskRoot, "bin", "flowdesk-work-case-snapshot"),
     args,

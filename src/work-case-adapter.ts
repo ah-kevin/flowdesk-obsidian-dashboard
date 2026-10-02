@@ -1,3 +1,4 @@
+import type { CaseContentObservation } from "./case-content";
 import { isTaskPath, TrailingRefreshScheduler } from "./dashboard-state";
 import {
   createWorkCaseViewModel,
@@ -12,6 +13,7 @@ import type {
 
 export interface WorkCaseRenderState {
   casePath: string;
+  caseContent?: CaseContentObservation | null;
   model: WorkCaseViewModel | null;
   loadedAt: string;
   staleReason: string;
@@ -22,6 +24,7 @@ export interface WorkCaseRenderState {
 export interface WorkCaseAdapterDependencies {
   shell(): ViewShellController;
   loadSnapshot(casePath: string, signal: AbortSignal): Promise<unknown>;
+  loadCaseContent?(casePath: string, signal: AbortSignal): Promise<CaseContentObservation>;
   render(container: HTMLElement, state: WorkCaseRenderState): void;
   requestRender(): void;
   nowLabel(): string;
@@ -43,6 +46,7 @@ export class WorkCaseAdapter implements ViewAdapter {
   private controller: AbortController | null = null;
   private requestGeneration = 0;
   private dirtyReason = "";
+  private caseContent: CaseContentObservation | null = null;
   private readonly refreshScheduler: TrailingRefreshScheduler;
 
   constructor(private readonly dependencies: WorkCaseAdapterDependencies) {
@@ -58,6 +62,7 @@ export class WorkCaseAdapter implements ViewAdapter {
     const sameCase = this.selection?.resourcePath === selection.resourcePath;
     this.selection = selection;
     if (!sameCase) {
+      this.caseContent = null;
       this.displayState = null;
       this.error = "";
       this.dirtyReason = "";
@@ -70,11 +75,15 @@ export class WorkCaseAdapter implements ViewAdapter {
     this.error = "";
     this.dependencies.requestRender();
     try {
-      const snapshot = await this.dependencies.loadSnapshot(
-        selection.resourcePath,
-        controller.signal
-      );
+      const [snapshotResult, contentResult] = await Promise.allSettled([
+        this.dependencies.loadSnapshot(selection.resourcePath, controller.signal),
+        this.dependencies.loadCaseContent?.(selection.resourcePath, controller.signal) ?? Promise.resolve(null),
+      ]);
       if (!isCurrent()) return;
+      this.caseContent = contentResult.status === "fulfilled" ? contentResult.value : {casePath:selection.resourcePath,details:"",readAt:"",source:"vault-cached-read",error:contentResult.reason instanceof Error ? contentResult.reason.message : String(contentResult.reason),sections:[]};
+      if (this.caseContent && this.caseContent.casePath !== selection.resourcePath) this.caseContent = {casePath:selection.resourcePath,details:"",readAt:"",source:"vault-cached-read",error:"Case独立读取来源身份错误",sections:[]};
+      if (snapshotResult.status === "rejected") throw snapshotResult.reason;
+      const snapshot = snapshotResult.value;
       const model = createWorkCaseViewModel(snapshot, selection.resourcePath);
       this.dirtyReason = "";
       this.displayState = {
@@ -115,6 +124,7 @@ export class WorkCaseAdapter implements ViewAdapter {
     this.error = "";
     this.loading = false;
     this.dirtyReason = "";
+    this.caseContent = null;
   }
 
   shouldReactivate(selection: ViewAdapterSelection): boolean {
@@ -161,6 +171,7 @@ export class WorkCaseAdapter implements ViewAdapter {
     const display = this.displayState?.casePath === casePath ? this.displayState : null;
     return {
       casePath,
+      caseContent: this.caseContent,
       model: display?.model ?? null,
       loadedAt: display?.loadedAt ?? "",
       staleReason: display?.staleReason || this.dirtyReason,

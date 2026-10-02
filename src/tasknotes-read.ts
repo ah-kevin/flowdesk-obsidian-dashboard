@@ -2,6 +2,7 @@ import { formatTaskNotesAuthError, type TaskNotesAuth } from "./tasknotes-auth";
 
 export interface TaskDetailsRead {
   id: string; details: string;
+  contexts?: string[] | null;
   source: { kind: "tasknotes-api"; taskId: string; readAt: string };
 }
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -32,5 +33,5 @@ export async function readTaskDetails({taskPath,apiUrl,auth,signal}: {
   const identities = [value.id, value.path].filter(x => x !== undefined);
   if (!identities.length || identities.some(x => typeof x !== "string" || x !== taskPath)) return fail("TaskNotes 原文身份不匹配或缺失");
   if (typeof value.details !== "string") return fail("TaskNotes 原文 details 必须是字符串");
-  return { id: taskPath, details: value.details, source: { kind: "tasknotes-api", taskId: taskPath, readAt: new Date().toISOString() } };
+  return { id: taskPath, details: value.details, ...(value.contexts === undefined ? {} : {contexts:Array.isArray(value.contexts) && value.contexts.every(x => typeof x === "string") ? value.contexts as string[] : null}), source: { kind: "tasknotes-api", taskId: taskPath, readAt: new Date().toISOString() } };
 }

@@ -201,3 +201,13 @@ test("dirty event invalidates a pending load before the trailing generation begi
  assert.equal(h.caseAdapter.getRenderState()?.model?.workCase.title,"Latest");
  assert.equal(h.caseAdapter.getRenderState()?.staleReason,"");
 });
+
+test("independent Case raw source remains readable when snapshot fails and never crosses identity",async()=>{
+  const {createCaseContent}=await import("../src/case-content.ts");
+  let adapter:any;const selection={adapterKind:"case",resourcePath:"Notes/Sessions/A.md",revision:1};
+  const shell={isCurrent:(value:any)=>value===selection};
+  adapter=new WorkCaseAdapter({shell:()=>shell as any,loadSnapshot:async()=>{throw Error("unsupported CLI");},loadCaseContent:async(path)=>createCaseContent(path,"## Context\n\n独立全文", "local-read"),render(){},requestRender(){},nowLabel:()=>"local"});
+  await adapter.activate(selection);
+  const state=adapter.getRenderState();assert.equal(state.model,null);assert.match(state.caseContent.details,/独立全文/);assert.match(state.error,/unsupported CLI/);
+  adapter.deactivate();assert.equal(adapter.getRenderState(),null);
+});
