@@ -1,3 +1,5 @@
+import { createTaskContent, type TaskContent } from "./task-content";
+
 export type ObservationHealth =
   | "healthy"
   | "degraded"
@@ -15,6 +17,14 @@ export interface SnapshotSource {
   excerpt?: string | null;
   after_section?: string | null;
   [key: string]: unknown;
+}
+
+export interface SnapshotBodySection {
+  heading: string;
+  level: number;
+  text: string;
+  source?: SnapshotSource;
+  timestamp?: string;
 }
 
 export interface SnapshotDiagnostic {
@@ -74,9 +84,9 @@ export interface SnapshotTaskSummary {
   acceptance?: SnapshotDerivedAcceptance[];
   review?: SnapshotReviewSummary;
   records?: {
-    execution?: unknown[];
-    verification?: unknown[];
-    delivery?: unknown[];
+    execution?: SnapshotBodySection[];
+    verification?: SnapshotBodySection[];
+    delivery?: SnapshotBodySection[];
   };
   legacy_v3?: {
     semantic_status?: string;
@@ -102,6 +112,9 @@ export interface SnapshotTaskContract {
   version?: string;
   goal?: string;
   scope_text?: string;
+  why?: string;
+  steps?: string;
+  domain_sections?: SnapshotBodySection[];
   scope?: {
     included?: string[];
     excluded?: string[];
@@ -374,11 +387,8 @@ export interface DashboardViewModel {
   primaryDiagnostic: SnapshotDiagnostic | null;
   diagnostics: SnapshotDiagnostic[];
   nextAction: string | null;
-  records: {
-    execution: number;
-    verification: number;
-    delivery: number;
-  };
+  content: TaskContent;
+  records: TaskContent["records"];
 }
 
 export interface DashboardModelOptions {
@@ -467,7 +477,9 @@ export function createDashboardViewModel(
     isRecord(v4TaskContract) &&
     Object.prototype.hasOwnProperty.call(v4TaskContract, "scope_text");
 
+  const content = createTaskContent(snapshot, currentTaskId);
   return {
+    content,
     errorCode: !schemaSupported
       ? "unsupported_snapshot_schema"
       : !modelSupported
@@ -595,17 +607,7 @@ export function createDashboardViewModel(
     primaryDiagnostic: diagnostics[0] ?? null,
     diagnostics,
     nextAction: formatNextAction(snapshot.next_actions?.[0]),
-    records: {
-      execution: Array.isArray(currentTask.records?.execution)
-        ? currentTask.records.execution.length
-        : 0,
-      verification: Array.isArray(currentTask.records?.verification)
-        ? currentTask.records.verification.length
-        : 0,
-      delivery: Array.isArray(currentTask.records?.delivery)
-        ? currentTask.records.delivery.length
-        : 0,
-    },
+    records: content.records,
   };
 }
 

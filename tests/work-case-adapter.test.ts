@@ -130,3 +130,74 @@ test("同一 Case 刷新发生 identity mismatch 时清空旧主体并 fail clos
   assert.equal(harness.caseAdapter.getRenderState()?.model, null);
   assert.match(harness.caseAdapter.getRenderState()?.error ?? "", /来源身份不匹配/);
 });
+
+
+test("late_same_case_response_cannot_overwrite_newer_generation even when abort ignored",async()=>{
+  const h=createHarness();
+  const old=h.shell.select({kind:"case",resourcePath:canonical.source.path});
+  const newer=h.caseAdapter.refresh();
+  h.pending[1].resolve({...canonical,work_case:{...canonical.work_case,title:"New"}});
+  await newer;
+  h.pending[0].resolve({...canonical,work_case:{...canonical.work_case,title:"Old"}});
+  await old;
+  assert.equal(h.caseAdapter.getRenderState()?.model?.workCase.title,"New");
+  assert.equal(h.caseAdapter.getRenderState()?.error,"");
+});
+
+test("late error and finally cannot clear newer loading state",async()=>{
+  const h=createHarness();
+  const old=h.shell.select({kind:"case",resourcePath:canonical.source.path});
+  const newer=h.caseAdapter.refresh();
+  h.pending[0].reject(new Error("Old failure"));
+  await old;
+  assert.equal(h.caseAdapter.getRenderState()?.error,"");
+  assert.equal(h.caseAdapter.getRenderState()?.loading,true);
+  h.pending[1].resolve(canonical);await newer;
+});
+
+test("Case observes associated and potential Task paths only while active",async()=>{
+  const h=createHarness();
+  assert.equal(h.caseAdapter.observesFile("Tasks/New.md"),false);
+  const load=h.shell.select({kind:"case",resourcePath:canonical.source.path});
+  h.pending[0].resolve(canonical);await load;
+  for(const path of [canonical.source.path,"Tasks/New.md","TaskNotes/Incoming.md"])
+    assert.equal(h.caseAdapter.observesFile(path),true,path);
+  assert.equal(h.caseAdapter.observesFile("Notes/Other.md"),false);
+  await h.shell.select({kind:"unsupported",activePath:"Notes/Other.md",previousResourcePath:canonical.source.path});
+  assert.equal(h.caseAdapter.observesFile("Tasks/New.md"),false);
+});
+
+test("scheduleRefresh marks dirty immediately, coalesces at trailing 500ms and deactivate cancels",async(t)=>{
+  t.mock.timers.enable({apis:["setTimeout"]});
+  const h=createHarness();const load=h.shell.select({kind:"case",resourcePath:canonical.source.path});
+  h.pending[0].resolve(canonical);await load;
+  const adapter=h.caseAdapter as WorkCaseAdapter & {scheduleRefresh():void};
+  assert.equal(typeof adapter.scheduleRefresh,"function");
+  adapter.scheduleRefresh();
+  assert.match(adapter.getRenderState()?.staleReason??"",/变化|刷新/);
+  t.mock.timers.tick(400);adapter.scheduleRefresh();t.mock.timers.tick(499);
+  assert.equal(h.pending.length,1);
+  t.mock.timers.tick(1);assert.equal(h.pending.length,2);
+  h.pending[1].resolve(canonical);await Promise.resolve();await Promise.resolve();
+  assert.equal(adapter.getRenderState()?.staleReason,"");
+  adapter.scheduleRefresh();
+  await h.shell.select({kind:"unsupported",activePath:"Notes/Other.md",previousResourcePath:canonical.source.path});
+  t.mock.timers.tick(500);assert.equal(h.pending.length,2);assert.equal(adapter.getRenderState(),null);
+});
+
+
+test("dirty event invalidates a pending load before the trailing generation begins",async(t)=>{
+ t.mock.timers.enable({apis:["setTimeout"]});
+ const h=createHarness();const initial=h.shell.select({kind:"case",resourcePath:canonical.source.path});
+ h.pending[0].resolve(canonical);await initial;
+ const old=h.caseAdapter.refresh();
+ h.caseAdapter.scheduleRefresh();
+ h.pending[1].resolve({...canonical,work_case:{...canonical.work_case,title:"Superseded"}});await old;
+ assert.equal(h.caseAdapter.getRenderState()?.model?.workCase.title,"Demo Case");
+ assert.match(h.caseAdapter.getRenderState()?.staleReason??"",/变化/);
+ t.mock.timers.tick(500);
+ h.pending[2].resolve({...canonical,work_case:{...canonical.work_case,title:"Latest"}});
+ await Promise.resolve();await Promise.resolve();
+ assert.equal(h.caseAdapter.getRenderState()?.model?.workCase.title,"Latest");
+ assert.equal(h.caseAdapter.getRenderState()?.staleReason,"");
+});

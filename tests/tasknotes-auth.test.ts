@@ -6,16 +6,14 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { compilePlugin, allowOwnedProducer, listenOwned } from "./support/owned-environment.ts";
 
 // The host double only supplies UI base classes; plugin, files, processes and HTTP are real.
 async function setup(t: any, configuration = '{"TASKNOTES_API_TOKEN":"file-token"}') {
   const dir = await mkdtemp(path.join(tmpdir(), "flowdesk-auth-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const bundle = path.join(dir, "plugin.cjs");
-  execFileSync(path.resolve("node_modules/.bin/esbuild"), [
-    "src/main.ts", "--bundle", "--platform=node", "--format=cjs", `--outfile=${bundle}`,
-    `--alias:obsidian=${path.resolve("tests/fixtures/obsidian-host.cjs")}`,
-  ], { stdio: "pipe" });
+  compilePlugin(bundle);
   const Plugin = createRequire(import.meta.url)(bundle).default;
   const plugin = new Plugin();
   await mkdir(path.join(dir, "bin"));
@@ -31,6 +29,14 @@ process.stdout.write(JSON.stringify({ authenticated: (process.env.TASKNOTES_API_
   plugin.settings = {
     flowdeskRoot: dir, workingDirectory: dir, apiUrl: "", tasknotesEnv: configuration,
   };
+  for (const method of ["createSnapshotInvocation", "createWorkCaseSnapshotInvocation"]) {
+    const original = plugin[method].bind(plugin);
+    plugin[method] = (...args: any[]) => {
+      const invocation = original(...args);
+      allowOwnedProducer(invocation.executable, invocation.args, invocation.cwd);
+      return invocation;
+    };
+  }
   const old = { api: process.env.TASKNOTES_API_TOKEN, alias: process.env.TASKNOTES_AUTH_TOKEN };
   process.env.TASKNOTES_API_TOKEN = "stale-process-token";
   delete process.env.TASKNOTES_AUTH_TOKEN;
@@ -94,7 +100,7 @@ test("an explicit empty API token updates that variable in the merged environmen
   assert.equal((await plugin.loadSnapshot("stale-process-token", new AbortController().signal)).authenticated, false);
 });
 
-test("review GET, PATCH and append requests all carry the configured Bearer token", async (t) => {
+test("read-only full Task GET carries configured Bearer token and keeps historical reviewed text", async (t) => {
   const { plugin } = await setup(t);
   const requests: { method: string; authorization?: string; body: any }[] = [];
   const server = createServer(async (request, response) => {
@@ -104,9 +110,9 @@ test("review GET, PATCH and append requests all carry the configured Bearer toke
     response.setHeader("Content-Type", "application/json");
     if (request.headers.authorization !== "Bearer file-token") {
       response.writeHead(401).end(JSON.stringify({ success: false, error: "Authentication required" }));
-    } else response.end(JSON.stringify({ tags: ["existing"] }));
+    } else response.end(JSON.stringify({ id: "Tasks/Test.md", details: "## Review Record\n\n历史 reviewed 记录", tags: ["existing", "reviewed"] }));
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOwned(server);
   t.after(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
   const url = `http://127.0.0.1:${(server.address() as any).port}`;
   plugin.settings.tasknotesEnv = JSON.stringify({ TASKNOTES_API_TOKEN: "file-token", TASKNOTES_API_URL: url });
@@ -115,11 +121,13 @@ test("review GET, PATCH and append requests all carry the configured Bearer toke
   plugin.settings.apiUrl = "http://127.0.0.1:9999/";
   assert.equal(plugin.createSnapshotInvocation("Tasks/Test.md", "json").args[2], "http://127.0.0.1:9999");
   plugin.settings.apiUrl = "";
-  await plugin.submitTaskReview({ taskPath: "Tasks/Test.md", decision: "approved", note: "verified" });
+  const result = await plugin.loadTaskDetails("Tasks/Test.md", new AbortController().signal);
+  assert.match(result.details, /历史 reviewed 记录/);
+  assert.equal(plugin.submitTaskReview, undefined);
   assert.deepEqual(requests.map((request) => [request.method, request.authorization]), [
-    ["GET", "Bearer file-token"], ["PATCH", "Bearer file-token"], ["POST", "Bearer file-token"],
+    ["GET", "Bearer file-token"],
   ]);
-  assert.deepEqual(requests[1].body.tags, ["existing", "reviewed"]);
+
 });
 
 test("401 identifies missing versus rejected credentials without exposing the token", async (t) => {
@@ -127,22 +135,22 @@ test("401 identifies missing versus rejected credentials without exposing the to
   const server = createServer((request, response) => {
     response.writeHead(401, { "Content-Type": "application/json" }).end(JSON.stringify({ error: request.headers.authorization || "Authentication required" }));
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOwned(server);
   t.after(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
   plugin.settings.apiUrl = `http://127.0.0.1:${(server.address() as any).port}`;
-  await assert.rejects(plugin.requestTaskNotes("GET", "/api/stats"), (error: any) => {
+  await assert.rejects(plugin.loadTaskDetails("Tasks/Test.md", new AbortController().signal), (error: any) => {
     assert.match(error.message, /401.*token.*拒绝|401.*token.*失效/i);
     assert.doesNotMatch(error.message, /file-token/);
     return true;
   });
-  await assert.rejects(plugin.submitTaskReview({ taskPath: "Tasks/Test.md", decision: "approved", note: "" }), (error: any) => {
+  await assert.rejects(plugin.loadTaskDetails("Tasks/Test.md", new AbortController().signal), (error: any) => {
     assert.match(error.message, /401.*token.*拒绝|401.*token.*失效/i);
     assert.doesNotMatch(error.message, /file-token/);
     return true;
   });
   plugin.settings.tasknotesEnv = "{}";
   delete process.env.TASKNOTES_API_TOKEN;
-  await assert.rejects(plugin.requestTaskNotes("GET", "/api/stats"), /401.*token.*未配置|401.*未配置.*token/i);
+  await assert.rejects(plugin.loadTaskDetails("Tasks/Test.md", new AbortController().signal), /401.*token.*未配置|401.*未配置.*token/i);
 });
 
 test("snapshot auth diagnostics distinguish missing versus rejected credentials without echoing secrets", async (t) => {
@@ -177,43 +185,43 @@ test("JSON merges individual variables and keeps an inherited API token when onl
   assert.equal((await plugin.loadWorkCaseSnapshot("stale-process-token", signal)).authenticated, true);
   const server = createServer((request, response) => {
     response.setHeader("Content-Type", "application/json");
-    response.end(JSON.stringify({ authenticated: request.headers.authorization === "Bearer stale-process-token" }));
+    response.end(JSON.stringify({ id: "Tasks/Test.md", details: request.headers.authorization === "Bearer stale-process-token" ? "authenticated" : "rejected" }));
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOwned(server);
   t.after(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
   plugin.settings.apiUrl = `http://127.0.0.1:${(server.address() as any).port}`;
-  assert.equal((await plugin.requestTaskNotes("GET", "/api/stats")).authenticated, true);
+  assert.equal((await plugin.loadTaskDetails("Tasks/Test.md", new AbortController().signal)).details, "authenticated");
   process.env.TASKNOTES_AUTH_TOKEN = "inherited-alias";
   plugin.settings.tasknotesEnv = '{"TASKNOTES_API_TOKEN":""}';
   assert.equal((await plugin.loadSnapshot("inherited-alias", signal)).authenticated, true);
 });
 
-test("non-auth review failures preserve upstream error codes and redact credential echoes", async (t) => {
+test("non-auth read failures preserve upstream error codes and redact credential echoes", async (t) => {
   const { plugin } = await setup(t);
   const server = createServer((request, response) => {
     response.writeHead(404, { "Content-Type": "application/json" }).end(JSON.stringify({ code: "task_not_found", error: "missing " + request.headers.authorization }));
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOwned(server);
   t.after(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
   plugin.settings.apiUrl = `http://127.0.0.1:${(server.address() as any).port}`;
-  await assert.rejects(plugin.submitTaskReview({ taskPath: "Tasks/Test.md", decision: "approved", note: "" }), (error: any) => {
+  await assert.rejects(plugin.loadTaskDetails("Tasks/Test.md", new AbortController().signal), (error: any) => {
     assert.equal(error.code, "task_not_found");
     assert.doesNotMatch(error.message, /file-token/);
     return true;
   });
 });
 
-test("escaped credential echoes in JSON review errors remain redacted after JSON decoding", async (t) => {
+test("escaped credential echoes in JSON read errors remain redacted after JSON decoding", async (t) => {
   const { plugin } = await setup(t);
   const token = 'quoted-"token\\value';
   plugin.settings.tasknotesEnv = JSON.stringify({ TASKNOTES_API_TOKEN: token });
   const server = createServer((request, response) => {
     response.writeHead(404, { "Content-Type": "application/json" }).end(JSON.stringify({ code: "task_not_found", error: "missing " + request.headers.authorization }));
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenOwned(server);
   t.after(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
   plugin.settings.apiUrl = `http://127.0.0.1:${(server.address() as any).port}`;
-  await assert.rejects(plugin.submitTaskReview({ taskPath: "Tasks/Test.md", decision: "approved", note: "" }), (error: any) => {
+  await assert.rejects(plugin.loadTaskDetails("Tasks/Test.md", new AbortController().signal), (error: any) => {
     assert.equal(error.code, "task_not_found");
     assert.equal(error.message.includes(token), false);
     assert.match(error.message, /REDACTED/);

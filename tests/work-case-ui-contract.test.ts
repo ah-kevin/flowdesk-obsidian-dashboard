@@ -179,7 +179,7 @@ test("关联任务使用纯静态响应式层级与 tone 状态 tag", () => {
       ]
     );
   }
-  assert.match(renderer, /const statuses = section\.createDiv\(\{ cls: "flowdesk-case-status-list" \}\)/);
+
   assert.doesNotMatch(renderer, /createEl\("details", \{ cls: "flowdesk-case-status-list"/);
 });
 

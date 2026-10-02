@@ -21,14 +21,14 @@ interface BaselineFixture {
 
 const fixtureRoot = path.join(process.cwd(), "tests", "fixtures");
 const baseline = JSON.parse(
-  readFileSync(path.join(fixtureRoot, "task-dashboard-baseline.json"), "utf8")
+  readFileSync(path.join(fixtureRoot, "task-dashboard-task2-baseline.json"), "utf8")
 ) as BaselineFixture;
 
 function digest(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
-test("schema 3/4 Task view model 与 presentation 保持冻结基线 exact-equal", () => {
+test("schema 3/4 Task 1 view model 保持基线，Task 2 presentation 保持新基线 exact-equal", () => {
   for (const [fixtureName, expected] of Object.entries(baseline.fixtures)) {
     const snapshot = JSON.parse(
       readFileSync(path.join(fixtureRoot, fixtureName), "utf8")
@@ -46,8 +46,8 @@ test("schema 3/4 Task view model 与 presentation 保持冻结基线 exact-equal
   }
 });
 
-test("Task renderer 的关键 DOM class 集合保持冻结基线 exact-equal", () => {
-  const source = readFileSync(path.join(process.cwd(), "src", "main.ts"), "utf8");
+test("Task 2 renderer 的关键 DOM class 集合保持新基线 exact-equal", () => {
+  const source = ["main.ts", "task-content-renderer.ts"].map(file => readFileSync(path.join(process.cwd(), "src", file), "utf8")).join("\n");
   const classes = [...source.matchAll(/cls:\s*["`']([^"`']+)["`']/g)]
     .flatMap((match) => match[1].split(/\s+/))
     .filter(

@@ -128,7 +128,7 @@ test("renderer 用 canonical model 渲染三层驾驶舱并接通只读导航", 
   });
 
   assert.equal(root.classes.has("flowdesk-case-dashboard"), true);
-  for (const text of ["WORK CASE", "Current", "关联任务", "最近 Progress", "案卷内容", "关联导航"]) {
+  for (const text of ["WORK CASE", "当前进展", "关联任务", "最近 Progress", "案卷内容", "关联导航"]) {
     assert.ok(root.allText().includes(text), text);
   }
   root.findByClass("flowdesk-case-task-row")[0].click();
@@ -206,7 +206,7 @@ test("关联任务按父、子固定顺序显示克制彩色圆徽标，旧 snap
   );
   assert.deepEqual(
     rows.map((row) => row.findByClass("flowdesk-case-task-status")[0].text),
-    ["open", "open", "open", "open"]
+    ["待开始", "待开始", "待开始", "待开始"]
   );
   assert.deepEqual(
     rows.map((row) => row.attrs["aria-label"]),
@@ -399,10 +399,38 @@ test("关联导航完整保留中英文及无空格长链接并逐项保持可�
 
   const relatedSection = root.findByClass("flowdesk-case-related")[0];
   const links = relatedSection.findByClass("flowdesk-case-related-link");
-  assert.deepEqual(links.map((link) => link.text), targets);
+  assert.deepEqual(links.map((link) => link.text), ["超长中文关联计划显示增强实施方案", "Long English Work Case Navigation Plan", "UnbrokenPath".repeat(20)]);
   for (const link of links) link.click();
   assert.deepEqual(
     openedRelated,
     targets.map((target) => ({ target, casePath: snapshot.source.path }))
   );
+});
+
+
+test("Case hierarchy puts read health and current ahead of relations and technical fields",()=>{
+ const snapshot=structuredClone(canonical);snapshot.work_case.status="completed";
+ snapshot.work_case.project="[[Notes/Projects/FlowDesk|工作站]]";
+ snapshot.tasks.items=[
+  {id:"Tasks/Done.md",title:"Done",status:"done",status_is_completed:true,archived:false,is_blocked:false,association_source:"canonical"},
+  {id:"Tasks/Custom.md",title:"Custom",status:"awaiting-human",status_is_completed:null,archived:false,is_blocked:false,association_source:"canonical"},
+  {id:"Tasks/Active.md",title:"Active",status:"in-progress",status_is_completed:false,archived:false,is_blocked:false,association_source:"canonical"},
+ ];
+ snapshot.tasks.counts.active=1;
+ const root=new FakeElement();
+ new WorkCaseDashboardRenderer({refresh(){},openTask(){},openCaseSource(){},openRelated(){}}).render(root as unknown as HTMLElement,{
+  casePath:snapshot.source.path,model:createWorkCaseViewModel(snapshot,snapshot.source.path),loadedAt:"12:34:56",staleReason:"",error:"",loading:false,
+ });
+ const classes=root.children.map(x=>[...x.classes].join(" ")).join("|");
+ assert.match(classes,/flowdesk-case-header.*flowdesk-case-observation.*flowdesk-case-current.*flowdesk-case-tasks.*flowdesk-case-recovery/);
+ assert.ok(root.allText().includes("当前进展"));
+ assert.ok(root.allText().join(" ").includes("12:34:56"));
+ assert.ok(root.allText().join(" ").includes("来源读取完整"));
+ assert.ok(root.allText().includes("已完成"));
+ assert.ok(root.allText().join(" ").includes("awaiting-human（未知状态）"));
+ assert.deepEqual(root.findByClass("flowdesk-case-task-title-text").map(x=>x.text),["Active","Custom","Done"]);
+ assert.equal(root.findByClass("flowdesk-case-task-history")[0].open,false);
+ assert.ok(root.allText().join(" ").includes("Case 状态为 completed"));
+ assert.ok(root.findByClass("flowdesk-case-related-link").some(x=>x.text==="工作站"));
+ assert.equal(root.findByClass("flowdesk-case-progress-bar").length,0);
 });

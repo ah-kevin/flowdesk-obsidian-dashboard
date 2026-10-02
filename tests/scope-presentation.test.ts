@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { TaskContentRenderer } from "../src/task-content-renderer.ts";
+import { TestElement } from "./support/dom.ts";
 
 import { createDashboardScopePresentation } from "../src/dashboard-presentation";
 import { createDashboardViewModel } from "../src/snapshot-model";
@@ -147,46 +149,23 @@ test("schema 4 explicit legacy_v3 即使带 scope_text 也保持旧数组路径"
   });
 });
 
-test("Task renderer 将文本 Scope 默认折叠并交给 Obsidian MarkdownRenderer", () => {
-  const source = readFileSync(path.join(process.cwd(), "src/main.ts"), "utf8");
-
-  assert.match(
-    source,
-    /createDashboardScopePresentation\(\s*model\.contract\.scope\s*\)/
-  );
-  assert.match(source, /scopePresentation\.mode === "text"/);
-  assert.match(source, /MarkdownRenderer/);
-  assert.match(source, /cls:\s*"flowdesk-contract-scope-details"/);
-  assert.match(
-    source,
-    /details\.open\s*=\s*this\.disclosureState\.scopeOpen/
-  );
-  assert.match(
-    source,
-    /this\.disclosureState\.scopeOpen\s*=\s*details\.open/
-  );
-  assert.match(source, /MarkdownRenderer\.render\(/);
-  assert.match(source, /model\.currentTask\.id/);
-  assert.match(source, /cls:\s*"flowdesk-contract-scope-markdown markdown-rendered"/);
-  assert.doesNotMatch(
-    source,
-    /scopePresentation\.text\s*\?\s*\[scopePresentation\.text\]/
-  );
+test("Task content renderer 将文本 Scope 默认折叠并交给 MarkdownRenderer", () => {
+  const root = new TestElement();
+  const rendered: string[] = [];
+  const model = createDashboardViewModel(createV4Snapshot({ scope_text: "原 Scope\n" }));
+  new TaskContentRenderer({ renderMarkdown: async (text) => { rendered.push(text); }, openSource: async () => {} }).render(root as any, model.content);
+  assert.ok(rendered.includes("原 Scope\n"));
+  const scope = root.children.find(element => element.children.some(child => child.text === "范围"));
+  assert.equal(scope?.open, false);
 });
 
-test("空文本 Scope 保留待补充预警，旧结构继续显示原 Scope chip", () => {
-  const source = readFileSync(path.join(process.cwd(), "src/main.ts"), "utf8");
-
-  assert.match(source, /cls:\s*"flowdesk-contract-scope-empty"/);
-  assert.match(source, /text:\s*"Scope 待补充"/);
-  assert.match(source, /scopeRow\(contract, "包含", scopePresentation\.included\)/);
-  assert.match(source, /scopeRow\(contract, "不包含", scopePresentation\.excluded\)/);
-  assert.match(
-    source,
-    /if\s*\(scopePresentation\.mode === "structured"\)\s*\{[\s\S]*?text:\s*scopePresentation\.status/
-  );
-  assert.match(source, /text:\s*`REQ \$\{model\.contract\.requirements\.length\}`/);
-  assert.match(source, /text:\s*`SCN \$\{model\.contract\.scenarios\.length\}`/);
+test("空文本 Scope 不回退旧数组，legacy 保持 included/excluded 内容", () => {
+  const model = createDashboardViewModel(createV4Snapshot({ scope_text: "", scope: {included:["旧包含"],excluded:["旧不包含"]} }));
+  assert.equal(model.content.scopeText, "");
+  const legacy = createV4Snapshot({scope_text:"不应覆盖",scope:{included:["历史包含"],excluded:["历史不包含"]}}) as any;
+  legacy.contract.status="legacy_v3";
+  const content=createDashboardViewModel(legacy).content;
+  assert.match(content.scopeText,/历史包含/);assert.doesNotMatch(content.scopeText,/不应覆盖/);
 });
 
 test("Scope Markdown CSS 仅局部控制长内容、列表与代码换行", () => {

@@ -1,3 +1,4 @@
+import { formatEntityStatus, groupTaskRows } from "./entity-presentation";
 import type {
   WorkCaseSectionBlock,
   WorkCaseSourceRange,
@@ -51,15 +52,9 @@ export function createWorkCasePresentation(
 ): WorkCasePresentation {
   const total = model.tasks.counts.total;
   const completed = model.tasks.counts.completed;
-  const primary = model.tasks.items
-    .filter(
-      (item) =>
-        !item.archived && (item.isBlocked || item.statusIsCompleted === false)
-    )
-    .map(taskPresentation);
-  const history = model.tasks.items
-    .filter((item) => item.statusIsCompleted === true || item.archived)
-    .map(taskPresentation);
+  const grouped = groupTaskRows(model.tasks.items.map(item => ({...item, completed: item.statusIsCompleted})));
+  const primary = grouped.current.map(taskPresentation);
+  const history = grouped.history.map(taskPresentation);
   const active = model.tasks.counts.active;
   const caseStatus = (model.workCase.status ?? "").trim();
   const driftWarning =
@@ -75,7 +70,7 @@ export function createWorkCasePresentation(
     header: {
       typeLabel: "WORK CASE",
       title: model.workCase.title,
-      status: model.workCase.status || "未记录",
+      status: formatEntityStatus("case", model.workCase.status).label,
       project: model.workCase.project || "未关联 Project",
       dateLabel: timestamp.label,
       dateTooltip: timestamp.tooltip,
@@ -198,10 +193,10 @@ function taskPresentation(item: WorkCaseTaskItem): WorkCaseTaskPresentation {
     ...item,
     tone: item.archived
       ? "archived"
-      : item.isBlocked
-        ? "blocked"
-        : item.statusIsCompleted === true
-          ? "completed"
+      : item.statusIsCompleted === true
+        ? "completed"
+        : item.isBlocked
+          ? "blocked"
           : item.statusIsCompleted === false
             ? "active"
             : "unknown",

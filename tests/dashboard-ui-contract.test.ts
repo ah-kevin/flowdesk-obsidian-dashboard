@@ -71,19 +71,12 @@ test("主诊断和逐条诊断都提供复制问题按钮", () => {
   assert.match(source, /event\.stopPropagation\(\)/);
 });
 
-test("人工复核复用原生 Modal 并以 TaskNotes 为写入底座", () => {
-  assert.match(source, /class EvidenceReviewModal extends Modal/);
-  assert.match(source, /buildTaskNotesReviewWrite\(/);
-  assert.match(source, /canReviewTask\(/);
-  assert.match(source, /"approved"/);
-  assert.match(source, /"changes_requested"/);
-  assert.match(source, /details\/append/);
-  assert.match(source, /await this\.refreshCurrentTask\(\)/);
+test("Dashboard uses read-only details and retires active review writes", () => {
+  assert.match(source, /loadTaskDetails/);
+  assert.match(source, /TaskContentRenderer/);
+  assert.doesNotMatch(source, /EvidenceReviewModal|buildTaskNotesReviewWrite|canReviewTask|submitTaskReview|details\/append/);
+  assert.doesNotMatch(source, /method:\s*"PATCH"|method:\s*"PUT"|method:\s*"POST"/);
   assert.doesNotMatch(source, /shell:\s*true/);
-  // 不再依赖 evidence CLI 与 digest CAS。
-  assert.doesNotMatch(source, /flowdesk-evidence/);
-  assert.doesNotMatch(source, /evidenceBundleDigest/);
-  assert.doesNotMatch(source, /review_conflict/);
 });
 
 test("技术诊断使用来源标题和机器详情，不再平铺任务位置字段", () => {
@@ -157,42 +150,14 @@ test("合同摘要在扁平布局中仍保留明确展开指示", () => {
   assert.match(styles, /\.flowdesk-contract-summary\[open\] > summary::before/);
 });
 
-test("REQ 与 SCN 使用独立详情，并为场景保留结构和来源入口", () => {
-  assert.match(source, /flowdesk-contract-item-details/);
-  assert.match(source, /flowdesk-contract-item-source/);
-  assert.match(source, /flowdesk-scenario-steps/);
-  assert.match(source, /createContractItemPresentation\(/);
-  assert.match(source, /openSnapshotSource\(/);
-  assert.match(styles, /\.flowdesk-contract-item-details > summary/);
-  assert.match(styles, /\.flowdesk-contract-item-id/);
-  assert.match(styles, /\.flowdesk-scenario-steps/);
-  assert.match(source, /section\.open = open/);
-  assert.match(source, /onToggle\(section\.open\)/);
-});
-
-test("完整详情保留合同与观察的原型布局", () => {
-  assert.match(source, /text: "规格与交付详情"/);
-  assert.match(source, /flowdesk-contract-section-head/);
+test("完整投影和原文 renderer 接入 main，保留来源与观察布局", () => {
+  assert.match(source, /new TaskContentRenderer/);
+  assert.match(source, /\.render\(contract, model\.content\)/);
+  assert.match(source, /this\.renderRawTaskContent\(contract, model\)/);
+  assert.match(source, /MarkdownRenderer\.render/);
   assert.match(source, /flowdesk-observation-summary/);
-  assert.match(source, /flowdesk-observation-details/);
-  assert.match(source, /"任务规格 v4"[\s\S]*?"观察与来源"/);
-  assert.match(
-    source,
-    /const body = full\.createDiv[\s\S]*?resolveDetailSectionOrder\(diagnosticCount > 0\)/
-  );
-});
-
-test("完成记录只渲染计数行与跳转，不渲染记录全文", () => {
-  assert.match(source, /flowdesk-records-summary/);
-  assert.match(source, /flowdesk-records-link/);
-  // 只消费长度做计数，绝不把 records 的 text/excerpt 渲染进 DOM。
-  assert.match(source, /model\.records\.execution/);
-  assert.match(source, /model\.records\.verification/);
-  assert.match(source, /model\.records\.delivery/);
-  assert.doesNotMatch(source, /records\.execution\[\d*\]?\.text/);
-  assert.doesNotMatch(source, /records\.[a-z]+\.map\(/);
-  // 三类全空时整行不出现，不占视觉重量。
-  assert.match(source, /if \(recordsTotal > 0\)/);
+  assert.match(source, /完整API原文 \/ 未投影内容/);
+  assert.doesNotMatch(source, /flowdesk-records-link|flowdesk-contract-metrics/);
 });
 
 test("判定层拆除后不再渲染 Evidence 与 Acceptance 空壳区块", () => {
@@ -206,16 +171,6 @@ test("判定层拆除后不再渲染 Evidence 与 Acceptance 空壳区块", () =
   assert.doesNotMatch(source, /producer 未提供验收项/);
 });
 
-test("父子进度在主区展示可信完成计数、阻塞与下一步", () => {
-  assert.match(source, /flowdesk-child-section/);
-  assert.match(source, /直接子任务 · \$\{children\.length\}/);
-  assert.match(source, /childrenTrustedDone\}\/\$\{model\.rollup\.childrenTotal\}/);
-  // 主状态卡必须消费 rollup 与 next_actions，而不是只讲合同状态。
-  assert.match(presentationSource, /createProgressStatus/);
-  assert.match(presentationSource, /blockedChildren/);
-  assert.match(presentationSource, /incompleteChildren/);
-  assert.match(presentationSource, /个子任务可信完成/);
-});
 
 test("技术诊断按当前任务和直接子任务分组并折叠机器字段", () => {
   assert.match(source, /flowdesk-diagnostic-task-group/);
@@ -298,11 +253,7 @@ test("恢复 0.1.2 的可读字号、任务卡片与可信度条边界", () => {
   );
 });
 
-test("review 与结构化 evidence 只复用现有视觉 token 做最小增量", () => {
-  assert.match(
-    styles,
-    /\.flowdesk-review-button\s*\{[^}]*color:\s*var\(--text-accent\);/s
-  );
+test("历史结构化 evidence 的样式继续保留", () => {
   assert.match(
     styles,
     /\.flowdesk-evidence-fields\s*\{[^}]*border-top:\s*1px solid var\(--fd-border\);[^}]*overflow-wrap:\s*anywhere;/s
@@ -310,10 +261,6 @@ test("review 与结构化 evidence 只复用现有视觉 token 做最小增量",
   assert.match(
     styles,
     /\.flowdesk-acceptance-evidence\s*\{[^}]*color:\s*var\(--text-muted\);/s
-  );
-  assert.match(
-    styles,
-    /\.flowdesk-review-modal textarea\s*\{[^}]*width:\s*100%;/s
   );
   assert.doesNotMatch(source, /registerView\([^)]*review/i);
   assert.doesNotMatch(source, /addRibbonIcon\([^)]*复核/);

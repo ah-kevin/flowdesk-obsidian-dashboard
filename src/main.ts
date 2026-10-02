@@ -3,13 +3,13 @@ import {
   ItemView,
   MarkdownRenderer,
   MarkdownView,
-  Modal,
   Notice,
   Plugin,
   PluginSettingTab,
   Setting,
   setIcon,
   TFile,
+  TAbstractFile,
   WorkspaceLeaf,
 } from "obsidian";
 import { execFile } from "child_process";
@@ -44,16 +44,11 @@ import {
   type SnapshotFormat,
   type SnapshotInvocation,
 } from "./snapshot-invocation";
+import { readTaskDetails, type TaskDetailsRead } from "./tasknotes-read";
+import { TaskContentRenderer } from "./task-content-renderer";
+import { rawContentDiffers, type TaskRawContentObservation } from "./task-content";
 import {
-  buildTaskNotesReviewWrite,
-  canReviewTask,
-  parseReviewCommandFailure,
-  type ReviewDecision,
-} from "./review-invocation";
-import {
-  createContractItemPresentation,
   createDashboardPresentation,
-  createDashboardScopePresentation,
   createDiagnosticDisclosureKey,
   formatSnapshotCompatibilityError,
   formatTaskShellStatus,
@@ -75,7 +70,6 @@ import {
   resolveDiagnosticNavigation,
   type DashboardViewModel,
   type ExecutionSnapshot,
-  type SnapshotContractItem,
   type SnapshotDiagnostic,
   type SnapshotSource,
 } from "./snapshot-model";
@@ -119,16 +113,6 @@ interface ExecFileFailure extends Error {
   stdout?: string;
 }
 
-class EvidenceReviewCommandError extends Error {
-  constructor(
-    readonly code: string,
-    message: string
-  ) {
-    super(message);
-    this.name = "EvidenceReviewCommandError";
-  }
-}
-
 export default class FlowDeskDashboardPlugin extends Plugin {
   settings!: FlowDeskDashboardSettings;
 
@@ -163,6 +147,8 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     );
     this.registerEvent(
       this.app.metadataCache.on("changed", (file) => {
+        const view = this.getDashboardView();
+        if (view?.observesFile(file.path)) view.scheduleRefresh();
         const activeFile = this.app.workspace.getActiveFile();
         if (
           activeFile?.path === file.path &&
@@ -172,14 +158,17 @@ export default class FlowDeskDashboardPlugin extends Plugin {
         }
       })
     );
-    this.registerEvent(
-      this.app.vault.on("modify", (file) => {
-        const view = this.getDashboardView();
-        if (view && file instanceof TFile && view.observesFile(file.path)) {
-          view.scheduleRefresh();
-        }
-      })
-    );
+    const refreshOnChange = (file: TAbstractFile) => {
+      const view = this.getDashboardView();
+      if (view && file instanceof TFile && view.observesFile(file.path)) view.scheduleRefresh();
+    };
+    this.registerEvent(this.app.vault.on("modify", refreshOnChange));
+    this.registerEvent(this.app.vault.on("create", refreshOnChange));
+    this.registerEvent(this.app.vault.on("delete", refreshOnChange));
+    this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+      const view = this.getDashboardView();
+      if (view && file instanceof TFile && (view.observesFile(file.path) || view.observesFile(oldPath))) view.scheduleRefresh();
+    }));
     this.addSettingTab(new FlowDeskDashboardSettingTab(this.app, this));
   }
 
@@ -311,76 +300,9 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     );
   }
 
-  /**
-   * 以 TaskNotes 为底座提交复核：tags 加 reviewed，并向 details 追加复核记录。
-   * 不依赖 evidence bundle digest，也不做 CAS 冲突检测。
-   */
-  async submitTaskReview(input: {
-    taskPath: string;
-    decision: ReviewDecision;
-    note: string;
-  }): Promise<void> {
-    try {
-      const task = await this.requestTaskNotes<{
-        tags?: unknown;
-      }>("GET", `/api/tasks/${encodeURIComponent(input.taskPath)}`);
-      const existingTags = Array.isArray(task?.tags)
-        ? task.tags.filter((tag): tag is string => typeof tag === "string")
-        : [];
-      const write = buildTaskNotesReviewWrite({
-        taskPath: input.taskPath,
-        decision: input.decision,
-        note: input.note,
-        reviewedAt: formatReviewTimestamp(new Date()),
-        existingTags,
-      });
-      await this.requestTaskNotes("PATCH", `/api/tasks/${encodeURIComponent(input.taskPath)}`, {
-        tags: write.tags,
-      });
-      await this.requestTaskNotes("POST", `/api/tasks/${encodeURIComponent(input.taskPath)}/details/append`, {
-        heading: write.heading,
-        content: write.detailsAppend,
-      });
-    } catch (error) {
-      const failure = parseReviewCommandFailure(error);
-      throw new EvidenceReviewCommandError(failure.code, failure.message);
-    }
-  }
-
-  private async requestTaskNotes<T>(
-    method: "GET" | "PATCH" | "POST",
-    endpoint: string,
-    body?: unknown
-  ): Promise<T> {
+  async loadTaskDetails(taskPath: string, signal: AbortSignal): Promise<TaskDetailsRead> {
     const auth = resolveTaskNotesAuth(this.settings.tasknotesEnv ?? "{}");
-    const baseUrl = resolveTaskNotesApiUrl(this.settings.apiUrl, auth.env);
-    const headers: Record<string, string> = {};
-    if (body) headers["Content-Type"] = "application/json";
-    if (auth.token) headers.Authorization = `Bearer ${auth.token}`;
-    const response = await fetch(`${baseUrl}${endpoint}`, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      let safeDetail: string;
-      try {
-        // Decode escaped credentials before redacting structured upstream errors.
-        safeDetail = JSON.stringify(sanitizeTaskNotesSnapshot(JSON.parse(detail), auth.token));
-      } catch {
-        safeDetail = formatTaskNotesAuthError(detail, auth.token);
-      }
-      const message = formatTaskNotesAuthError(
-        `TaskNotes API ${response.status}: ${safeDetail || response.statusText}`,
-        auth.token
-      );
-      if (response.status === 401) {
-        safeDetail = JSON.stringify({ code: "tasknotes_auth_failed", error: message });
-      }
-      throw Object.assign(new Error(message), { stdout: safeDetail });
-    }
-    return (await response.json().catch(() => ({}))) as T;
+    return readTaskDetails({ taskPath, signal, auth, apiUrl: resolveTaskNotesApiUrl(this.settings.apiUrl, auth.env) });
   }
 
   async loadSettings() {
@@ -444,6 +366,73 @@ class FlowDeskDashboardView extends ItemView {
   private readonly caseAdapter: WorkCaseAdapter;
   private readonly caseRenderer: WorkCaseDashboardRenderer;
   private cancelInitialSync: (() => void) | null = null;
+  private rawTaskContent: TaskRawContentObservation | null = null;
+  private rawContentController: AbortController | null = null;
+  private rawContentGeneration = 0;
+  private rawContentLoading = false;
+  private rawContentOpen = false;
+
+  private clearRawTaskContent(): void {
+    this.rawContentGeneration += 1;
+    this.rawContentController?.abort();
+    this.rawContentController = null;
+    this.rawTaskContent = null;
+    this.rawContentLoading = false;
+    this.rawContentOpen = false;
+  }
+
+  private async loadRawTaskContent(taskPath: string): Promise<void> {
+    if (this.shell.context.kind !== "task" || !("resourcePath" in this.shell.context) || this.shell.context.resourcePath !== taskPath) return;
+    this.rawContentController?.abort();
+    const controller = new AbortController();
+    this.rawContentController = controller;
+    const generation = ++this.rawContentGeneration;
+    this.rawContentLoading = true;
+    this.rawContentOpen = true;
+    this.rawTaskContent = null;
+    this.renderShell();
+    const current = () => generation === this.rawContentGeneration && !controller.signal.aborted && this.shell.context.kind === "task" && "resourcePath" in this.shell.context && this.shell.context.resourcePath === taskPath;
+    try {
+      const result = await this.plugin.loadTaskDetails(taskPath, controller.signal);
+      if (!current()) return;
+      this.rawTaskContent = { taskId: result.id, details: result.details, readAt: result.source.readAt, source: result.source.kind, error: null };
+    } catch (error) {
+      if (!current()) return;
+      this.rawTaskContent = { taskId: taskPath, details: "", readAt: "", source: "tasknotes-api", error: error instanceof Error ? error.message : String(error) };
+    } finally {
+      if (current()) {
+        this.rawContentLoading = false;
+        this.rawContentController = null;
+        this.renderShell();
+      }
+    }
+  }
+
+  private renderRawTaskContent(container: HTMLElement, model: DashboardViewModel): void {
+    const section = container.createEl("details", { cls: "flowdesk-contract-item-details flowdesk-raw-content" });
+    section.open = this.rawContentOpen;
+    section.addEventListener("toggle", () => { this.rawContentOpen = section.open; });
+    section.createEl("summary", { text: "完整API原文 / 未投影内容" });
+    section.createDiv({ cls: "flowdesk-muted", text: `单独API原文观测；不代表与 snapshot 同轮一致。Task：${model.currentTask.id}；snapshot 时间：${model.observation.generatedAt}` });
+    const read = section.createEl("button", { text: this.rawContentLoading ? "原文读取中" : "读取 / 刷新 API 原文", cls: "flowdesk-content-read" });
+    read.disabled = this.rawContentLoading;
+    read.addEventListener("click", () => { void this.loadRawTaskContent(model.currentTask.id); });
+    const original = section.createEl("button", { text: "打开任务原文", cls: "flowdesk-content-source" });
+    original.addEventListener("click", () => { void this.openTask(model.currentTask.id); });
+    const observation = this.rawTaskContent;
+    if (!observation || observation.taskId !== model.currentTask.id) return;
+    if (observation.error) {
+      section.createDiv({ cls: "flowdesk-error", text: `API原文读取失败：${observation.error}` });
+      return;
+    }
+    section.createDiv({ cls: "flowdesk-muted", text: `tasknotes-api · ${observation.taskId} · 成功读取时间：${observation.readAt}` });
+    if (rawContentDiffers(model.content, observation, this.taskRenderState.snapshot ?? undefined)) section.createDiv({ cls: "flowdesk-error", text: "API原文与 snapshot 投影片段存在差异；snapshot 已标记 stale，请刷新核对。" });
+    if (observation.details === "") section.createDiv({ cls: "flowdesk-muted", text: "API原文为空；可打开整张任务原文。" });
+    else {
+      const markdown = section.createDiv({ cls: "flowdesk-contract-scope-markdown" });
+      void MarkdownRenderer.render(this.app, observation.details, markdown, observation.taskId, this).catch(() => { markdown.setText(observation.details); });
+    }
+  }
 
   constructor(leaf: WorkspaceLeaf, private plugin: FlowDeskDashboardPlugin) {
     super(leaf);
@@ -495,6 +484,7 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   async onClose() {
+    this.clearRawTaskContent();
     this.cancelInitialSync?.();
     this.cancelInitialSync = null;
     this.shell.close();
@@ -507,6 +497,7 @@ class FlowDeskDashboardView extends ItemView {
       this.previousTaskPath,
       this.plugin.workCaseType(file)
     );
+    if (!("resourcePath" in nextContext) || nextContext.kind !== "task" || this.shell.context.kind !== "task" || !("resourcePath" in this.shell.context) || this.shell.context.resourcePath !== nextContext.resourcePath) this.clearRawTaskContent();
     if ("resourcePath" in nextContext) {
       this.previousTaskPath = nextContext.resourcePath;
       await this.shell.select(nextContext);
@@ -518,6 +509,7 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   async loadTask(taskPath: string) {
+    this.clearRawTaskContent();
     this.previousTaskPath = taskPath;
     await this.shell.select(
       { kind: this.taskAdapter.kind, resourcePath: taskPath },
@@ -526,13 +518,15 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   async refreshCurrentTask() {
+    this.clearRawTaskContent();
     await this.taskAdapter.refresh();
   }
 
   scheduleRefresh() {
     if (this.shell.context.kind === this.caseAdapter.kind) {
-      void this.caseAdapter.refresh();
+      this.caseAdapter.scheduleRefresh();
     } else {
+      this.clearRawTaskContent();
       this.taskAdapter.scheduleRefresh();
     }
   }
@@ -622,10 +616,13 @@ class FlowDeskDashboardView extends ItemView {
       container.createDiv({ cls: "flowdesk-empty", text: "尚未读取 snapshot。" });
       return;
     }
+    const rawDifference = this.rawTaskContent && !this.rawTaskContent.error && rawContentDiffers(
+      createDashboardViewModel(snapshot).content, this.rawTaskContent, snapshot
+    );
     const model = createDashboardViewModel(snapshot, {
       expectedTaskPath: taskPath,
       loadedAt: state.loadedAt,
-      staleReason: state.staleReason,
+      staleReason: state.staleReason || (rawDifference ? "API原文与 snapshot 片段存在差异，请刷新核对。" : ""),
     });
     if (model.errorCode) {
       this.renderLoadingHeader(container, taskPath, "snapshot 不兼容");
@@ -716,6 +713,7 @@ class FlowDeskDashboardView extends ItemView {
     badges.createSpan({
       cls: `flowdesk-state-pill is-${presentation.header.statusTone}`,
       text: presentation.header.status,
+      attr: {title: model.currentTask.status},
     });
     badges.createSpan({ cls: "flowdesk-state-pill", text: presentation.header.kindLabel });
     badges.createSpan({ cls: "flowdesk-state-pill", text: presentation.header.priority });
@@ -724,9 +722,8 @@ class FlowDeskDashboardView extends ItemView {
     }
     metaRow.createDiv({
       cls: "flowdesk-task-read-meta",
-      text: this.loading
-        ? `正在刷新 · 上次读取 ${model.observation.loadedAt}`
-        : `本地读取 ${model.observation.loadedAt}`,
+      text: `来源：${model.schemaLabel} · ${this.loading ? "正在刷新 · 上次读取" : "读取于"} ${model.observation.loadedAt}`,
+      attr: {title: `producer 生成于 ${model.observation.generatedAt}`},
     });
   }
 
@@ -749,23 +746,6 @@ class FlowDeskDashboardView extends ItemView {
         new Notice(`无法复制 CLI 命令：${String(error)}`);
       }
     });
-    if (
-      model &&
-      canReviewTask({
-        lifecycleStatus: model.currentTask.completion.lifecycleStatus,
-        observationTrustworthy: model.observation.isTrustworthy,
-        sourceIdentity: model.observation.sourceIdentity,
-        sourceIdentityMatch: model.observation.sourceIdentityMatch,
-        isStale: model.observation.isStale,
-      })
-    ) {
-      const review = toolbar.createEl("button", {
-        cls: "flowdesk-toolbar-button flowdesk-review-button",
-        attr: { "aria-label": "复核任务", title: "复核任务" },
-      });
-      setIcon(review, "clipboard-check");
-      review.addEventListener("click", () => this.openEvidenceReview(model));
-    }
     const refresh = toolbar.createEl("button", {
       cls: "flowdesk-toolbar-button",
       attr: {
@@ -776,29 +756,6 @@ class FlowDeskDashboardView extends ItemView {
     setIcon(refresh, "refresh-cw");
     refresh.disabled = this.loading;
     refresh.addEventListener("click", () => void this.refreshCurrentTask());
-  }
-
-  private openEvidenceReview(model: DashboardViewModel) {
-    new EvidenceReviewModal(this.app, async (decision, note) => {
-      try {
-        await this.plugin.submitTaskReview({
-          taskPath: model.currentTask.id,
-          decision,
-          note,
-        });
-        new Notice(decision === "approved" ? "复核已确认" : "已要求修改");
-        await this.refreshCurrentTask();
-      } catch (error) {
-        const failure =
-          error instanceof EvidenceReviewCommandError
-            ? error
-            : new EvidenceReviewCommandError(
-                "review_request_rejected",
-                error instanceof Error ? error.message : String(error)
-              );
-        new Notice(`复核失败：${failure.message}`);
-      }
-    }).open();
   }
 
   private renderNonTaskState(
@@ -842,7 +799,7 @@ class FlowDeskDashboardView extends ItemView {
     });
     card.createDiv({
       cls: "flowdesk-card-kicker",
-      text: status.tone === "healthy" ? "状态正常" : "需要处理",
+      text: "当前进展",
     });
     if (status.diagnostic) {
       const title = card.createEl("button", {
@@ -855,8 +812,8 @@ class FlowDeskDashboardView extends ItemView {
     } else {
       card.createDiv({ cls: "flowdesk-primary-title", text: status.title });
     }
-    diagnosticRow(card, "原因", status.reason);
-    diagnosticRow(card, "建议", status.remediation);
+    diagnosticRow(card, "做到哪了", status.reason);
+    diagnosticRow(card, "下一步", status.remediation);
     if (status.diagnostic) {
       const copyProblem = card.createEl("button", {
         cls: "flowdesk-copy-problem",
@@ -941,11 +898,18 @@ class FlowDeskDashboardView extends ItemView {
     });
     heading.createDiv({
       cls: "flowdesk-section-meta",
-      text: `${model.rollup.childrenTrustedDone}/${model.rollup.childrenTotal} 可信完成`,
+      text: `${children.filter(child => !child.history).length} 项未完成或状态未知`,
     });
     const list = section.createDiv({ cls: "flowdesk-child-list" });
+    const historical = children.filter(child => child.history);
+    let historyList: HTMLElement | null = null;
+    if (historical.length) {
+      const history = section.createEl("details", {cls: "flowdesk-task-history"});
+      history.createEl("summary", {text: `已完成 · ${historical.length}`});
+      historyList = history.createDiv({cls: "flowdesk-child-list"});
+    }
     for (const child of children) {
-      const row = list.createDiv({
+      const row = (child.history ? historyList! : list).createDiv({
         cls: `flowdesk-child-row is-${child.tone}`,
         attr: { role: "button", tabindex: "0" },
       });
@@ -960,6 +924,7 @@ class FlowDeskDashboardView extends ItemView {
       row.createSpan({
         cls: `flowdesk-child-status is-${child.tone}`,
         text: child.status,
+        attr: {title: model.children.find(item => item.id === child.id)?.status || "未记录"},
       });
       this.makeNavigable(row, () => this.openTask(child.id, "child"));
     }
@@ -992,13 +957,6 @@ class FlowDeskDashboardView extends ItemView {
     const goal = overview.createDiv({ cls: "flowdesk-contract-goal" });
     goal.createDiv({ cls: "flowdesk-summary-label", text: "目标" });
     goal.createDiv({ cls: "flowdesk-contract-goal-text", text: summary.goal });
-    const metrics = overview.createDiv({ cls: "flowdesk-contract-metrics" });
-    for (const metric of summary.metrics) {
-      const item = metrics.createDiv({ cls: "flowdesk-contract-metric" });
-      item.createDiv({ cls: "flowdesk-contract-metric-value", text: metric.value });
-      item.createDiv({ cls: "flowdesk-contract-metric-label", text: metric.label });
-    }
-
     const full = overview.createEl("details", { cls: "flowdesk-technical-details" });
     full.open = this.disclosureState.fullOpen;
     full.addEventListener("toggle", () => {
@@ -1007,112 +965,14 @@ class FlowDeskDashboardView extends ItemView {
     full.createEl("summary", { text: "规格与交付详情" });
     const body = full.createDiv({ cls: "flowdesk-detail-body" });
     const renderedSections = new Map<DetailSection, HTMLElement>();
-    const contract = createSection(
-      body,
-      model.currentTask.trustLevel === "legacy_v3"
-        ? "任务合同 v3"
-        : "任务规格 v4",
-      formatSemanticStatus(model.contract.semanticStatus)
-    );
+    const contract = createSection(body, "任务规格与记录", "producer 投影");
     renderedSections.set("contract", contract);
-    const scopePresentation = createDashboardScopePresentation(
-      model.contract.scope
-    );
-    if (scopePresentation.mode === "text") {
-      if (scopePresentation.text) {
-        const details = contract.createEl("details", {
-          cls: "flowdesk-contract-scope-details",
-        });
-        details.open = this.disclosureState.scopeOpen;
-        details.addEventListener("toggle", () => {
-          this.disclosureState.scopeOpen = details.open;
-        });
-        const summary = details.createEl("summary");
-        summary.createSpan({ text: "范围" });
-        summary.createSpan({
-          cls: "flowdesk-contract-scope-status",
-          text: "已提供",
-        });
-        const markdown = details.createDiv({
-          cls: "flowdesk-contract-scope-markdown markdown-rendered",
-        });
-        void MarkdownRenderer.render(
-          this.app,
-          scopePresentation.text,
-          markdown,
-          model.currentTask.id,
-          this
-        );
-      } else {
-        const row = contract.createDiv({
-          cls: "flowdesk-contract-scope-empty",
-        });
-        row.createSpan({ text: "范围" });
-        row.createSpan({ text: "Scope 待补充" });
-      }
-    } else {
-      scopeRow(contract, "包含", scopePresentation.included);
-      scopeRow(contract, "不包含", scopePresentation.excluded);
-    }
-    const contractMeta = contract.createDiv({ cls: "flowdesk-contract-chip-row" });
-    contractMeta.createSpan({
-      cls: "flowdesk-contract-chip",
-      text: `REQ ${model.contract.requirements.length}`,
-    });
-    contractMeta.createSpan({
-      cls: "flowdesk-contract-chip",
-      text: `SCN ${model.contract.scenarios.length}`,
-    });
-    if (scopePresentation.mode === "structured") {
-      contractMeta.createSpan({
-        cls: "flowdesk-contract-chip",
-        text: scopePresentation.status,
-      });
-    }
-    renderContractItems(
-      contract,
-      "需求详情",
-      "requirement",
-      model.contract.requirements,
-      (source) => {
-        void this.openSnapshotSource(model.currentTask.id, source, "需求");
-      },
-      this.disclosureState.requirementsOpen,
-      (open) => {
-        this.disclosureState.requirementsOpen = open;
-      }
-    );
-    renderContractItems(
-      contract,
-      "场景详情",
-      "scenario",
-      model.contract.scenarios,
-      (source) => {
-        void this.openSnapshotSource(model.currentTask.id, source, "场景");
-      },
-      this.disclosureState.scenariosOpen,
-      (open) => {
-        this.disclosureState.scenariosOpen = open;
-      }
-    );
-
-    // 完成记录计数行
-    const recordsTotal = model.records.execution + model.records.verification + model.records.delivery;
-    if (recordsTotal > 0) {
-      const recordsRow = contract.createDiv({ cls: "flowdesk-records-summary" });
-      recordsRow.createSpan({ cls: "flowdesk-summary-label", text: "完成记录：" });
-      const parts: string[] = [];
-      if (model.records.execution > 0) parts.push(`执行 ${model.records.execution}`);
-      if (model.records.verification > 0) parts.push(`验证 ${model.records.verification}`);
-      if (model.records.delivery > 0) parts.push(`交付 ${model.records.delivery}`);
-      const recordsLink = recordsRow.createEl("a", {
-        text: parts.join(" · "),
-        cls: "flowdesk-records-link",
-      });
-      recordsLink.addEventListener("click", () => {
-        void this.openSnapshotSource(model.currentTask.id, { section: "Execution Result" }, "完成记录");
-      });
-    }
+    new TaskContentRenderer({
+      renderMarkdown: (text, element, taskPath) => MarkdownRenderer.render(this.app, text, element, taskPath, this),
+      // Accurate source line mapping is Task 3. Task 1 opens the task without guessing vault offsets.
+      openSource: (taskPath) => this.openTask(taskPath),
+    }).render(contract, model.content);
+    this.renderRawTaskContent(contract, model);
 
     const observation = createSection(
       body,
@@ -1382,59 +1242,6 @@ class FlowDeskDashboardView extends ItemView {
   }
 }
 
-class EvidenceReviewModal extends Modal {
-  private note = "";
-  private submitted = false;
-
-  constructor(
-    app: App,
-    private onSubmit: (decision: ReviewDecision, note: string) => Promise<void>
-  ) {
-    super(app);
-  }
-
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.addClass("flowdesk-review-modal");
-    contentEl.createEl("h2", { text: "复核当前任务" });
-    contentEl.createDiv({
-      cls: "flowdesk-muted",
-      text: "结论写回 TaskNotes：通过会加 reviewed 标签，并在正文追加复核记录。",
-    });
-    new Setting(contentEl)
-      .setName("复核说明")
-      .setDesc("可选；要求修改时建议说明原因。")
-      .addTextArea((text) =>
-        text.setPlaceholder("补充复核说明").onChange((value) => {
-          this.note = value;
-        })
-      );
-    new Setting(contentEl)
-      .setClass("flowdesk-review-actions")
-      .addButton((button) =>
-        button.setButtonText("要求修改").onClick(() => {
-          void this.submit("changes_requested");
-        })
-      )
-      .addButton((button) =>
-        button.setCta().setButtonText("复核确认").onClick(() => {
-          void this.submit("approved");
-        })
-      );
-  }
-
-  onClose() {
-    this.contentEl.empty();
-  }
-
-  private async submit(decision: ReviewDecision) {
-    if (this.submitted) return;
-    this.submitted = true;
-    this.close();
-    await this.onSubmit(decision, this.note.trim());
-  }
-}
-
 class FlowDeskDashboardSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: FlowDeskDashboardPlugin) {
     super(app, plugin);
@@ -1513,76 +1320,6 @@ function createSection(
   return section;
 }
 
-function scopeRow(container: HTMLElement, label: string, values: string[]) {
-  const row = container.createDiv({ cls: "flowdesk-contract-scope-row" });
-  row.createSpan({ cls: "flowdesk-summary-label", text: label });
-  row.createSpan({ text: values.length ? values.join("、") : "无" });
-}
-
-function renderContractItems(
-  container: HTMLElement,
-  label: string,
-  kind: "requirement" | "scenario",
-  items: SnapshotContractItem[],
-  openSource: (source?: SnapshotSource) => void,
-  open: boolean,
-  onToggle: (open: boolean) => void
-) {
-  const section = container.createEl("details", {
-    cls: "flowdesk-contract-item-details",
-  });
-  section.open = open;
-  section.addEventListener("toggle", () => onToggle(section.open));
-  const summary = section.createEl("summary");
-  summary.createSpan({ text: label });
-  summary.createSpan({
-    cls: "flowdesk-contract-item-count",
-    text: `${items.length} 条`,
-  });
-  if (!items.length) {
-    section.createDiv({ cls: "flowdesk-muted", text: "无" });
-    return;
-  }
-  const list = section.createDiv({ cls: "flowdesk-contract-item-list" });
-  for (const item of items) {
-    const presentation = createContractItemPresentation(item, kind);
-    const row = list.createDiv({ cls: "flowdesk-contract-item" });
-    const header = row.createDiv({ cls: "flowdesk-contract-item-head" });
-    header.createSpan({
-      cls: "flowdesk-contract-item-id",
-      text: presentation.id,
-    });
-    for (const requirementId of presentation.requirementIds) {
-      header.createSpan({
-        cls: "flowdesk-contract-requirement-ref",
-        text: requirementId,
-      });
-    }
-    const source = header.createEl("button", {
-      cls: "flowdesk-contract-item-source",
-      text: `${presentation.sourceLabel} ↗`,
-      attr: { "aria-label": `打开来源：${presentation.sourceLabel}` },
-    });
-    source.addEventListener("click", () => openSource(item.source));
-    if (presentation.steps) {
-      const steps = row.createDiv({ cls: "flowdesk-scenario-steps" });
-      scenarioStep(steps, "Given", presentation.steps.given);
-      scenarioStep(steps, "When", presentation.steps.when);
-      scenarioStep(steps, "Then", presentation.steps.then);
-    } else {
-      row.createDiv({
-        cls: "flowdesk-contract-item-text",
-        text: presentation.text,
-      });
-    }
-  }
-}
-
-function scenarioStep(container: HTMLElement, label: string, value: string) {
-  container.createSpan({ cls: "flowdesk-scenario-step-label", text: label });
-  container.createSpan({ text: value });
-}
-
 function diagnosticRow(container: HTMLElement, label: string, value: string) {
   const row = container.createDiv({ cls: "flowdesk-diagnostic-row" });
   row.createSpan({ cls: "flowdesk-summary-label", text: `${label}：` });
@@ -1602,14 +1339,6 @@ function formatSemanticStatus(value: string): string {
   // not_applicable 是常态，不显示状态文案。
   if (value === "not_applicable") return "";
   return "语义待确认";
-}
-
-function formatReviewTimestamp(now: Date): string {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return (
-    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ` +
-    `${pad(now.getHours())}:${pad(now.getMinutes())}`
-  );
 }
 
 function taskTitleFromPath(taskPath: string) {

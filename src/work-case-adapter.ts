@@ -1,3 +1,4 @@
+import { isTaskPath, TrailingRefreshScheduler } from "./dashboard-state";
 import {
   createWorkCaseViewModel,
   WorkCaseSnapshotCompatibilityError,
@@ -40,22 +41,31 @@ export class WorkCaseAdapter implements ViewAdapter {
   private error = "";
   private loading = false;
   private controller: AbortController | null = null;
+  private requestGeneration = 0;
+  private dirtyReason = "";
+  private readonly refreshScheduler: TrailingRefreshScheduler;
 
-  constructor(private readonly dependencies: WorkCaseAdapterDependencies) {}
+  constructor(private readonly dependencies: WorkCaseAdapterDependencies) {
+    this.refreshScheduler = new TrailingRefreshScheduler(() => { void this.refresh(); }, 500);
+  }
 
   async activate(selection: ViewAdapterSelection): Promise<void> {
     if (selection.adapterKind !== this.kind) {
       throw new Error(`Work Case Adapter 无法处理：${selection.adapterKind}`);
     }
+    this.refreshScheduler.cancel();
+    const generation = ++this.requestGeneration;
     const sameCase = this.selection?.resourcePath === selection.resourcePath;
     this.selection = selection;
     if (!sameCase) {
       this.displayState = null;
       this.error = "";
+      this.dirtyReason = "";
     }
     this.controller?.abort();
     const controller = new AbortController();
     this.controller = controller;
+    const isCurrent = () => this.requestGeneration === generation && this.controller === controller && this.selection === selection && this.dependencies.shell().isCurrent(selection);
     this.loading = true;
     this.error = "";
     this.dependencies.requestRender();
@@ -64,8 +74,9 @@ export class WorkCaseAdapter implements ViewAdapter {
         selection.resourcePath,
         controller.signal
       );
-      if (!this.dependencies.shell().isCurrent(selection)) return;
+      if (!isCurrent()) return;
       const model = createWorkCaseViewModel(snapshot, selection.resourcePath);
+      this.dirtyReason = "";
       this.displayState = {
         casePath: selection.resourcePath,
         model,
@@ -73,7 +84,7 @@ export class WorkCaseAdapter implements ViewAdapter {
         staleReason: "",
       };
     } catch (error) {
-      if (!this.dependencies.shell().isCurrent(selection)) return;
+      if (!isCurrent()) return;
       this.error = formatWorkCaseError(error);
       if (error instanceof WorkCaseSnapshotCompatibilityError) {
         this.displayState = null;
@@ -86,8 +97,8 @@ export class WorkCaseAdapter implements ViewAdapter {
         this.displayState = null;
       }
     } finally {
-      if (this.controller === controller) this.controller = null;
-      if (this.dependencies.shell().isCurrent(selection)) {
+      if (isCurrent()) {
+        this.controller = null;
         this.loading = false;
         this.dependencies.requestRender();
       }
@@ -95,12 +106,15 @@ export class WorkCaseAdapter implements ViewAdapter {
   }
 
   deactivate(): void {
+    ++this.requestGeneration;
+    this.refreshScheduler.cancel();
     this.controller?.abort();
     this.controller = null;
     this.selection = null;
     this.displayState = null;
     this.error = "";
     this.loading = false;
+    this.dirtyReason = "";
   }
 
   shouldReactivate(selection: ViewAdapterSelection): boolean {
@@ -117,8 +131,23 @@ export class WorkCaseAdapter implements ViewAdapter {
     if (this.selection) await this.activate(this.selection);
   }
 
+  scheduleRefresh(): void {
+    if (!this.selection) return;
+    // Invalidate in-flight loads now, before the trailing refresh starts.
+    ++this.requestGeneration;
+    this.controller?.abort();
+    this.controller = null;
+    this.loading = this.displayState === null;
+    this.dirtyReason = "关联资料发生变化，等待刷新。";
+    if (this.displayState) this.displayState = {...this.displayState, staleReason: this.dirtyReason};
+    this.dependencies.requestRender();
+    this.refreshScheduler.schedule();
+  }
+
   observesFile(filePath: string): boolean {
-    return this.selection?.resourcePath === filePath;
+    if (!this.selection) return false;
+    return this.selection.resourcePath === filePath || isTaskPath(filePath) ||
+      Boolean(this.displayState?.model.tasks.items.some(task => task.id === filePath));
   }
 
   render(container: HTMLElement): void {
@@ -134,7 +163,7 @@ export class WorkCaseAdapter implements ViewAdapter {
       casePath,
       model: display?.model ?? null,
       loadedAt: display?.loadedAt ?? "",
-      staleReason: display?.staleReason ?? "",
+      staleReason: display?.staleReason || this.dirtyReason,
       error: this.error,
       loading: this.loading,
     };

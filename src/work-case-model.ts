@@ -178,6 +178,10 @@ export function createWorkCaseViewModel(
     invalid(`tasks.observation_health 无效：${observationHealth}`);
   }
 
+  const complete = boolean(coverage.complete, "tasks.coverage.complete");
+  const effectiveHealth = !complete && observationHealth === "healthy" ? "degraded" : observationHealth;
+  const completeCounts = effectiveHealth === "healthy" && complete;
+
   for (const key of SECTION_KEYS) array(sections[key], `sections.${key}`);
 
   return {
@@ -213,18 +217,18 @@ export function createWorkCaseViewModel(
       raw: current.raw === null ? null : section(current.raw, "current.raw"),
     },
     tasks: {
-      observationHealth,
+      observationHealth: effectiveHealth,
       contextTag: string(tasks.context_tag, "tasks.context_tag"),
       coverage: {
         complete: boolean(coverage.complete, "tasks.coverage.complete"),
         pages: number(coverage.pages, "tasks.coverage.pages"),
       },
       counts: {
-        total: nullableNumber(counts.total, "tasks.counts.total"),
-        active: nullableNumber(counts.active, "tasks.counts.active"),
-        blocked: nullableNumber(counts.blocked, "tasks.counts.blocked"),
-        completed: nullableNumber(counts.completed, "tasks.counts.completed"),
-        archived: nullableNumber(counts.archived, "tasks.counts.archived"),
+        total: completeCounts ? nullableNumber(counts.total, "tasks.counts.total") : null,
+        active: completeCounts ? nullableNumber(counts.active, "tasks.counts.active") : null,
+        blocked: completeCounts ? nullableNumber(counts.blocked, "tasks.counts.blocked") : null,
+        completed: completeCounts ? nullableNumber(counts.completed, "tasks.counts.completed") : null,
+        archived: completeCounts ? nullableNumber(counts.archived, "tasks.counts.archived") : null,
         byStatus: numberRecord(counts.by_status, "tasks.counts.by_status"),
       },
       items: array(tasks.items, "tasks.items").map((item, index) =>

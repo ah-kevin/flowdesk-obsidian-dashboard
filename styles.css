@@ -1509,23 +1509,9 @@
   font-size: 12.5px;
 }
 
-.flowdesk-case-dashboard .flowdesk-case-task-summary {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
-  gap: 8px 12px;
-  align-items: end;
-}
-
-.flowdesk-case-dashboard .flowdesk-case-completion-value,
 .flowdesk-case-dashboard .flowdesk-case-count-value {
-  font-size: 17px;
-  font-weight: 750;
-}
-
-.flowdesk-case-dashboard .flowdesk-case-progress-bar {
-  width: 100%;
-  min-width: 0;
+  font-size: var(--font-ui-small);
+  font-weight: 600;
 }
 
 .flowdesk-case-dashboard .flowdesk-case-observation {
@@ -1870,4 +1856,30 @@
   .flowdesk-case-dashboard .flowdesk-case-task-status {
     justify-self: start;
   }
+}
+
+/* Task and Case share native disclosure semantics and existing theme tokens. */
+.flowdesk-dashboard .flowdesk-task-history > summary,
+.flowdesk-case-dashboard .flowdesk-case-task-counts > summary {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+  padding: 6px 0;
+  overflow-wrap: anywhere;
+}
+.flowdesk-dashboard .flowdesk-task-history > summary:focus-visible,
+.flowdesk-case-dashboard .flowdesk-case-task-counts > summary:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+.flowdesk-case-dashboard .flowdesk-case-task-summary {
+  display: block;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.flowdesk-case-dashboard > .flowdesk-case-observation {
+  font-size: var(--font-ui-small);
+  padding: 6px 0;
+  overflow-wrap: anywhere;
 }

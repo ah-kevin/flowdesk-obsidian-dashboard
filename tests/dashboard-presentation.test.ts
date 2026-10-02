@@ -268,7 +268,8 @@ test("Parent 只生成 direct child 紧凑行，Leaf 不生成空 child 区域",
     title: "Child",
     status: "进行中",
     tone: "running",
-    summary: "等待当前任务验证",
+    summary: "完成 child",
+    history: false,
     meta: "",
   });
 
@@ -290,7 +291,7 @@ test("Parent 只生成 direct child 紧凑行，Leaf 不生成空 child 区域",
   assert.equal(leaf.header.parent?.title, "Root");
 });
 
-test("子任务已完成但未可信时优先显示需处理而不是绿色完成", () => {
+test("子任务生命周期完成与历史诊断分别显示", () => {
   const snapshot = createSnapshot();
   snapshot.children[0].status = "done";
   snapshot.children[0].semantic_status = "invalid";
@@ -315,10 +316,10 @@ test("子任务已完成但未可信时优先显示需处理而不是绿色完�
     createDashboardViewModel(snapshot, { expectedTaskPath: taskId })
   ).children[0];
 
-  assert.equal(child.status, "需处理");
-  assert.equal(child.tone, "error");
+  assert.equal(child.status, "已完成");
+  assert.equal(child.tone, "healthy");
   assert.equal(child.summary, "找到 0 个 ## Task Contract v3");
-  assert.equal(child.meta, "TaskNotes 已完成");
+  assert.equal(child.meta, "");
 });
 
 test("child 只有真实阻塞关系存在时才在紧凑行显示", () => {
@@ -482,7 +483,7 @@ test("详情存在诊断时优先展示诊断，否则保持合同审阅顺序",
 test("legacy 摘要同时证明观察、来源和历史验证边界", () => {
   const presentation = createDashboardPresentation(createModel());
 
-  assert.equal(presentation.trust.label, "v3 历史验证");
+  assert.equal(presentation.trust.label, "来源读取完整");
   assert.equal(presentation.trust.contractLabel, "v3 历史合同有效");
   assert.equal(
     presentation.primaryStatus.title,
@@ -493,11 +494,7 @@ test("legacy 摘要同时证明观察、来源和历史验证边界", () => {
     "Dashboard 明示 legacy_v3，不将历史结论伪装成 v4 attested"
   );
   assert.equal(presentation.contract.goal, "交付可验证的 Dashboard");
-  assert.deepEqual(presentation.contract.metrics, [
-    { label: "REQ / SCN", value: "2 / 1" },
-    { label: "验收", value: "1 / 2" },
-    { label: "证据有效", value: "2 / 3" },
-  ]);
+  assert.deepEqual(presentation.contract.metrics, []);
   assert.equal(
     presentation.trust.sourceLabel,
     "snapshot v3 · task-centric · legacy_v3"
@@ -517,7 +514,7 @@ test("合同异常但 diagnostics 为空时不显示健康", () => {
     presentation.primaryStatus.reason,
     "producer 将规格标记为 invalid，但没有返回结构化诊断"
   );
-  assert.equal(presentation.trust.tone, "warning");
+  assert.equal(presentation.trust.tone, "healthy");
   assert.equal(presentation.trust.contractTone, "error");
 });
 
@@ -676,7 +673,7 @@ test("has_children 但 rollup 计数为 0 时不谎报可信完成", () => {
   const presentation = createDashboardPresentation(model);
 
   assert.equal(presentation.primaryStatus.tone, "warning");
-  assert.match(presentation.primaryStatus.title, /0\s*\/\s*0/);
+  assert.equal(presentation.primaryStatus.title,"未观察到直接子任务");
 });
 
 test("tasknotes_only trust strip 讲 TaskNotes 底座而非未知合同", () => {
@@ -689,7 +686,7 @@ test("tasknotes_only trust strip 讲 TaskNotes 底座而非未知合同", () => 
   assert.notEqual(presentation.trust.contractLabel, "合同状态未知");
   assert.equal(presentation.trust.contractLabel, "TaskNotes 状态为准");
   assert.equal(presentation.trust.contractTone, "muted");
-  assert.equal(presentation.trust.label, "观察可信");
+  assert.equal(presentation.trust.label, "来源读取完整");
 });
 
 test("tasknotes_only leaf 任务主状态讲自身进度而非子任务", () => {
@@ -843,7 +840,7 @@ test("legacy_v3 trust strip 明确显示历史验证且保留可信完成", () =
   const presentation = createDashboardPresentation(model);
 
   assert.equal(model.currentTask.trustedDone, true);
-  assert.equal(presentation.trust.label, "v3 历史验证");
+  assert.equal(presentation.trust.label, "来源读取完整");
   assert.equal(presentation.primaryStatus.title, "v3 历史验证已保留");
 });
 
@@ -899,7 +896,7 @@ test("v4 review_required 与缺失证据使用增量 trust/diagnostic 文案", (
   const reviewPresentation = createDashboardPresentation(
     createDashboardViewModel(base, { expectedTaskPath: taskId })
   );
-  assert.equal(reviewPresentation.trust.label, "等待人工复核");
+  assert.equal(reviewPresentation.trust.label, "来源读取完整");
   assert.equal(reviewPresentation.primaryStatus.title, "结构化证据等待人工复核");
 
   base.current_task.completion.evidence_status = "missing";
@@ -910,7 +907,7 @@ test("v4 review_required 与缺失证据使用增量 trust/diagnostic 文案", (
   const missingPresentation = createDashboardPresentation(
     createDashboardViewModel(base, { expectedTaskPath: taskId })
   );
-  assert.equal(missingPresentation.trust.label, "证据待补充");
+  assert.equal(missingPresentation.trust.label, "来源读取完整");
   assert.equal(missingPresentation.primaryStatus.title, "结构化证据缺失");
 });
 
@@ -956,7 +953,7 @@ test("not_applicable 与结构化 REQ/SCN 并存时，主状态讲进度而不�
   // chip 侧是对的：producer 真的返回了 REQ/SCN，必须继续渲染。
   assert.equal(model.contract.requirements.length, 2);
   assert.equal(model.contract.scenarios.length, 1);
-  assert.equal(presentation.contract.coverage, "REQ 2 · SCN 1");
+  assert.equal(presentation.contract.coverage, "投影条目；完整正文见 API 原文");
 
   // 文案侧不得把「不做判定」说成「规格有问题」。
   assert.notEqual(presentation.primaryStatus.title, "任务规格存在问题");
@@ -978,9 +975,37 @@ test("completion.contract_status 缺失时仍以 contract.status 认定判定层
   assert.equal(model.contract.semanticStatus, "not_applicable");
 
   // REQ/SCN chip 仍在，文案不得与之矛盾。
-  assert.equal(presentation.contract.coverage, "REQ 2 · SCN 1");
+  assert.equal(presentation.contract.coverage, "投影条目；完整正文见 API 原文");
   assert.notEqual(presentation.primaryStatus.title, "任务规格存在问题");
   assert.notEqual(presentation.trust.contractLabel, "规格状态未知");
   assert.equal(presentation.trust.contractLabel, "TaskNotes 状态为准");
   assert.equal(presentation.trust.contractTone, "muted");
+});
+
+
+test("completed_dependencies_are_history_not_blockers and unfinished rows first",()=>{
+ const snapshot=createTasknotesOnlySnapshot();
+ snapshot.children=[
+  {...snapshot.children[0],id:"Tasks/Done.md",title:"Done",status:"done",is_blocked:false,blocked_by:["Tasks/Dependency.md"]},
+  {...snapshot.children[1],id:"Tasks/Unknown.md",title:"Unknown",status:"custom-state",is_blocked:false,blocked_by:[]},
+  {...snapshot.children[1],id:"Tasks/Running.md",title:"Running",status:"in-progress",is_blocked:false,blocked_by:[]},
+ ];
+ const result=createDashboardPresentation(createDashboardViewModel(snapshot,{expectedTaskPath:taskId}));
+ assert.deepEqual(result.children.map(x=>x.id),["Tasks/Running.md","Tasks/Unknown.md","Tasks/Done.md"]);
+ assert.equal(result.children[2].status,"已完成");
+ assert.match(result.children[2].meta,/历史依赖|依赖于/);
+ assert.doesNotMatch(result.children[2].meta,/阻塞于/);
+ assert.match(result.children[1].status,/custom-state.*未知/);
+ assert.doesNotMatch(JSON.stringify(result),/可信完成|待验收/);
+ assert.equal(result.trust.label,"来源读取完整");
+});
+
+
+test("observation health is independent from legacy completion and acceptance diagnostics",()=>{
+ const snapshot=createSnapshot();snapshot.contract.semantic_status="invalid";
+ const result=createDashboardPresentation(createDashboardViewModel(snapshot,{expectedTaskPath:taskId}));
+ assert.equal(result.trust.label,"来源读取完整");
+ assert.equal(result.trust.tone,"healthy");
+ assert.equal(result.primaryStatus.tone,"error");
+ assert.equal(result.header.status,"进行中");
 });

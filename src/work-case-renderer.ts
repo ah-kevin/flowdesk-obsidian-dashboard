@@ -1,3 +1,4 @@
+import {formatEntityStatus, formatReferenceLabel} from "./entity-presentation";
 import type { WorkCaseRenderState } from "./work-case-adapter";
 import type { WorkCaseSourceRange } from "./work-case-model";
 import type { TaskNavigationOrigin } from "./task-navigation";
@@ -34,6 +35,11 @@ export class WorkCaseDashboardRenderer {
     }
     const presentation = createWorkCasePresentation(state.model);
     this.renderHeader(container, state, presentation);
+    container.createDiv({
+      cls: `flowdesk-case-observation is-${state.staleReason ? "degraded" : presentation.tasks.health}`,
+      text: `来源：Work Case schema 1 · ${state.loading ? "正在刷新 · 上次读取" : "读取于"} ${state.loadedAt} · ${state.staleReason ? "来源已过期，等待刷新" : presentation.tasks.health === "healthy" ? "来源读取完整" : "关联任务读取不完整"}`,
+      attr: {title: state.casePath},
+    });
     if (state.error || state.staleReason) {
       container.createDiv({
         cls: "flowdesk-case-stale-warning",
@@ -45,6 +51,7 @@ export class WorkCaseDashboardRenderer {
     this.renderProgress(container, state, presentation);
     this.renderSections(container, state, presentation);
     this.renderRelated(container, state, presentation);
+    this.renderTechnicalContext(container, presentation);
     this.renderDiagnostics(container, presentation);
   }
 
@@ -82,11 +89,12 @@ export class WorkCaseDashboardRenderer {
     refresh.addEventListener("click", () => void this.dependencies.refresh());
     header.createDiv({ cls: "flowdesk-case-title", text: presentation.header.title });
     const metadata = header.createDiv({ cls: "flowdesk-case-metadata" });
-    metadata.createSpan({ cls: "flowdesk-case-status", text: presentation.header.status });
+    metadata.createSpan({ cls: "flowdesk-case-status", text: presentation.header.status, attr: {title: state.model?.workCase.status || "未记录"} });
     if (presentation.header.project !== "未关联 Project") {
       const project = metadata.createEl("button", {
         cls: "flowdesk-case-related-link",
-        text: presentation.header.project,
+        text: formatReferenceLabel(presentation.header.project),
+        attr: {title: presentation.header.project},
       });
       project.addEventListener("click", () =>
         void this.dependencies.openRelated(presentation.header.project, state.casePath)
@@ -102,14 +110,16 @@ export class WorkCaseDashboardRenderer {
     for (const badge of presentation.header.badges) {
       metadata.createSpan({ cls: "flowdesk-case-badge", text: badge });
     }
-    if (presentation.header.recoveryContext.length) {
-      const details = header.createEl("details", { cls: "flowdesk-case-recovery" });
-      details.createEl("summary", { text: "恢复上下文" });
-      for (const item of presentation.header.recoveryContext) {
-        const row = details.createDiv({ cls: "flowdesk-case-recovery-row" });
-        row.createSpan({ cls: "flowdesk-case-label", text: item.label });
-        row.createSpan({ cls: "flowdesk-case-long-value", text: item.value });
-      }
+  }
+
+  private renderTechnicalContext(container: HTMLElement, presentation: WorkCasePresentation): void {
+    if (!presentation.header.recoveryContext.length) return;
+    const details = container.createEl("details", { cls: "flowdesk-case-recovery" });
+    details.createEl("summary", { text: "技术详情" });
+    for (const item of presentation.header.recoveryContext) {
+      const row = details.createDiv({ cls: "flowdesk-case-recovery-row" });
+      row.createSpan({ cls: "flowdesk-case-label", text: item.label });
+      row.createSpan({ cls: "flowdesk-case-long-value", text: item.value });
     }
   }
 
@@ -118,7 +128,7 @@ export class WorkCaseDashboardRenderer {
     state: WorkCaseRenderState,
     presentation: WorkCasePresentation
   ): void {
-    const section = createSection(container, "Current", "flowdesk-case-current");
+    const section = createSection(container, "当前进展", "flowdesk-case-current");
     const grid = section.createDiv({ cls: "flowdesk-case-short-grid" });
     for (const item of presentation.current) {
       const card = grid.createEl("button", {
@@ -139,36 +149,8 @@ export class WorkCaseDashboardRenderer {
 
   private renderTasks(container: HTMLElement, presentation: WorkCasePresentation): void {
     const section = createSection(container, "关联任务", "flowdesk-case-tasks");
-    const summary = section.createDiv({ cls: "flowdesk-case-task-summary" });
-    const completion = summary.createDiv({ cls: "flowdesk-case-completion" });
-    completion.createDiv({ cls: "flowdesk-case-completion-value", text: presentation.tasks.completedLabel });
-    completion.createDiv({ cls: "flowdesk-case-label", text: "completed / total" });
-    if (presentation.tasks.progressPercent !== null) {
-      const progress = summary.createEl("progress", {
-        cls: "flowdesk-case-progress-bar",
-        attr: { max: "100", value: String(presentation.tasks.progressPercent) },
-      });
-      progress.value = presentation.tasks.progressPercent;
-    }
-    summary.createDiv({
-      cls: `flowdesk-case-observation is-${presentation.tasks.health}`,
-      text: `任务观察：${presentation.tasks.health}`,
-    });
-    const counts = section.createDiv({ cls: "flowdesk-case-count-grid" });
-    for (const count of presentation.tasks.counts) {
-      const item = counts.createDiv({ cls: "flowdesk-case-count" });
-      item.createDiv({ cls: "flowdesk-case-count-value", text: count.value });
-      item.createDiv({ cls: "flowdesk-case-label", text: count.label });
-    }
-    if (presentation.tasks.byStatus.length) {
-      const statuses = section.createDiv({ cls: "flowdesk-case-status-list" });
-      for (const item of presentation.tasks.byStatus) {
-        statuses.createSpan({
-          cls: "flowdesk-case-status-chip",
-          text: `${item.status} ${item.count}`,
-        });
-      }
-    }
+    section.createDiv({cls: "flowdesk-case-task-summary", text: presentation.tasks.health === "healthy"
+      ? `生命周期已完成 / 关联任务：${presentation.tasks.completedLabel}` : "关联任务尚未完整读取；以下仅展示已观察条目。"});
     if (presentation.tasks.driftWarning) {
       section.createDiv({ cls: "flowdesk-case-drift", text: presentation.tasks.driftWarning });
     }
@@ -191,6 +173,18 @@ export class WorkCaseDashboardRenderer {
       history.createEl("summary", { text: `已完成 / 已归档 · ${presentation.tasks.history.length}` });
       const list = history.createDiv({ cls: "flowdesk-case-task-list" });
       for (const task of presentation.tasks.history) this.renderTask(list, task);
+    }
+    const counts = section.createEl("details", {cls: "flowdesk-case-task-counts"});
+    counts.createEl("summary", {text: "状态统计"});
+    const grid = counts.createDiv({cls: "flowdesk-case-count-grid"});
+    for (const count of presentation.tasks.counts) {
+      const item = grid.createDiv({cls: "flowdesk-case-count"});
+      item.createDiv({cls: "flowdesk-case-count-value", text: count.value});
+      item.createDiv({cls: "flowdesk-case-label", text: count.label});
+    }
+    if (presentation.tasks.byStatus.length) {
+      const statuses = counts.createDiv({ cls: "flowdesk-case-status-list" });
+      for (const item of presentation.tasks.byStatus) statuses.createSpan({cls: "flowdesk-case-status-chip", text: `${formatEntityStatus("task", item.status).label} ${item.count}`, attr: {title: item.status}});
     }
   }
 
@@ -223,7 +217,7 @@ export class WorkCaseDashboardRenderer {
       cls: "flowdesk-case-task-meta",
       text: `${task.associationSource}${task.archived ? " · archived" : ""}`,
     });
-    row.createSpan({ cls: "flowdesk-case-task-status", text: task.status || "未记录" });
+    row.createSpan({ cls: "flowdesk-case-task-status", text: formatEntityStatus("task", task.status).label, attr: {title: task.status} });
     row.addEventListener("click", () =>
       void this.dependencies.openTask(task.id, "work-case")
     );
@@ -337,7 +331,8 @@ export class WorkCaseDashboardRenderer {
       for (const target of group.targets) {
         const link = links.createEl("button", {
           cls: "flowdesk-case-related-link",
-          text: target,
+          text: formatReferenceLabel(target),
+          attr: {title: target},
         });
         link.addEventListener("click", () =>
           void this.dependencies.openRelated(target, state.casePath)

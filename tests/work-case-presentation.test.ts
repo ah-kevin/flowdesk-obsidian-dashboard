@@ -110,11 +110,36 @@ test("任务分组保留原始 status，并只显示不修复 Case/Task drift", 
     { status: "cancel", count: 1 },
     { status: "done", count: 1 },
   ]);
-  assert.deepEqual(result.tasks.primary.map((item) => item.status), ["open", "blocked"]);
+  assert.deepEqual(result.tasks.primary.map((item) => item.status), ["blocked", "open"]);
   assert.deepEqual(result.tasks.primary.map((item) => item.relationRoles), [
-    ["parent"],
     ["parent", "child"],
+    ["parent"],
   ]);
   assert.deepEqual(result.tasks.history.map((item) => item.status), ["cancel", "done"]);
   assert.match(result.tasks.driftWarning, /Case 状态为 done/);
+});
+
+
+test("unknown_status_stays_visible and completed blocked facts stay in history", () => {
+  const snapshot = structuredClone(canonical);
+  snapshot.tasks.items = [
+    {id:"Tasks/Unknown.md",title:"Unknown",status:"custom-awaiting",status_is_completed:null,archived:false,is_blocked:false,association_source:"canonical"},
+    {id:"Tasks/Done.md",title:"Done",status:"done",status_is_completed:true,archived:false,is_blocked:true,association_source:"canonical"},
+    {id:"Tasks/Open.md",title:"Open",status:"open",status_is_completed:false,archived:false,is_blocked:false,association_source:"canonical"},
+    {id:"Tasks/Blocked.md",title:"Blocked",status:"open",status_is_completed:false,archived:false,is_blocked:true,association_source:"canonical"},
+    {id:"Tasks/Running.md",title:"Running",status:"in-progress",status_is_completed:false,archived:false,is_blocked:false,association_source:"canonical"},
+  ];
+  const result=presentation(snapshot);
+  assert.deepEqual(result.tasks.primary.map(x=>x.id),["Tasks/Running.md","Tasks/Blocked.md","Tasks/Unknown.md","Tasks/Open.md"]);
+  assert.deepEqual(result.tasks.history.map(x=>x.id),["Tasks/Done.md"]);
+  assert.equal(result.tasks.history[0].tone,"completed");
+});
+
+test("partial coverage cannot display healthy complete zero counts", () => {
+  const snapshot=structuredClone(canonical);
+  snapshot.tasks.coverage.complete=false;
+  const result=presentation(snapshot);
+  assert.equal(result.tasks.health,"degraded");
+  assert.equal(result.tasks.completedLabel,"— / —");
+  assert.equal(result.tasks.progressPercent,null);
 });

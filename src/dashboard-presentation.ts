@@ -1,5 +1,5 @@
+import {formatEntityStatus, groupTaskRows} from "./entity-presentation";
 import {
-  formatRollupState,
   type DashboardChildViewModel,
   type DashboardViewModel,
   type EvidenceHealth,
@@ -88,6 +88,7 @@ export interface DashboardPrimaryStatusPresentation {
 }
 
 export interface DashboardChildRowPresentation {
+  history: boolean;
   id: string;
   title: string;
   status: string;
@@ -316,7 +317,7 @@ export function createDashboardPresentation(
     kind,
     header: {
       title: model.currentTask.title,
-      status: formatTaskStatus(model.currentTask.status),
+      status: formatTaskStatus(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3"),
       statusTone: taskStatusTone(model.currentTask.status, model.currentTask.isBlocked),
       priority: formatPriority(model.currentTask.priority),
       kindLabel: kind === "parent" ? "父任务" : "叶子任务",
@@ -326,7 +327,14 @@ export function createDashboardPresentation(
     },
     trust: createTrustSummary(model),
     primaryStatus: createPrimaryStatus(model),
-    children: kind === "parent" ? model.children.map(createChildRow) : [],
+    children: kind === "parent" ? (() => {
+      const legacy = model.currentTask.trustLevel === "legacy_v3";
+      const grouped = groupTaskRows(model.children.map(child => ({...child,
+        completed: lifecycleCompleted(child.status, legacy), archived: false,
+      })));
+      return [...grouped.current.map(child => createChildRow(child, legacy, false)),
+        ...grouped.history.map(child => createChildRow(child, legacy, true))];
+    })() : [],
     contract: createContractSummary(model),
     diagnostics,
     technicalDiagnostics: createTechnicalDiagnosticGroups(model, diagnostics),
@@ -345,7 +353,7 @@ export function createTechnicalDiagnosticGroups(
       kind: "current",
       taskId: model.currentTask.id,
       taskTitle: model.currentTask.title,
-      status: formatTaskStatus(model.currentTask.status),
+      status: formatTaskStatus(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3"),
       tone: taskStatusTone(model.currentTask.status, model.currentTask.isBlocked),
       diagnostics: currentDiagnostics,
     });
@@ -366,31 +374,21 @@ export function createTechnicalDiagnosticGroups(
   return groups;
 }
 
-export function formatTaskStatus(value: unknown): string {
-  const labels: Record<string, string> = {
-    done: "已完成",
-    complete: "已完成",
-    completed: "已完成",
-    "in-progress": "进行中",
-    running: "进行中",
-    open: "待开始",
-    blocked: "已阻塞",
-    error: "异常",
-    unknown: "未知",
-  };
-  return labels[normalizeToken(value)] ?? String(value || "未知");
+export function formatTaskStatus(value: unknown, legacy = false): string {
+  const raw = String(value ?? "");
+  if (legacy && ["complete", "completed"].includes(normalizeToken(raw))) return "已完成";
+  return formatEntityStatus("task", raw).label;
 }
 
-export function taskStatusTone(
-  value: unknown,
-  isBlocked = false
-): PresentationTone {
-  if (isBlocked) return "error";
-  const status = normalizeToken(value);
-  if (["done", "complete", "completed"].includes(status)) return "healthy";
-  if (["in-progress", "running"].includes(status)) return "running";
-  if (["blocked", "error", "invalid"].includes(status)) return "error";
-  return "muted";
+export function taskStatusTone(value: unknown, isBlocked = false): PresentationTone {
+  const result = formatEntityStatus("task", String(value ?? ""));
+  return normalizeToken(value) !== "done" && isBlocked ? "error" : result.tone;
+}
+
+function lifecycleCompleted(status: string, legacy = false): boolean | null {
+  const token = normalizeToken(status);
+  if (token === "done" || (legacy && ["complete", "completed"].includes(token))) return true;
+  return ["open", "in-progress", "running", "blocked"].includes(token) ? false : null;
 }
 
 /**
@@ -460,57 +458,10 @@ function createTrustSummary(
       detail,
     };
   }
-  if (isLegacy) {
-    const detail = model.currentTask.trustedDone
-      ? "保留 SDD v3 历史可信结论；未自动迁移为 v4 attested"
-      : "保留 SDD v3 历史验证状态；未自动迁移为 v4";
-    return {
-      tone: model.currentTask.trustedDone ? "healthy" : "warning",
-      label: "v3 历史验证",
-      contractLabel,
-      contractTone,
-      sourceLabel: model.schemaLabel,
-      tooltip: `${model.observation.generatedAt} · ${detail}`,
-      meta: `${model.schemaLabel} · ${model.observation.generatedAt}`,
-      detail,
-    };
-  }
-  if (model.currentTask.trustLevel === "review_required") {
-    const detail = "结构化证据已满足，等待对当前 evidence bundle 人工复核";
-    return {
-      tone: "warning",
-      label: "等待人工复核",
-      contractLabel,
-      contractTone,
-      sourceLabel: model.schemaLabel,
-      tooltip: `${model.observation.generatedAt} · ${detail}`,
-      meta: `${model.schemaLabel} · ${model.observation.generatedAt}`,
-      detail,
-    };
-  }
-  if (
-    ["missing", "incomplete", "invalid", "failed"].includes(
-      model.currentTask.completion.evidenceStatus
-    )
-  ) {
-    const detail = "必需结构化 Evidence requirement 尚未全部满足";
-    return {
-      tone: "warning",
-      label: "证据待补充",
-      contractLabel,
-      contractTone,
-      sourceLabel: model.schemaLabel,
-      tooltip: `${model.observation.generatedAt} · ${detail}`,
-      meta: `${model.schemaLabel} · ${model.observation.generatedAt}`,
-      detail,
-    };
-  }
   const detail = "来源匹配，已读取当前任务、父任务与直接子任务";
   return {
     tone: "healthy",
-    label: model.currentTask.trustLevel === "attested_v4"
-      ? "v4 可信验证"
-      : "观察可信",
+    label: "来源读取完整",
     contractLabel,
     contractTone,
     sourceLabel: model.schemaLabel,
@@ -576,7 +527,7 @@ function createPrimaryStatus(
       tone: "warning",
       title: "结构化证据等待人工复核",
       reason: "必需 evidence 已满足，但当前 bundle 尚未批准",
-      remediation: model.nextAction || "使用 Dashboard 复核操作确认或要求修改",
+      remediation: model.nextAction || "查看历史证据与原文确认下一步",
       location: "执行证据",
       diagnostic: null,
     };
@@ -602,80 +553,36 @@ function createProgressStatus(
   if (!model.currentTask.hasChildren) {
     return createLeafProgressStatus(model, nextStep);
   }
-  const { childrenTrustedDone, childrenTotal } = model.rollup;
-  const progress = `${childrenTrustedDone}/${childrenTotal} 个子任务可信完成`;
-  const blocked = model.rollup.blockedChildren;
-  if (blocked.length) {
-    return {
-      tone: "error",
-      title: progress,
-      reason: `${blocked.length} 个子任务被阻塞：${formatTaskReferences(blocked)}`,
-      remediation: nextStep || "先解除阻塞依赖，再继续派发子任务",
-      location: "直接子任务",
-      diagnostic: null,
-    };
-  }
-  const incomplete = model.rollup.incompleteChildren;
-  if (incomplete.length) {
-    return {
-      tone: "running",
-      title: progress,
-      reason: `还有 ${incomplete.length} 个子任务未完成：${formatTaskReferences(incomplete)}`,
-      remediation: nextStep || "派发下一个就绪子任务",
-      location: "直接子任务",
-      diagnostic: null,
-    };
-  }
-  const allTrusted =
-    childrenTotal > 0 && childrenTrustedDone === childrenTotal;
+  const legacy = model.currentTask.trustLevel === "legacy_v3";
+  const completed = model.children.filter(child => lifecycleCompleted(child.status, legacy) === true);
+  const unfinished = model.children.filter(child => lifecycleCompleted(child.status, legacy) !== true);
+  const blocked = unfinished.filter(child => child.isBlocked);
+  const progress = model.children.length ? `${completed.length}/${model.children.length} 个直接子任务已完成` : "未观察到直接子任务";
   return {
-    tone: allTrusted && model.currentTask.trustedDone ? "healthy" : "warning",
+    tone: blocked.length ? "error" : unfinished.length ? "running" : model.children.length ? "healthy" : "warning",
     title: progress,
-    reason: allTrusted
-      ? model.currentTask.trustedDone
-        ? "当前任务与全部直接子任务均已可信完成"
-        : "直接子任务已全部可信完成，当前任务本身尚未写回完成"
-      : "producer 未报告阻塞或未完成子任务",
-    remediation: nextStep || "确认当前任务收口",
+    reason: blocked.length
+      ? `${blocked.length} 个未完成子任务被阻塞：${formatTaskReferences(blocked)}`
+      : unfinished.length
+        ? `还有 ${unfinished.length} 个子任务未完成或状态未知：${formatTaskReferences(unfinished)}`
+        : model.children.length ? "直接子任务生命周期均为已完成；当前任务状态独立显示。" : "producer 未返回直接子任务，不据此判定完成。",
+    remediation: nextStep || "未记录下一步",
     location: "直接子任务",
     diagnostic: null,
   };
 }
 
-function createLeafProgressStatus(
-  model: DashboardViewModel,
-  nextStep: string | null
-): DashboardPrimaryStatusPresentation {
-  if (model.currentTask.isBlocked) {
-    const blockedBy = model.currentTask.blockedBy;
-    return {
-      tone: "error",
-      title: "当前任务被阻塞",
-      reason: blockedBy.length
-        ? `阻塞于 ${blockedBy.map(formatTaskReference).join("、")}`
-        : "TaskNotes 将当前任务标记为阻塞",
-      remediation: nextStep || "先完成前置任务",
-      location: "当前任务",
-      diagnostic: null,
-    };
-  }
-  if (model.currentTask.trustedDone) {
-    return {
-      tone: "healthy",
-      title: "当前任务已可信完成",
-      reason: "TaskNotes 生命周期为 done，且观测健康",
-      remediation: nextStep || "确认收口",
-      location: "当前任务",
-      diagnostic: null,
-    };
-  }
+function createLeafProgressStatus(model: DashboardViewModel, nextStep: string | null): DashboardPrimaryStatusPresentation {
+  const completed = lifecycleCompleted(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3") === true;
+  const blocked = !completed && model.currentTask.isBlocked;
+  const dependencies = model.currentTask.blockedBy.map(formatTaskReference).join("、");
   return {
-    tone: taskStatusTone(model.currentTask.status),
-    title: `当前任务${formatTaskStatus(model.currentTask.status)}`,
-    reason: "无子任务，进度以当前任务自身生命周期为准",
-    remediation: nextStep || "继续执行当前任务",
-    location: "当前任务",
-    diagnostic: null,
+    tone: blocked ? "error" : taskStatusTone(model.currentTask.status),
+    title: `当前任务${formatTaskStatus(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3")}`,
+    reason: blocked ? dependencies ? `阻塞于 ${dependencies}` : "TaskNotes 将当前任务标记为阻塞"
+      : dependencies ? `${completed ? "历史依赖" : "依赖于"} ${dependencies}` : "进度以当前任务自身生命周期为准；验收结论独立。",
+    remediation: nextStep || "未记录下一步",
+    location: "当前任务", diagnostic: null,
   };
 }
 
@@ -724,52 +631,17 @@ export function createDiagnosticPresentation(
   };
 }
 
-function createChildRow(
-  child: DashboardChildViewModel
-): DashboardChildRowPresentation {
-  const meta = [];
-  const rawStatus = formatTaskStatus(child.status);
-  const status = childStatusPresentation(child);
-  if (
-    !child.trustedDone &&
-    ["done", "complete", "completed"].includes(normalizeToken(child.status))
-  ) {
-    meta.push(`TaskNotes ${rawStatus}`);
-  }
-  if (child.blockedBy.length) {
-    meta.push(`阻塞于 ${child.blockedBy.map(formatTaskReference).join("、")}`);
-  }
-  // 判定层拆除后 child 不再有 evidence 健康度，改为提示它自身是否还有下一层。
-  if (child.hasChildren) {
-    meta.push("含子任务");
-  }
+function createChildRow(child: DashboardChildViewModel, legacy = false, history = false): DashboardChildRowPresentation {
+  const meta: string[] = [];
+  const completed = lifecycleCompleted(child.status, legacy) === true;
+  if (child.blockedBy.length) meta.push(`${!completed && child.isBlocked ? "阻塞于" : completed ? "历史依赖" : "依赖于"} ${child.blockedBy.map(formatTaskReference).join("、")}`);
+  if (child.hasChildren) meta.push("含子任务");
   return {
-    id: child.id,
-    title: child.title,
-    status: status.label,
-    tone: status.tone,
-    summary: child.primaryDiagnostic?.reason ?? formatRollupState(child.rollupState),
+    id: child.id, title: child.title, history,
+    status: formatTaskStatus(child.status, legacy),
+    tone: taskStatusTone(child.status, !completed && child.isBlocked),
+    summary: child.primaryDiagnostic?.reason ?? child.goal,
     meta: meta.join(" · "),
-  };
-}
-
-function childStatusPresentation(
-  child: DashboardChildViewModel
-): { label: string; tone: PresentationTone } {
-  if (child.isBlocked) return { label: "已阻塞", tone: "error" };
-  if (child.trustedDone) return { label: "可信完成", tone: "healthy" };
-  if (child.primaryDiagnostic) {
-    return {
-      label: "需处理",
-      tone: child.primaryDiagnostic.severity === "warning" ? "warning" : "error",
-    };
-  }
-  if (["done", "complete", "completed"].includes(normalizeToken(child.status))) {
-    return { label: "待验收", tone: "warning" };
-  }
-  return {
-    label: formatTaskStatus(child.status),
-    tone: taskStatusTone(child.status),
   };
 }
 
@@ -781,35 +653,13 @@ function formatTaskReference(taskId: string): string {
 function createContractSummary(
   model: DashboardViewModel
 ): DashboardContractPresentation {
-  const acceptanceTotal = model.acceptance.length || model.contract.acceptance.length;
-  const checked = model.acceptance.length
-    ? model.acceptance.filter((item) => item.status === "satisfied").length
-    : model.contract.acceptance.filter((item) => item.checked === true).length;
-  const evidenceTotal = model.evidenceRequirements.length || 3;
-  const validEvidence = model.evidenceRequirements.length
-    ? model.evidenceRequirements.filter(
-        (item) => item.status === "satisfied" && item.matchedExpected !== false
-      ).length
-    : Object.values(model.evidence).filter((health) => health === "valid").length;
   return {
-    goal: model.contract.goal,
-    coverage: `REQ ${model.contract.requirements.length} · SCN ${model.contract.scenarios.length}`,
-    acceptance: `验收 ${checked}/${acceptanceTotal}`,
-    evidence: model.evidenceRequirements.length
-      ? `结构化证据 ${validEvidence}/${evidenceTotal}`
-      : formatEvidence(model.evidence),
+    goal: model.content.goal,
+    coverage: "投影条目；完整正文见 API 原文",
+    acceptance: "原文勾选仅按正文展示",
+    evidence: "执行、验证、交付记录按原文展示",
     diagnostics: `${model.diagnostics.length} 个诊断`,
-    metrics: [
-      {
-        label: "REQ / SCN",
-        value: `${model.contract.requirements.length} / ${model.contract.scenarios.length}`,
-      },
-      {
-        label: "验收",
-        value: `${checked} / ${acceptanceTotal}`,
-      },
-      { label: "证据有效", value: `${validEvidence} / ${evidenceTotal}` },
-    ],
+    metrics: [],
   };
 }
 
@@ -858,21 +708,6 @@ function diagnosticLocation(diagnostic: SnapshotDiagnostic): string {
   }
   if (section) return section;
   return "任务文件";
-}
-
-function formatEvidence(
-  evidence: Record<"execution" | "verification" | "delivery", EvidenceHealth>
-): string {
-  const healthLabel: Record<EvidenceHealth, string> = {
-    valid: "有效",
-    invalid: "无效",
-    missing: "缺失",
-  };
-  return [
-    `执行${healthLabel[evidence.execution]}`,
-    `验证${healthLabel[evidence.verification]}`,
-    `交付${healthLabel[evidence.delivery]}`,
-  ].join(" · ");
 }
 
 function formatPriority(value: string): string {

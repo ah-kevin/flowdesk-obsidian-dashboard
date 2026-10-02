@@ -36,10 +36,10 @@ Directory 作为发布路径。
 - JSON 必须是对象，环境变量值必须是字符串；无效内容会显示错误，并保留上次有效配置。
 - JSON 逐项合并到现有进程环境，保留未配置的变量，同名变量按 JSON 更新。合并结果供
   Dashboard 子进程和请求使用，不修改 Obsidian 的全局环境。
-- token 同时供 Task snapshot、Work Case snapshot 和复核请求使用，兼容 `TASKNOTES_AUTH_TOKEN`。
+- token 同时供 Task snapshot、Work Case snapshot 和完整 Task 原文 GET 使用，兼容 `TASKNOTES_AUTH_TOKEN`。
   三个入口都从合并后的环境读取凭证：先读取非空的 `TASKNOTES_API_TOKEN`，再读取
   `TASKNOTES_AUTH_TOKEN`。填写空字符串只清空对应变量。
-- 留空或填写 `{}` 时使用进程环境；不读取 env 文件。修改配置后，下一次刷新或复核立即生效。
+- 留空或填写 `{}` 时使用进程环境；不读取 env 文件。修改配置后，下一次刷新或原文读取立即生效。
 - 可在 JSON 中配置 `TASKNOTES_API_URL`；单独填写的“TaskNotes API 地址”优先级更高。
 - 设置保存在插件本地 `data.json` 中。token 不进入 CLI 参数、复制命令或鉴权错误内容。
 
@@ -157,7 +157,7 @@ Dashboard 已打开时，切换到 frontmatter `type: work-case` 或 legacy `typ
 其他 Markdown 文件继续显示非 FlowDesk 提示。Case 内容由独立 producer 解析，Dashboard
 不从散文猜测任务或 Current 字段。
 
-## Task-centric snapshot v3 展示语义
+## Task-centric snapshot v3/v4 展示语义
 
 侧栏使用行动优先的单列控制台，默认按以下顺序显示：
 
@@ -165,7 +165,7 @@ Dashboard 已打开时，切换到 frontmatter `type: work-case` 或 legacy `typ
 2. snapshot 观察可信度、来源匹配和当前 task 合同状态；
 3. 一条首要状态或诊断，优先说明发生了什么、为什么、怎么修和短位置；
 4. Parent task 的 direct children 紧凑行，整行点击打开 child；Leaf 不显示空 children 区域；
-5. 默认展开的合同与证据摘要，以及默认关闭的完整合同、证据和机器诊断详情。
+5. 任务规格与记录：目标、背景、范围、执行清单、领域段与全部执行/验证/交付轮次；完整 API 原文独立读取，机器诊断按需展开。
 
 打开任一 TaskNotes task 都只解释该 task。Parent 上下文只提供返回入口，children 只展示
 direct summaries，不从 parent 拼接当前 task 合同。Parent 自己仍持有并展示自己的合同；Leaf
@@ -177,6 +177,25 @@ direct summaries，不从 parent 拼接当前 task 合同。Parent 自己仍持�
 
 Dashboard 不自行推断 task 状态、证据有效性或完成顺序。`rollup`、children counts、
 `trusted_done`、diagnostics 和 next actions 都直接来自同一份 producer JSON。
+
+## 完整正文与只读边界
+
+snapshot 的普通 Requirements/Scenarios 可能未结构化；投影条目为空不代表正文没有需求。
+展开“完整API原文 / 未投影内容”，点击“读取 / 刷新 API 原文”，Dashboard 会通过 TaskNotes
+GET 读取并完整渲染 `details`，不截断、不去重。成功空字符串显示“API原文为空”；缺身份、
+身份不匹配、错误 envelope 或非字符串正文会拒绝读取，失败不会显示为空任务。
+
+全文入口标明准确 Task、独立 API 读取时间和 snapshot 时间。两次读取不能证明同轮一致；
+可比片段变化会将展示中的 snapshot 标为 stale 并提示刷新，不改变原生 Task status、验收或
+观察健康。切换 Task、刷新、关闭面板会取消旧原文请求，晚响应不会落到另一张 Task。
+
+多轮记录保留 producer heading、时间与 API details 来源，最新一轮默认展开，较早轮可展开。
+“打开任务原文”目前打开整张 Task；API details 行号不直接当作 vault 文件行号。精确定位、
+Case 关联刷新和恢复入口属后续块，尚未验收。
+
+Dashboard 已退出主动人工 review：没有复核 Modal、reviewed 标签 PATCH 或记录 append。
+已有 reviewed tags、Review Record 和历史记录继续可读。正文 checkbox 只表示“原文勾选”，
+不推出测试、质量或验收通过；已移除 REQ/SCN、证据比例仪表。
 
 ## 任务上下文与刷新
 
@@ -216,3 +235,16 @@ Dashboard 不自行推断 task 状态、证据有效性或完成顺序。`rollup
   --working-directory "/path/to/flowdesk-plugin" \
   --format dashboard
 ```
+
+## 源码测试与验收边界
+
+`npm test` 使用唯一 `tests/run-tests.mjs` runner（Node 22+ 的 node:test 无子进程隔离模式，
+当前已验证 Node 24）。runner 将 HOME/vault/state/tmp/auth/API 替换为临时 owned 环境，
+复用 Core 的 Node/Python cooperative guard，只允许精确 Node/esbuild/两条 producer argv/cwd
+及当前测试实际创建的 loopback 端口；真实 open、Obsidian、codex、claude、queue 与业务
+TaskNotes 地址被拒绝。guard 违规会令测试失败；不声称这是 native syscall 安全沙箱。
+
+真实 producer 依赖当前 `/Users/bjke/workspaces/flowdesk-plugin` 的源码及 guard；缺依赖会明确
+失败，不访问安装 cache 或用户 API，也不把跳过集成称为通过。默认 suite 已无 live Task 探针。
+受控 HTTP→真实 producer→compiled Dashboard 的 host/DOM double 只证明 consumer 合同；
+构建产物不意味着插件已安装，真实 Obsidian 布局/安装/精确原文定位和宿主接续须另验收。
