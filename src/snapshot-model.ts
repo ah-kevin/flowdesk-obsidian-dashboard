@@ -68,6 +68,7 @@ export interface SnapshotTaskSummary {
   id?: string;
   title?: string;
   status?: string;
+  status_is_completed?: boolean | null;
   priority?: string;
   is_blocked?: boolean;
   blocked_by?: unknown[];
@@ -138,6 +139,7 @@ export interface SnapshotRollup {
   children_total?: number;
   children_trusted_done?: number;
   children_complete?: boolean;
+  children_terminal?: boolean | null;
   blocked_children?: RollupTaskReference[];
   incomplete_children?: RollupTaskReference[];
   contradictions?: unknown[];
@@ -160,6 +162,7 @@ export interface SnapshotV3 {
 }
 
 export interface SnapshotCompletion {
+  subtree_terminal?: boolean | null;
   lifecycle_status?: string;
   contract_status?: string;
   evidence_status?: string;
@@ -245,6 +248,7 @@ export interface SnapshotV4 {
 export type ExecutionSnapshot = SnapshotV3 | SnapshotV4;
 
 export interface CompletionDimensions {
+  subtreeTerminal: boolean | null;
   lifecycleStatus: string;
   contractStatus: string;
   evidenceStatus: string;
@@ -295,6 +299,7 @@ export interface DashboardTaskViewModel {
   id: string;
   title: string;
   status: string;
+  statusIsCompleted: boolean | null;
   priority: string;
   isBlocked: boolean;
   blockedBy: string[];
@@ -308,9 +313,11 @@ export interface DashboardTaskViewModel {
 }
 
 export interface DashboardChildViewModel {
+  subtreeTerminal: boolean | null;
   id: string;
   title: string;
   status: string;
+  statusIsCompleted: boolean | null;
   priority: string;
   isBlocked: boolean;
   blockedBy: string[];
@@ -342,6 +349,7 @@ export interface DashboardViewModel {
     childrenTotal: number;
     childrenTrustedDone: number;
     childrenComplete: boolean;
+    childrenTerminal: boolean | null;
     blockedChildren: RollupTaskReference[];
     incompleteChildren: RollupTaskReference[];
     contradictions: unknown[];
@@ -499,6 +507,7 @@ export function createDashboardViewModel(
       id: currentTaskId,
       title: normalizeText(currentTask.title, "未提供任务标题"),
       status: normalizeText(currentTask.status, "unknown"),
+      statusIsCompleted: nullableBoolean(currentTask.status_is_completed),
       priority: normalizeText(currentTask.priority, "未提供"),
       isBlocked: currentTask.is_blocked === true,
       blockedBy: (currentTask.blocked_by ?? [])
@@ -524,6 +533,7 @@ export function createDashboardViewModel(
       childrenTotal: finiteNumber(rollup.children_total),
       childrenTrustedDone: finiteNumber(rollup.children_trusted_done),
       childrenComplete: rollup.children_complete === true,
+      childrenTerminal: nullableBoolean(rollup.children_terminal),
       blockedChildren: rollup.blocked_children ?? [],
       incompleteChildren: rollup.incomplete_children ?? [],
       contradictions: rollup.contradictions ?? [],
@@ -785,6 +795,7 @@ function normalizeCompletion(
 ): CompletionDimensions {
   const completion = value ?? {};
   return {
+    subtreeTerminal: nullableBoolean(completion.subtree_terminal),
     lifecycleStatus: normalizeText(
       completion.lifecycle_status,
       normalizeText(fallbackStatus, "unknown")
@@ -814,6 +825,7 @@ function legacyCompletion(
   ];
   const acceptance = snapshot.contract?.acceptance ?? [];
   return {
+    subtreeTerminal: nullableBoolean(currentTask.completion?.subtree_terminal),
     lifecycleStatus: normalizeText(currentTask.status, "unknown"),
     contractStatus: normalizeText(
       snapshot.contract?.semantic_status,
@@ -946,6 +958,8 @@ function createChildViewModel(
     id,
     title: normalizeText(child.title, id || "未命名子任务"),
     status: normalizeText(child.status, "unknown"),
+    statusIsCompleted: nullableBoolean(child.status_is_completed),
+    subtreeTerminal: nullableBoolean(child.completion?.subtree_terminal),
     priority: normalizeText(child.priority, "未提供"),
     isBlocked: child.is_blocked === true,
     blockedBy: (child.blocked_by ?? []).map(normalizeBlockedBy).filter(Boolean),
@@ -1065,6 +1079,10 @@ function normalizeText(value: unknown, fallback: string): string {
     return String(value);
   }
   return fallback;
+}
+
+function nullableBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
 }
 
 function nullableText(value: unknown): string | null {

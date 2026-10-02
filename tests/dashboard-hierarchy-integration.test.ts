@@ -23,7 +23,7 @@ async function setup(t:any) {
  const {url}=await fixture.server(async(req,res)=>{
   requests.push([req.method!,req.url!,req.headers.authorization]);res.setHeader("Content-Type","application/json");
   if(mode==="401"){res.writeHead(401).end(JSON.stringify({error:"unauthorized"}));return;}
-  if(req.url==="/api/filter-options"){res.end(JSON.stringify({data:{statuses:[{value:"done",isCompleted:true},{value:"in-progress",isCompleted:false},{value:"open",isCompleted:false}]}}));return;}
+  if(req.url==="/api/filter-options"){res.end(JSON.stringify({data:{statuses:[{value:"done",isCompleted:true},{value:"cancel",isCompleted:true},{value:"in-progress",isCompleted:false},{value:"open",isCompleted:false}]}}));return;}
   if(req.url==="/api/tasks/query"){queries++;res.end(JSON.stringify({data:{tasks,filtered:tasks.length,hasMore:mode==="partial"}}));return;}
   const id=decodeURIComponent(req.url!.slice("/api/tasks/".length));const task=id===taskRoot.id?taskRoot:tasks.find(x=>x.id===id);
   if(!task){res.writeHead(404).end(JSON.stringify({error:"absent"}));return;}res.end(JSON.stringify({success:true,data:task}));
@@ -89,14 +89,16 @@ test("compiled read-only Case partial and 401 preserve body without healthy empt
  assert.ok(h.root.allText().join(" ").includes("Owned Case"));
 });
 
-test("compiled Task current children precede collapsed history and completed dependencies are historical",async(t)=>{
- const h=await setup(t);h.setTasks([task("Tasks/Done.md","done",h.context,{blockedBy:["Tasks/Past.md"],isBlocked:false}),task("Tasks/Custom.md","completed",h.context),task("Tasks/Running.md","in-progress",h.context)]);
+test("compiled Task keeps done and cancel ended subtrees separate from successful progress",async(t)=>{
+ const h=await setup(t);h.setTasks([task("Tasks/Done.md","done",h.context,{blockedBy:["Tasks/Past.md"],isBlocked:false}),task("Tasks/Cancel.md","cancel",h.context,{blockedBy:["Tasks/Past.md"],isBlocked:true}),task("Tasks/Running.md","in-progress",h.context)]);
  await h.view.loadTask("Tasks/Root.md");
  const rows=h.root.findByClass("flowdesk-child-title").map(x=>x.text);
- assert.deepEqual(rows,["Tasks/Running.md","Tasks/Custom.md","Tasks/Done.md"]);
+ assert.deepEqual(rows,["Tasks/Running.md","Tasks/Done.md","Tasks/Cancel.md"]);
  assert.equal(h.root.findByClass("flowdesk-task-history")[0].open,false);
  assert.match(h.root.allText().join(" "),/历史依赖 Past/);
- assert.match(h.root.allText().join(" "),/completed（未知状态）/);
+ assert.match(h.root.allText().join(" "),/成功 1\/3.*已结束 2\/3/);
+ assert.equal(h.root.findByClass("flowdesk-child-row").filter(row=>row.classes.has("is-error")).length,0);
+ assert.equal(h.root.findByClass("flowdesk-task-history")[0].findByClass("flowdesk-child-row").length,2);
  assert.doesNotMatch(h.root.allText().join(" "),/可信完成|验收通过|阻塞于 Past/);
  assert.match(h.root.allText().join(" "),/来源读取完整/);
  const classes=h.root.children.map(x=>[...x.classes].join(" ")).join("|");

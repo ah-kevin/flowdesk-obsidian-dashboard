@@ -31,3 +31,13 @@ test("reference labels use alias or filename without changing navigation target"
   assert.equal(formatReferenceLabel("[[Notes/Plans/设计#Current|实施方案]]"),"实施方案");
   assert.equal(formatReferenceLabel("[[Notes/Plans/Long English.md]]"),"Long English");
 });
+
+
+test("prototype property names are custom statuses and respect native ending definitions", () => {
+  for (const status of ["constructor", "__proto__", "toString"]) {
+    assert.deepEqual(formatEntityStatus("task", status, true), {label: `${status}（已结束）`, raw: status, tone: "muted"});
+    assert.deepEqual(formatEntityStatus("task", status, false), {label: `${status}（未结束）`, raw: status, tone: "warning"});
+    assert.deepEqual(formatEntityStatus("task", status, null), {label: `${status}（状态未知）`, raw: status, tone: "warning"});
+    assert.equal(formatEntityStatus("case", status).label, `${status}（未知状态）`);
+  }
+});

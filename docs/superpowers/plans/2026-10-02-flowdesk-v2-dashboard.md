@@ -172,3 +172,21 @@
 ## Step5源码时序补充裁定（2026-10-02）
 
 按主控转达的用户原目标“按支持外部md的版本开发，后面整体升级默认支持”及最新“不提前安装”，先完成外部文档生产执行适配器与明确点击消费者，不能将自动目标源码开发留到发布以后。上面的14:31“适配器尚未接线”是当时状态，现由本补充与最新报告覆盖；不采用手工复制缩水替代。其他范围/4项review/只读/身份/权限/协作默认保持。依据：[官方1.14.2](https://obsidian.md/changelog/2026-09-15-desktop-v1.14.2/)确认桌面vault外文件支持，系统Open with需新installer；本机公开man open确认-a指定应用。组合路由仍是推断候选，源码已接与实机未验收分别记录。未来一起发布仍不是当前安装/发布授权。
+
+
+## Task 4: 原生结束与成功完成的消费者兼容
+
+**Goal:** 消费核心既有三个 nullable 观察字段，将成功完成与子树已结束分别展示。
+**Files:** `src/snapshot-model.ts`、`src/dashboard-presentation.ts`、`src/entity-presentation.ts`、`src/main.ts`、直接受影响测试及 build `main.js`。
+**Interfaces:** current/direct child `status_is_completed: boolean|null`；`completion.subtree_terminal: boolean|null`；`rollup.children_terminal: boolean|null`。缺字段/非bool保持null，不根据状态拼写补值。原trusted_done/children_complete成功语义保持。
+- [x] RED：投影true/false/null/缺失/非bool；done+cancel成功1/2且已结束2/2；已结束但后代active/unknown仍在需关注组；cancel旧blockedBy不标红；缺新字段不按done拼写归入已结束。
+- [x] GREEN：v4只subtree_terminal===true进Task已结束组；显式legacy_v3保留原历史生命周期分组、依赖/tone与旧展示；原状态与已结束/未结束/状态未知并列，next_actions.summary直接消费。Case仍按其既有statusIsCompleted，不另算结束树。
+- [x] 验证：受影响测试、完整默认隔离suite、typecheck、build、syntax、diff。默认runner/鉴权/只读/source判别不变；不启动真实Obsidian/open、不安装、不bump、不commit/push。整体Task/Case写回及review由主控完成。
+
+Task4执行采用已授权codex/2.0原checkout唯一Dashboard写者，不另建worktree；主控持有整体review，子任务不另派reviewer。
+
+
+Task4返修前源码验证（2026-10-02，历史证据）：新增5项回归先RED（52/57通过、5项预期失败）后受影响57/57通过；受影响真实producer/compiled/baseline 7/7通过；完整owned隔离suite最终218/218，0 skipped、无guard violations。`npm run typecheck`、`npm run build`、`npm run check:syntax`、`git diff --check`均通过。真实controlled HTTP→Core producer→compiled Dashboard验证成功1/3、已结束2/3，done/cancel折叠且历史依赖不标红；done+cancel纯组合由consumer测试验证成功1/2、已结束2/2。仅同步已有model/presentation哈希baseline，历史producer JSON与DOM class集合不变。未真实open/Obsidian/UI、未安装、未bump、未commit/push；整体review由主控继续。
+
+
+Task4独立review返修：Important为误将显式legacy_v3历史数据接到新nullable结束字段；Minor为普通字典继承属性遮蔽自定义状态。已用专用历史展示adapter恢复done/complete/completed历史分组、依赖及tone，模型原生字段仍null，v4缺字段继续unknown；翻译仅查询own-property。新增schema3/v4显式legacy矩阵及constructor/__proto__/toString真实回归，先出现5项预期RED，再定向66/66通过（snapshot-model/dashboard-presentation/entity-presentation/dashboard-hierarchy-integration/snapshot-cli-contract/task-dashboard-baseline）；typecheck/build/syntax/diff通过。旧v3 presentation SHA恢复到原Task2值3d84d38ce080f66f3ed1b6f500f7e21cb9d06bc8079317be555b007579532a88，未按坏行为重录。未重复无关全量suite，218/218仅为返修前证据；本轮owned loopback compiled三项实际运行通过，不沿用reviewer因listen EPERM未运行的结果。源码freeze待主控终审，不commit/push/install/真实UI。

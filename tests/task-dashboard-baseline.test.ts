@@ -28,7 +28,7 @@ function digest(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
-test("schema 3/4 Task 1 view model 保持基线，Task 2 presentation 保持新基线 exact-equal", () => {
+test("schema 3/4 Task 4 nullable ending model and presentation keep the reviewed baseline", () => {
   for (const [fixtureName, expected] of Object.entries(baseline.fixtures)) {
     const snapshot = JSON.parse(
       readFileSync(path.join(fixtureRoot, fixtureName), "utf8")

@@ -30,6 +30,7 @@ test("真实 controlled HTTP→producer→envelope/model/content preserves paren
   const requests:string[]=[];
   const {url}=await fixture.server(async(req,res)=>{
     requests.push(`${req.method} ${req.url}`);res.setHeader("Content-Type","application/json");
+    if(req.method==="GET"&&req.url==="/api/filter-options") {res.end(JSON.stringify({data:{statuses:[{value:"in-progress",isCompleted:false},{value:"done",isCompleted:true}]}}));return;}
     if(req.method==="POST"&&req.url==="/api/tasks/query") {res.end(JSON.stringify({success:true,data:{tasks:[child],filtered:1}}));return;}
     const id=decodeURIComponent(req.url!.replace("/api/tasks/",""));
     const task=id===root.id?root: id===child.id?child:null;
@@ -43,6 +44,10 @@ test("真实 controlled HTTP→producer→envelope/model/content preserves paren
   const model=createDashboardViewModel(snapshot,{expectedTaskPath:root.id});
   assert.equal(model.errorCode,null);assert.equal(model.observation.isTrustworthy,true);
   assert.equal(model.children.length,1);assert.equal(model.rollup.childrenTotal,1);
+  assert.equal(model.currentTask.statusIsCompleted,false);
+  assert.equal(model.currentTask.completion.subtreeTerminal,false);
+  assert.equal(model.children[0].subtreeTerminal,true);
+  assert.equal(model.rollup.childrenTerminal,true);
   assert.equal(model.content.records.execution.length,2);
   assert.ok(model.content.domainSections.some(x=>x.heading==="Review Record"));
   assert.deepEqual(model.content.requirements,[]);

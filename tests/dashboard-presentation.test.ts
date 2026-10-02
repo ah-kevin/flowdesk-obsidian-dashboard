@@ -318,6 +318,7 @@ test("子任务生命周期完成与历史诊断分别显示", () => {
 
   assert.equal(child.status, "已完成");
   assert.equal(child.tone, "healthy");
+  assert.equal(child.history, true);
   assert.equal(child.summary, "找到 0 个 ## Task Contract v3");
   assert.equal(child.meta, "");
 });
@@ -538,10 +539,12 @@ function createTasknotesOnlySnapshot() {
       id: taskId,
       title: "Parent",
       status: "in-progress",
+      status_is_completed: false,
       has_children: true,
       rollup_state: "running",
       completion: {
         lifecycle_status: "in-progress",
+        subtree_terminal: false,
         contract_status: "not_applicable",
         evidence_status: "not_applicable",
         verification_status: "not_applicable",
@@ -560,12 +563,14 @@ function createTasknotesOnlySnapshot() {
         id: "Tasks/Child A.md",
         title: "Child A",
         status: "done",
+        status_is_completed: true,
         is_blocked: false,
         blocked_by: [],
         has_children: false,
         rollup_state: "done",
         completion: {
           lifecycle_status: "done",
+          subtree_terminal: true,
           trust_level: "tasknotes_only",
           trusted_done: true,
         },
@@ -578,12 +583,14 @@ function createTasknotesOnlySnapshot() {
         id: "Tasks/Child B.md",
         title: "Child B",
         status: "open",
+        status_is_completed: false,
         is_blocked: true,
         blocked_by: ["Tasks/Child A.md"],
         has_children: false,
         rollup_state: "blocked",
         completion: {
           lifecycle_status: "open",
+          subtree_terminal: false,
           trust_level: "tasknotes_only",
           trusted_done: false,
         },
@@ -600,6 +607,7 @@ function createTasknotesOnlySnapshot() {
       children_total: 2,
       children_trusted_done: 1,
       children_complete: false,
+      children_terminal: false,
       blocked_children: [{ id: "Tasks/Child B.md", title: "Child B" }],
       incomplete_children: [{ id: "Tasks/Child B.md", title: "Child B" }],
     },
@@ -647,6 +655,9 @@ test("tasknotes_only 全部子任务可信完成时主状态为健康收口", ()
   snapshot.children[1].blocked_by = [];
   snapshot.children[1].completion.lifecycle_status = "done";
   snapshot.children[1].completion.trusted_done = true;
+  snapshot.children[1].status_is_completed = true;
+  snapshot.children[1].completion.subtree_terminal = true;
+  snapshot.rollup.children_terminal = true;
   snapshot.rollup.trusted_done = true;
   snapshot.rollup.children_trusted_done = 2;
   snapshot.rollup.children_complete = true;
@@ -987,7 +998,7 @@ test("completed_dependencies_are_history_not_blockers and unfinished rows first"
  const snapshot=createTasknotesOnlySnapshot();
  snapshot.children=[
   {...snapshot.children[0],id:"Tasks/Done.md",title:"Done",status:"done",is_blocked:false,blocked_by:["Tasks/Dependency.md"]},
-  {...snapshot.children[1],id:"Tasks/Unknown.md",title:"Unknown",status:"custom-state",is_blocked:false,blocked_by:[]},
+  {...snapshot.children[1],id:"Tasks/Unknown.md",title:"Unknown",status:"custom-state",status_is_completed:null,is_blocked:false,blocked_by:[],completion:{...snapshot.children[1].completion,subtree_terminal:null}},
   {...snapshot.children[1],id:"Tasks/Running.md",title:"Running",status:"in-progress",is_blocked:false,blocked_by:[]},
  ];
  const result=createDashboardPresentation(createDashboardViewModel(snapshot,{expectedTaskPath:taskId}));
@@ -1008,4 +1019,114 @@ test("observation health is independent from legacy completion and acceptance di
  assert.equal(result.trust.tone,"healthy");
  assert.equal(result.primaryStatus.tone,"error");
  assert.equal(result.header.status,"进行中");
+});
+
+
+function terminalSnapshot(): any {
+  const snapshot: any = createTasknotesOnlySnapshot();
+  snapshot.current_task.status_is_completed = false;
+  snapshot.current_task.completion.subtree_terminal = false;
+  snapshot.children[0].status_is_completed = true;
+  snapshot.children[0].completion.subtree_terminal = true;
+  snapshot.children[1].status = "cancel";
+  snapshot.children[1].status_is_completed = true;
+  snapshot.children[1].completion.subtree_terminal = true;
+  snapshot.rollup.children_terminal = true;
+  snapshot.next_actions = [{kind: "summary", summary: "复核当前父任务的收口事实"}];
+  return snapshot;
+}
+
+test("mixed done and cancel subtrees are ended while success count stays one", () => {
+  const result = createDashboardPresentation(createDashboardViewModel(terminalSnapshot(), {expectedTaskPath: taskId}));
+  assert.match(result.primaryStatus.title, /成功\s*1\s*\/\s*2/);
+  assert.match(result.primaryStatus.title, /已结束\s*2\s*\/\s*2/);
+  assert.equal(result.primaryStatus.tone, "healthy");
+  assert.equal(result.primaryStatus.remediation, "复核当前父任务的收口事实");
+  assert.ok(result.children.every(row => row.history));
+  const cancelled = result.children.find(row => row.id === "Tasks/Child B.md")!;
+  assert.doesNotMatch(cancelled.status, /未知/);
+  assert.notEqual(cancelled.tone, "error");
+  assert.match(cancelled.meta, /历史依赖/);
+  assert.doesNotMatch(cancelled.meta, /阻塞于/);
+});
+
+test("ended nodes with active or unknown descendants stay visible for attention", () => {
+  for (const subtree of [false, null]) {
+    const snapshot = terminalSnapshot();
+    snapshot.children[1].completion.subtree_terminal = subtree;
+    snapshot.rollup.children_terminal = subtree;
+    const result = createDashboardPresentation(createDashboardViewModel(snapshot, {expectedTaskPath: taskId}));
+    const cancelled = result.children.find(row => row.id === "Tasks/Child B.md")!;
+    assert.equal(cancelled.history, false);
+    assert.notEqual(cancelled.tone, "error");
+    assert.doesNotMatch(cancelled.meta, /阻塞于/);
+    assert.match(cancelled.meta, subtree === false ? /后代未结束/ : /子树状态未知/);
+    assert.notEqual(result.primaryStatus.tone, "healthy");
+    assert.doesNotMatch(result.primaryStatus.reason, /被阻塞/);
+  }
+});
+
+test("missing terminal fields never hide done rows in ended group", () => {
+  const snapshot: any = createTasknotesOnlySnapshot();
+  delete snapshot.rollup.children_terminal;
+  for (const child of snapshot.children) {
+    delete child.status_is_completed;
+    delete child.completion.subtree_terminal;
+  }
+  const result = createDashboardPresentation(createDashboardViewModel(snapshot, {expectedTaskPath: taskId}));
+  assert.equal(result.children.find(row => row.id === "Tasks/Child A.md")!.history, false);
+  assert.match(result.children.find(row => row.id === "Tasks/Child A.md")!.meta, /状态未知/);
+  assert.notEqual(result.primaryStatus.tone, "healthy");
+});
+
+test("native ended leaf with old dependency remains read only and preserves custom status", () => {
+  const snapshot = terminalSnapshot();
+  snapshot.current_task.has_children = false;
+  snapshot.current_task.status = "custom-closed";
+  snapshot.current_task.status_is_completed = true;
+  snapshot.current_task.completion.subtree_terminal = true;
+  snapshot.current_task.is_blocked = true;
+  snapshot.current_task.blocked_by = ["Tasks/Old dependency.md"];
+  const result = createDashboardPresentation(createDashboardViewModel(snapshot, {expectedTaskPath: taskId}));
+  assert.match(result.header.status, /custom-closed.*已结束/);
+  assert.doesNotMatch(result.header.status, /未知|成功/);
+  assert.notEqual(result.header.statusTone, "error");
+  assert.notEqual(result.primaryStatus.tone, "error");
+  assert.match(result.primaryStatus.reason, /历史依赖/);
+  assert.doesNotMatch(result.primaryStatus.reason, /阻塞/);
+  assert.equal(result.primaryStatus.remediation, "复核当前父任务的收口事实");
+});
+
+
+test("explicit legacy_v3 keeps historical lifecycle grouping and dependencies without inventing native fields", () => {
+  const cases = [
+    {status: "done", history: true, tone: "healthy", label: "已完成"},
+    {status: "complete", history: true, tone: "warning", label: "已完成"},
+    {status: "completed", history: true, tone: "warning", label: "已完成"},
+    {status: "blocked", history: false, tone: "error", label: "已阻塞"},
+    {status: "in-progress", history: false, tone: "error", label: "进行中"},
+    {status: "custom", history: false, tone: "error", label: "custom（未知状态）"},
+  ];
+  for (const schema of [3, 4]) {
+    const snapshot: any = createSnapshot();
+    if (schema === 4) {
+      snapshot.snapshot_schema_version = 4;
+      snapshot.source = {task_id: taskId};
+      snapshot.protocol = {producer_protocol_version: 4};
+      snapshot.current_task.completion = {trust_level: "legacy_v3"};
+    }
+    snapshot.children = cases.map(item => ({...snapshot.children[0], id: `Tasks/${item.status}.md`, status: item.status, is_blocked: true, blocked_by: ["Tasks/Past.md"]}));
+    const model = createDashboardViewModel(snapshot, {expectedTaskPath: taskId});
+    const result = createDashboardPresentation(model);
+    for (const expected of cases) {
+      const row = result.children.find(child => child.id === `Tasks/${expected.status}.md`)!;
+      assert.equal(row.history, expected.history, `${schema}:${expected.status}`);
+      assert.equal(row.tone, expected.tone, `${schema}:${expected.status}`);
+      assert.equal(row.status, expected.label, `${schema}:${expected.status}`);
+      assert.match(row.meta, expected.history ? /历史依赖 Past/ : /阻塞于 Past/);
+      assert.doesNotMatch(row.meta, /子树|状态未知/);
+    }
+    assert.ok(model.children.every(child => child.statusIsCompleted === null && child.subtreeTerminal === null));
+    assert.deepEqual(result.children.filter(row => row.history).map(row => row.id), ["Tasks/done.md", "Tasks/complete.md", "Tasks/completed.md"]);
+  }
 });

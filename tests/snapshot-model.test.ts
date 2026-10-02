@@ -697,3 +697,24 @@ test("v4 diagnostic 映射 reason 与 next_action，不丢失可行动信息", (
     "确认 TaskNotes 插件已启动后重新读取 snapshot"
   );
 });
+
+
+test("native terminal projection preserves nullable authority without status spelling fallback", () => {
+  for (const [input, expected] of [[true, true], [false, false], [null, null], [undefined, null], ["true", null], [1, null]]) {
+    const snapshot: any = {
+      snapshot_schema_version: 4, snapshot_model: "task-centric",
+      source: {task_id: "Tasks/Terminal.md"},
+      current_task: {id: "Tasks/Terminal.md", status: "done", status_is_completed: input, completion: {subtree_terminal: input}},
+      children: [{id: "Tasks/Cancel.md", status: "cancel", status_is_completed: input, completion: {subtree_terminal: input}}],
+      rollup: {children_terminal: input, children_trusted_done: 1, children_complete: false},
+    };
+    const model = createDashboardViewModel(snapshot, {expectedTaskPath: "Tasks/Terminal.md"});
+    assert.equal(model.currentTask.statusIsCompleted, expected);
+    assert.equal(model.currentTask.completion.subtreeTerminal, expected);
+    assert.equal(model.children[0].statusIsCompleted, expected);
+    assert.equal(model.children[0].subtreeTerminal, expected);
+    assert.equal(model.rollup.childrenTerminal, expected);
+    assert.equal(model.rollup.childrenTrustedDone, 1);
+    assert.equal(model.rollup.childrenComplete, false);
+  }
+});

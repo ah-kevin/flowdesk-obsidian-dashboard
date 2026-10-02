@@ -992,6 +992,7 @@ class FlowDeskDashboardView extends ItemView {
     model: DashboardViewModel,
     children: DashboardChildRowPresentation[]
   ) {
+    const legacy = model.currentTask.trustLevel === "legacy_v3";
     const section = container.createDiv({ cls: "flowdesk-child-section" });
     const heading = section.createDiv({ cls: "flowdesk-section-heading" });
     heading.createDiv({
@@ -1000,14 +1001,14 @@ class FlowDeskDashboardView extends ItemView {
     });
     heading.createDiv({
       cls: "flowdesk-section-meta",
-      text: `${children.filter(child => !child.history).length} 项未完成或状态未知`,
+      text: `${children.filter(child => !child.history).length} 项${legacy ? "未完成" : "未结束"}或状态未知`,
     });
     const list = section.createDiv({ cls: "flowdesk-child-list" });
     const historical = children.filter(child => child.history);
     let historyList: HTMLElement | null = null;
     if (historical.length) {
       const history = section.createEl("details", {cls: "flowdesk-task-history"});
-      history.createEl("summary", {text: `已完成 · ${historical.length}`});
+      history.createEl("summary", {text: `${legacy ? "已完成" : "已结束"} · ${historical.length}`});
       historyList = history.createDiv({cls: "flowdesk-child-list"});
     }
     for (const child of children) {

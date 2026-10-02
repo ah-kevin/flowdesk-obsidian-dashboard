@@ -310,6 +310,7 @@ export function createDashboardPresentation(
   model: DashboardViewModel
 ): DashboardPresentation {
   const kind = model.currentTask.hasChildren ? "parent" : "leaf";
+  const legacy = model.currentTask.trustLevel === "legacy_v3";
   const diagnostics = model.diagnostics.map((diagnostic) =>
     createDiagnosticPresentation(diagnostic, model.currentTask.id)
   );
@@ -317,8 +318,8 @@ export function createDashboardPresentation(
     kind,
     header: {
       title: model.currentTask.title,
-      status: formatTaskStatus(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3"),
-      statusTone: taskStatusTone(model.currentTask.status, model.currentTask.isBlocked),
+      status: formatTaskStatus(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3", model.currentTask.trustLevel === "legacy_v3" ? undefined : model.currentTask.statusIsCompleted),
+      statusTone: taskStatusTone(model.currentTask.status, model.currentTask.isBlocked, model.currentTask.trustLevel === "legacy_v3" ? undefined : model.currentTask.statusIsCompleted),
       priority: formatPriority(model.currentTask.priority),
       kindLabel: kind === "parent" ? "父任务" : "叶子任务",
       parent: model.parent
@@ -328,9 +329,9 @@ export function createDashboardPresentation(
     trust: createTrustSummary(model),
     primaryStatus: createPrimaryStatus(model),
     children: kind === "parent" ? (() => {
-      const legacy = model.currentTask.trustLevel === "legacy_v3";
       const grouped = groupTaskRows(model.children.map(child => ({...child,
-        completed: lifecycleCompleted(child.status, legacy), archived: false,
+        completed: legacy ? legacyLifecycleCompleted(child.status) : child.subtreeTerminal,
+        isBlocked: legacy ? child.isBlocked : child.statusIsCompleted !== true && child.isBlocked, archived: false,
       })));
       return [...grouped.current.map(child => createChildRow(child, legacy, false)),
         ...grouped.history.map(child => createChildRow(child, legacy, true))];
@@ -353,8 +354,8 @@ export function createTechnicalDiagnosticGroups(
       kind: "current",
       taskId: model.currentTask.id,
       taskTitle: model.currentTask.title,
-      status: formatTaskStatus(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3"),
-      tone: taskStatusTone(model.currentTask.status, model.currentTask.isBlocked),
+      status: formatTaskStatus(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3", model.currentTask.trustLevel === "legacy_v3" ? undefined : model.currentTask.statusIsCompleted),
+      tone: taskStatusTone(model.currentTask.status, model.currentTask.isBlocked, model.currentTask.trustLevel === "legacy_v3" ? undefined : model.currentTask.statusIsCompleted),
       diagnostics: currentDiagnostics,
     });
   }
@@ -364,8 +365,8 @@ export function createTechnicalDiagnosticGroups(
       kind: "child",
       taskId: child.id,
       taskTitle: child.title,
-      status: formatTaskStatus(child.status),
-      tone: taskStatusTone(child.status, child.isBlocked),
+      status: formatTaskStatus(child.status, false, model.currentTask.trustLevel === "legacy_v3" ? undefined : child.statusIsCompleted),
+      tone: taskStatusTone(child.status, child.isBlocked, model.currentTask.trustLevel === "legacy_v3" ? undefined : child.statusIsCompleted),
       diagnostics: [
         createDiagnosticPresentation(child.primaryDiagnostic, child.id),
       ],
@@ -374,20 +375,21 @@ export function createTechnicalDiagnosticGroups(
   return groups;
 }
 
-export function formatTaskStatus(value: unknown, legacy = false): string {
+export function formatTaskStatus(value: unknown, legacy = false, statusIsCompleted?: boolean | null): string {
   const raw = String(value ?? "");
-  if (legacy && ["complete", "completed"].includes(normalizeToken(raw))) return "已完成";
-  return formatEntityStatus("task", raw).label;
+  if (legacy && ["complete", "completed", "done"].includes(normalizeToken(raw))) return "已完成";
+  return formatEntityStatus("task", raw, statusIsCompleted).label;
 }
 
-export function taskStatusTone(value: unknown, isBlocked = false): PresentationTone {
-  const result = formatEntityStatus("task", String(value ?? ""));
-  return normalizeToken(value) !== "done" && isBlocked ? "error" : result.tone;
+export function taskStatusTone(value: unknown, isBlocked = false, statusIsCompleted?: boolean | null): PresentationTone {
+  const result = formatEntityStatus("task", String(value ?? ""), statusIsCompleted);
+  return (statusIsCompleted === false || statusIsCompleted === undefined) && normalizeToken(value) !== "done" && isBlocked ? "error" : result.tone;
 }
 
-function lifecycleCompleted(status: string, legacy = false): boolean | null {
+// Historical v3 presentation only; this does not populate native definition fields.
+function legacyLifecycleCompleted(status: string): boolean | null {
   const token = normalizeToken(status);
-  if (token === "done" || (legacy && ["complete", "completed"].includes(token))) return true;
+  if (["done", "complete", "completed"].includes(token)) return true;
   return ["open", "in-progress", "running", "blocked"].includes(token) ? false : null;
 }
 
@@ -553,19 +555,23 @@ function createProgressStatus(
   if (!model.currentTask.hasChildren) {
     return createLeafProgressStatus(model, nextStep);
   }
-  const legacy = model.currentTask.trustLevel === "legacy_v3";
-  const completed = model.children.filter(child => lifecycleCompleted(child.status, legacy) === true);
-  const unfinished = model.children.filter(child => lifecycleCompleted(child.status, legacy) !== true);
-  const blocked = unfinished.filter(child => child.isBlocked);
-  const progress = model.children.length ? `${completed.length}/${model.children.length} 个直接子任务已完成` : "未观察到直接子任务";
+  const ended = model.children.filter(child => child.subtreeTerminal === true);
+  const unfinished = model.children.filter(child => child.subtreeTerminal === false);
+  const unknown = model.children.filter(child => child.subtreeTerminal === null);
+  const blocked = unfinished.filter(child => child.statusIsCompleted === false && child.isBlocked);
+  const total = model.children.length;
+  const allEnded = total > 0 && model.rollup.childrenTerminal === true && ended.length === total;
   return {
-    tone: blocked.length ? "error" : unfinished.length ? "running" : model.children.length ? "healthy" : "warning",
-    title: progress,
+    tone: blocked.length ? "error" : unknown.length || model.rollup.childrenTerminal === null ? "warning" : allEnded ? "healthy" : total ? "running" : "warning",
+    title: total ? `直接子任务：成功 ${model.rollup.childrenTrustedDone}/${total} · 已结束 ${ended.length}/${total}` : "未观察到直接子任务",
     reason: blocked.length
-      ? `${blocked.length} 个未完成子任务被阻塞：${formatTaskReferences(blocked)}`
-      : unfinished.length
-        ? `还有 ${unfinished.length} 个子任务未完成或状态未知：${formatTaskReferences(unfinished)}`
-        : model.children.length ? "直接子任务生命周期均为已完成；当前任务状态独立显示。" : "producer 未返回直接子任务，不据此判定完成。",
+      ? `${blocked.length} 个未结束子任务被阻塞：${formatTaskReferences(blocked)}`
+      : unknown.length
+        ? `${unknown.length} 个子任务的子树状态未知：${formatTaskReferences(unknown)}`
+        : unfinished.length
+          ? `${unfinished.length} 个子任务或其后代未结束：${formatTaskReferences(unfinished)}`
+          : allEnded ? "直接子任务及其后代均已结束；成功完成与当前任务状态独立显示。"
+            : total ? "子任务汇总状态未知，需核对来源。" : "未观察到直接子任务，不据此判定结束。",
     remediation: nextStep || "未记录下一步",
     location: "直接子任务",
     diagnostic: null,
@@ -573,14 +579,15 @@ function createProgressStatus(
 }
 
 function createLeafProgressStatus(model: DashboardViewModel, nextStep: string | null): DashboardPrimaryStatusPresentation {
-  const completed = lifecycleCompleted(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3") === true;
-  const blocked = !completed && model.currentTask.isBlocked;
+  const completed = model.currentTask.statusIsCompleted === true;
+  const blocked = model.currentTask.statusIsCompleted === false && model.currentTask.isBlocked;
   const dependencies = model.currentTask.blockedBy.map(formatTaskReference).join("、");
+  const state = completed ? "已结束" : model.currentTask.statusIsCompleted === false ? "未结束" : "状态未知";
   return {
-    tone: blocked ? "error" : taskStatusTone(model.currentTask.status),
-    title: `当前任务${formatTaskStatus(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3")}`,
+    tone: blocked ? "error" : taskStatusTone(model.currentTask.status, false, model.currentTask.statusIsCompleted),
+    title: `当前任务${formatTaskStatus(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3", model.currentTask.trustLevel === "legacy_v3" ? undefined : model.currentTask.statusIsCompleted)}`,
     reason: blocked ? dependencies ? `阻塞于 ${dependencies}` : "TaskNotes 将当前任务标记为阻塞"
-      : dependencies ? `${completed ? "历史依赖" : "依赖于"} ${dependencies}` : "进度以当前任务自身生命周期为准；验收结论独立。",
+      : `${state}${dependencies ? ` · ${completed ? "历史依赖" : "依赖于"} ${dependencies}` : "；成功完成与验收结论独立。"}`,
     remediation: nextStep || "未记录下一步",
     location: "当前任务", diagnostic: null,
   };
@@ -633,13 +640,19 @@ export function createDiagnosticPresentation(
 
 function createChildRow(child: DashboardChildViewModel, legacy = false, history = false): DashboardChildRowPresentation {
   const meta: string[] = [];
-  const completed = lifecycleCompleted(child.status, legacy) === true;
-  if (child.blockedBy.length) meta.push(`${!completed && child.isBlocked ? "阻塞于" : completed ? "历史依赖" : "依赖于"} ${child.blockedBy.map(formatTaskReference).join("、")}`);
+  const completed = legacy ? legacyLifecycleCompleted(child.status) === true : child.statusIsCompleted === true;
+  const blocked = legacy ? !completed && child.isBlocked : child.statusIsCompleted === false && child.isBlocked;
+  if (!legacy) {
+    meta.push(completed ? "已结束" : child.statusIsCompleted === false ? "未结束" : "状态未知");
+    if (child.subtreeTerminal === null) meta.push("子树状态未知");
+    else if (completed && child.subtreeTerminal === false) meta.push("后代未结束");
+  }
+  if (child.blockedBy.length) meta.push(`${blocked ? "阻塞于" : completed ? "历史依赖" : "依赖于"} ${child.blockedBy.map(formatTaskReference).join("、")}`);
   if (child.hasChildren) meta.push("含子任务");
   return {
     id: child.id, title: child.title, history,
-    status: formatTaskStatus(child.status, legacy),
-    tone: taskStatusTone(child.status, !completed && child.isBlocked),
+    status: formatTaskStatus(child.status, legacy, legacy ? undefined : child.statusIsCompleted),
+    tone: taskStatusTone(child.status, blocked, legacy ? undefined : child.statusIsCompleted),
     summary: child.primaryDiagnostic?.reason ?? child.goal,
     meta: meta.join(" · "),
   };

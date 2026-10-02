@@ -238,12 +238,13 @@ var TrailingRefreshScheduler = class {
 };
 
 // src/entity-presentation.ts
-function formatEntityStatus(kind, raw) {
-  var _a, _b, _c;
+function formatEntityStatus(kind, raw, statusIsCompleted) {
+  var _a, _b;
   const value = raw != null ? raw : "";
   const token = value.trim().toLowerCase();
   const shared = {
     done: ["\u5DF2\u5B8C\u6210", "healthy"],
+    cancel: ["\u5DF2\u53D6\u6D88", "muted"],
     "in-progress": ["\u8FDB\u884C\u4E2D", "running"],
     running: ["\u8FDB\u884C\u4E2D", "running"],
     open: ["\u5F85\u5F00\u59CB", "muted"],
@@ -258,9 +259,17 @@ function formatEntityStatus(kind, raw) {
     completed: ["\u5DF2\u5B8C\u6210", "healthy"],
     closed: ["\u5DF2\u5173\u95ED", "muted"]
   };
-  const translated = kind === "case" ? (_a = cases[token]) != null ? _a : shared[token] : shared[token];
+  const sharedStatus = Object.prototype.hasOwnProperty.call(shared, token) ? shared[token] : void 0;
+  const caseStatus = Object.prototype.hasOwnProperty.call(cases, token) ? cases[token] : void 0;
+  const translated = kind === "case" ? caseStatus != null ? caseStatus : sharedStatus : sharedStatus;
   if (!token) return { label: "\u672A\u8BB0\u5F55", raw: value, tone: "muted" };
-  return { label: (_b = translated == null ? void 0 : translated[0]) != null ? _b : `${value}\uFF08\u672A\u77E5\u72B6\u6001\uFF09`, raw: value, tone: (_c = translated == null ? void 0 : translated[1]) != null ? _c : "warning" };
+  if (kind === "task" && statusIsCompleted !== void 0) {
+    const ended = statusIsCompleted === true ? "\u5DF2\u7ED3\u675F" : statusIsCompleted === false ? "\u672A\u7ED3\u675F" : "\u72B6\u6001\u672A\u77E5";
+    if (!translated || token === "done" && statusIsCompleted !== true) {
+      return { label: `${value}\uFF08${ended}\uFF09`, raw: value, tone: statusIsCompleted === true ? "muted" : "warning" };
+    }
+  }
+  return { label: (_a = translated == null ? void 0 : translated[0]) != null ? _a : `${value}\uFF08\u672A\u77E5\u72B6\u6001\uFF09`, raw: value, tone: (_b = translated == null ? void 0 : translated[1]) != null ? _b : "warning" };
 }
 function groupTaskRows(rows) {
   const current = [];
@@ -366,6 +375,7 @@ function formatSnapshotCompatibilityError(code) {
 }
 function createDashboardPresentation(model) {
   const kind = model.currentTask.hasChildren ? "parent" : "leaf";
+  const legacy = model.currentTask.trustLevel === "legacy_v3";
   const diagnostics = model.diagnostics.map(
     (diagnostic) => createDiagnosticPresentation(diagnostic, model.currentTask.id)
   );
@@ -373,8 +383,8 @@ function createDashboardPresentation(model) {
     kind,
     header: {
       title: model.currentTask.title,
-      status: formatTaskStatus(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3"),
-      statusTone: taskStatusTone(model.currentTask.status, model.currentTask.isBlocked),
+      status: formatTaskStatus(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3", model.currentTask.trustLevel === "legacy_v3" ? void 0 : model.currentTask.statusIsCompleted),
+      statusTone: taskStatusTone(model.currentTask.status, model.currentTask.isBlocked, model.currentTask.trustLevel === "legacy_v3" ? void 0 : model.currentTask.statusIsCompleted),
       priority: formatPriority(model.currentTask.priority),
       kindLabel: kind === "parent" ? "\u7236\u4EFB\u52A1" : "\u53F6\u5B50\u4EFB\u52A1",
       parent: model.parent ? { id: model.parent.id, title: model.parent.title } : null
@@ -382,10 +392,10 @@ function createDashboardPresentation(model) {
     trust: createTrustSummary(model),
     primaryStatus: createPrimaryStatus(model),
     children: kind === "parent" ? (() => {
-      const legacy = model.currentTask.trustLevel === "legacy_v3";
       const grouped = groupTaskRows(model.children.map((child) => ({
         ...child,
-        completed: lifecycleCompleted(child.status, legacy),
+        completed: legacy ? legacyLifecycleCompleted(child.status) : child.subtreeTerminal,
+        isBlocked: legacy ? child.isBlocked : child.statusIsCompleted !== true && child.isBlocked,
         archived: false
       })));
       return [
@@ -407,8 +417,8 @@ function createTechnicalDiagnosticGroups(model, currentDiagnostics = model.diagn
       kind: "current",
       taskId: model.currentTask.id,
       taskTitle: model.currentTask.title,
-      status: formatTaskStatus(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3"),
-      tone: taskStatusTone(model.currentTask.status, model.currentTask.isBlocked),
+      status: formatTaskStatus(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3", model.currentTask.trustLevel === "legacy_v3" ? void 0 : model.currentTask.statusIsCompleted),
+      tone: taskStatusTone(model.currentTask.status, model.currentTask.isBlocked, model.currentTask.trustLevel === "legacy_v3" ? void 0 : model.currentTask.statusIsCompleted),
       diagnostics: currentDiagnostics
     });
   }
@@ -418,8 +428,8 @@ function createTechnicalDiagnosticGroups(model, currentDiagnostics = model.diagn
       kind: "child",
       taskId: child.id,
       taskTitle: child.title,
-      status: formatTaskStatus(child.status),
-      tone: taskStatusTone(child.status, child.isBlocked),
+      status: formatTaskStatus(child.status, false, model.currentTask.trustLevel === "legacy_v3" ? void 0 : child.statusIsCompleted),
+      tone: taskStatusTone(child.status, child.isBlocked, model.currentTask.trustLevel === "legacy_v3" ? void 0 : child.statusIsCompleted),
       diagnostics: [
         createDiagnosticPresentation(child.primaryDiagnostic, child.id)
       ]
@@ -427,18 +437,18 @@ function createTechnicalDiagnosticGroups(model, currentDiagnostics = model.diagn
   }
   return groups;
 }
-function formatTaskStatus(value, legacy = false) {
+function formatTaskStatus(value, legacy = false, statusIsCompleted) {
   const raw = String(value != null ? value : "");
-  if (legacy && ["complete", "completed"].includes(normalizeToken(raw))) return "\u5DF2\u5B8C\u6210";
-  return formatEntityStatus("task", raw).label;
+  if (legacy && ["complete", "completed", "done"].includes(normalizeToken(raw))) return "\u5DF2\u5B8C\u6210";
+  return formatEntityStatus("task", raw, statusIsCompleted).label;
 }
-function taskStatusTone(value, isBlocked = false) {
-  const result = formatEntityStatus("task", String(value != null ? value : ""));
-  return normalizeToken(value) !== "done" && isBlocked ? "error" : result.tone;
+function taskStatusTone(value, isBlocked = false, statusIsCompleted) {
+  const result = formatEntityStatus("task", String(value != null ? value : ""), statusIsCompleted);
+  return (statusIsCompleted === false || statusIsCompleted === void 0) && normalizeToken(value) !== "done" && isBlocked ? "error" : result.tone;
 }
-function lifecycleCompleted(status, legacy = false) {
+function legacyLifecycleCompleted(status) {
   const token = normalizeToken(status);
-  if (token === "done" || legacy && ["complete", "completed"].includes(token)) return true;
+  if (["done", "complete", "completed"].includes(token)) return true;
   return ["open", "in-progress", "running", "blocked"].includes(token) ? false : null;
 }
 function isContractJudgmentNotApplicable(model) {
@@ -558,28 +568,30 @@ function createProgressStatus(model) {
   if (!model.currentTask.hasChildren) {
     return createLeafProgressStatus(model, nextStep);
   }
-  const legacy = model.currentTask.trustLevel === "legacy_v3";
-  const completed = model.children.filter((child) => lifecycleCompleted(child.status, legacy) === true);
-  const unfinished = model.children.filter((child) => lifecycleCompleted(child.status, legacy) !== true);
-  const blocked = unfinished.filter((child) => child.isBlocked);
-  const progress = model.children.length ? `${completed.length}/${model.children.length} \u4E2A\u76F4\u63A5\u5B50\u4EFB\u52A1\u5DF2\u5B8C\u6210` : "\u672A\u89C2\u5BDF\u5230\u76F4\u63A5\u5B50\u4EFB\u52A1";
+  const ended = model.children.filter((child) => child.subtreeTerminal === true);
+  const unfinished = model.children.filter((child) => child.subtreeTerminal === false);
+  const unknown = model.children.filter((child) => child.subtreeTerminal === null);
+  const blocked = unfinished.filter((child) => child.statusIsCompleted === false && child.isBlocked);
+  const total = model.children.length;
+  const allEnded = total > 0 && model.rollup.childrenTerminal === true && ended.length === total;
   return {
-    tone: blocked.length ? "error" : unfinished.length ? "running" : model.children.length ? "healthy" : "warning",
-    title: progress,
-    reason: blocked.length ? `${blocked.length} \u4E2A\u672A\u5B8C\u6210\u5B50\u4EFB\u52A1\u88AB\u963B\u585E\uFF1A${formatTaskReferences(blocked)}` : unfinished.length ? `\u8FD8\u6709 ${unfinished.length} \u4E2A\u5B50\u4EFB\u52A1\u672A\u5B8C\u6210\u6216\u72B6\u6001\u672A\u77E5\uFF1A${formatTaskReferences(unfinished)}` : model.children.length ? "\u76F4\u63A5\u5B50\u4EFB\u52A1\u751F\u547D\u5468\u671F\u5747\u4E3A\u5DF2\u5B8C\u6210\uFF1B\u5F53\u524D\u4EFB\u52A1\u72B6\u6001\u72EC\u7ACB\u663E\u793A\u3002" : "producer \u672A\u8FD4\u56DE\u76F4\u63A5\u5B50\u4EFB\u52A1\uFF0C\u4E0D\u636E\u6B64\u5224\u5B9A\u5B8C\u6210\u3002",
+    tone: blocked.length ? "error" : unknown.length || model.rollup.childrenTerminal === null ? "warning" : allEnded ? "healthy" : total ? "running" : "warning",
+    title: total ? `\u76F4\u63A5\u5B50\u4EFB\u52A1\uFF1A\u6210\u529F ${model.rollup.childrenTrustedDone}/${total} \xB7 \u5DF2\u7ED3\u675F ${ended.length}/${total}` : "\u672A\u89C2\u5BDF\u5230\u76F4\u63A5\u5B50\u4EFB\u52A1",
+    reason: blocked.length ? `${blocked.length} \u4E2A\u672A\u7ED3\u675F\u5B50\u4EFB\u52A1\u88AB\u963B\u585E\uFF1A${formatTaskReferences(blocked)}` : unknown.length ? `${unknown.length} \u4E2A\u5B50\u4EFB\u52A1\u7684\u5B50\u6811\u72B6\u6001\u672A\u77E5\uFF1A${formatTaskReferences(unknown)}` : unfinished.length ? `${unfinished.length} \u4E2A\u5B50\u4EFB\u52A1\u6216\u5176\u540E\u4EE3\u672A\u7ED3\u675F\uFF1A${formatTaskReferences(unfinished)}` : allEnded ? "\u76F4\u63A5\u5B50\u4EFB\u52A1\u53CA\u5176\u540E\u4EE3\u5747\u5DF2\u7ED3\u675F\uFF1B\u6210\u529F\u5B8C\u6210\u4E0E\u5F53\u524D\u4EFB\u52A1\u72B6\u6001\u72EC\u7ACB\u663E\u793A\u3002" : total ? "\u5B50\u4EFB\u52A1\u6C47\u603B\u72B6\u6001\u672A\u77E5\uFF0C\u9700\u6838\u5BF9\u6765\u6E90\u3002" : "\u672A\u89C2\u5BDF\u5230\u76F4\u63A5\u5B50\u4EFB\u52A1\uFF0C\u4E0D\u636E\u6B64\u5224\u5B9A\u7ED3\u675F\u3002",
     remediation: nextStep || "\u672A\u8BB0\u5F55\u4E0B\u4E00\u6B65",
     location: "\u76F4\u63A5\u5B50\u4EFB\u52A1",
     diagnostic: null
   };
 }
 function createLeafProgressStatus(model, nextStep) {
-  const completed = lifecycleCompleted(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3") === true;
-  const blocked = !completed && model.currentTask.isBlocked;
+  const completed = model.currentTask.statusIsCompleted === true;
+  const blocked = model.currentTask.statusIsCompleted === false && model.currentTask.isBlocked;
   const dependencies = model.currentTask.blockedBy.map(formatTaskReference).join("\u3001");
+  const state = completed ? "\u5DF2\u7ED3\u675F" : model.currentTask.statusIsCompleted === false ? "\u672A\u7ED3\u675F" : "\u72B6\u6001\u672A\u77E5";
   return {
-    tone: blocked ? "error" : taskStatusTone(model.currentTask.status),
-    title: `\u5F53\u524D\u4EFB\u52A1${formatTaskStatus(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3")}`,
-    reason: blocked ? dependencies ? `\u963B\u585E\u4E8E ${dependencies}` : "TaskNotes \u5C06\u5F53\u524D\u4EFB\u52A1\u6807\u8BB0\u4E3A\u963B\u585E" : dependencies ? `${completed ? "\u5386\u53F2\u4F9D\u8D56" : "\u4F9D\u8D56\u4E8E"} ${dependencies}` : "\u8FDB\u5EA6\u4EE5\u5F53\u524D\u4EFB\u52A1\u81EA\u8EAB\u751F\u547D\u5468\u671F\u4E3A\u51C6\uFF1B\u9A8C\u6536\u7ED3\u8BBA\u72EC\u7ACB\u3002",
+    tone: blocked ? "error" : taskStatusTone(model.currentTask.status, false, model.currentTask.statusIsCompleted),
+    title: `\u5F53\u524D\u4EFB\u52A1${formatTaskStatus(model.currentTask.status, model.currentTask.trustLevel === "legacy_v3", model.currentTask.trustLevel === "legacy_v3" ? void 0 : model.currentTask.statusIsCompleted)}`,
+    reason: blocked ? dependencies ? `\u963B\u585E\u4E8E ${dependencies}` : "TaskNotes \u5C06\u5F53\u524D\u4EFB\u52A1\u6807\u8BB0\u4E3A\u963B\u585E" : `${state}${dependencies ? ` \xB7 ${completed ? "\u5386\u53F2\u4F9D\u8D56" : "\u4F9D\u8D56\u4E8E"} ${dependencies}` : "\uFF1B\u6210\u529F\u5B8C\u6210\u4E0E\u9A8C\u6536\u7ED3\u8BBA\u72EC\u7ACB\u3002"}`,
     remediation: nextStep || "\u672A\u8BB0\u5F55\u4E0B\u4E00\u6B65",
     location: "\u5F53\u524D\u4EFB\u52A1",
     diagnostic: null
@@ -620,15 +632,21 @@ function createDiagnosticPresentation(diagnostic, currentTaskId) {
 function createChildRow(child, legacy = false, history = false) {
   var _a, _b;
   const meta = [];
-  const completed = lifecycleCompleted(child.status, legacy) === true;
-  if (child.blockedBy.length) meta.push(`${!completed && child.isBlocked ? "\u963B\u585E\u4E8E" : completed ? "\u5386\u53F2\u4F9D\u8D56" : "\u4F9D\u8D56\u4E8E"} ${child.blockedBy.map(formatTaskReference).join("\u3001")}`);
+  const completed = legacy ? legacyLifecycleCompleted(child.status) === true : child.statusIsCompleted === true;
+  const blocked = legacy ? !completed && child.isBlocked : child.statusIsCompleted === false && child.isBlocked;
+  if (!legacy) {
+    meta.push(completed ? "\u5DF2\u7ED3\u675F" : child.statusIsCompleted === false ? "\u672A\u7ED3\u675F" : "\u72B6\u6001\u672A\u77E5");
+    if (child.subtreeTerminal === null) meta.push("\u5B50\u6811\u72B6\u6001\u672A\u77E5");
+    else if (completed && child.subtreeTerminal === false) meta.push("\u540E\u4EE3\u672A\u7ED3\u675F");
+  }
+  if (child.blockedBy.length) meta.push(`${blocked ? "\u963B\u585E\u4E8E" : completed ? "\u5386\u53F2\u4F9D\u8D56" : "\u4F9D\u8D56\u4E8E"} ${child.blockedBy.map(formatTaskReference).join("\u3001")}`);
   if (child.hasChildren) meta.push("\u542B\u5B50\u4EFB\u52A1");
   return {
     id: child.id,
     title: child.title,
     history,
-    status: formatTaskStatus(child.status, legacy),
-    tone: taskStatusTone(child.status, !completed && child.isBlocked),
+    status: formatTaskStatus(child.status, legacy, legacy ? void 0 : child.statusIsCompleted),
+    tone: taskStatusTone(child.status, blocked, legacy ? void 0 : child.statusIsCompleted),
     summary: (_b = (_a = child.primaryDiagnostic) == null ? void 0 : _a.reason) != null ? _b : child.goal,
     meta: meta.join(" \xB7 ")
   };
@@ -1178,6 +1196,7 @@ function createDashboardViewModel(value, options = {}) {
       id: currentTaskId,
       title: normalizeText(currentTask.title, "\u672A\u63D0\u4F9B\u4EFB\u52A1\u6807\u9898"),
       status: normalizeText(currentTask.status, "unknown"),
+      statusIsCompleted: nullableBoolean(currentTask.status_is_completed),
       priority: normalizeText(currentTask.priority, "\u672A\u63D0\u4F9B"),
       isBlocked: currentTask.is_blocked === true,
       blockedBy: ((_r = currentTask.blocked_by) != null ? _r : []).map(normalizeBlockedBy).filter(Boolean),
@@ -1198,6 +1217,7 @@ function createDashboardViewModel(value, options = {}) {
       childrenTotal: finiteNumber(rollup.children_total),
       childrenTrustedDone: finiteNumber(rollup.children_trusted_done),
       childrenComplete: rollup.children_complete === true,
+      childrenTerminal: nullableBoolean(rollup.children_terminal),
       blockedChildren: (_s = rollup.blocked_children) != null ? _s : [],
       incompleteChildren: (_t = rollup.incomplete_children) != null ? _t : [],
       contradictions: (_u = rollup.contradictions) != null ? _u : []
@@ -1317,6 +1337,7 @@ function normalizeProtocol(value, isLegacyV3) {
 function normalizeCompletion(value, fallbackStatus) {
   const completion = value != null ? value : {};
   return {
+    subtreeTerminal: nullableBoolean(completion.subtree_terminal),
     lifecycleStatus: normalizeText(
       completion.lifecycle_status,
       normalizeText(fallbackStatus, "unknown")
@@ -1334,7 +1355,7 @@ function normalizeCompletion(value, fallbackStatus) {
   };
 }
 function legacyCompletion(currentTask, snapshot) {
-  var _a, _b, _c;
+  var _a, _b, _c, _d;
   const evidence = normalizeEvidenceHealth(snapshot.evidence);
   const evidenceValues = [
     evidence.execution,
@@ -1343,9 +1364,10 @@ function legacyCompletion(currentTask, snapshot) {
   ];
   const acceptance = (_b = (_a = snapshot.contract) == null ? void 0 : _a.acceptance) != null ? _b : [];
   return {
+    subtreeTerminal: nullableBoolean((_c = currentTask.completion) == null ? void 0 : _c.subtree_terminal),
     lifecycleStatus: normalizeText(currentTask.status, "unknown"),
     contractStatus: normalizeText(
-      (_c = snapshot.contract) == null ? void 0 : _c.semantic_status,
+      (_d = snapshot.contract) == null ? void 0 : _d.semantic_status,
       "unknown"
     ),
     evidenceStatus: evidenceValues.every((value) => value === "valid") ? "satisfied" : evidenceValues.some((value) => value === "invalid") ? "invalid" : "missing",
@@ -1419,24 +1441,26 @@ function emptyReviewSummary(status) {
   };
 }
 function createChildViewModel(child) {
-  var _a, _b, _c;
+  var _a, _b, _c, _d;
   const id = normalizeText(child.id, "");
   const completion = child.completion ? normalizeCompletion(child.completion, child.status) : null;
   return {
     id,
     title: normalizeText(child.title, id || "\u672A\u547D\u540D\u5B50\u4EFB\u52A1"),
     status: normalizeText(child.status, "unknown"),
+    statusIsCompleted: nullableBoolean(child.status_is_completed),
+    subtreeTerminal: nullableBoolean((_a = child.completion) == null ? void 0 : _a.subtree_terminal),
     priority: normalizeText(child.priority, "\u672A\u63D0\u4F9B"),
     isBlocked: child.is_blocked === true,
-    blockedBy: ((_a = child.blocked_by) != null ? _a : []).map(normalizeBlockedBy).filter(Boolean),
+    blockedBy: ((_b = child.blocked_by) != null ? _b : []).map(normalizeBlockedBy).filter(Boolean),
     goal: normalizeText(child.goal, "\u672A\u63D0\u4F9B"),
     hasChildren: child.has_children === true,
     rollupState: normalizeText(child.rollup_state, "unknown"),
     semanticStatus: normalizeText(
-      (_b = child.legacy_v3) == null ? void 0 : _b.semantic_status,
+      (_c = child.legacy_v3) == null ? void 0 : _c.semantic_status,
       normalizeText(child.semantic_status, "unknown")
     ),
-    evidenceHealth: (completion == null ? void 0 : completion.trustLevel) === "legacy_v3" ? normalizeEvidenceHealth((_c = child.legacy_v3) == null ? void 0 : _c.evidence_health) : completion ? evidenceHealthFromCompletion(completion) : normalizeEvidenceHealth(child.evidence_health),
+    evidenceHealth: (completion == null ? void 0 : completion.trustLevel) === "legacy_v3" ? normalizeEvidenceHealth((_d = child.legacy_v3) == null ? void 0 : _d.evidence_health) : completion ? evidenceHealthFromCompletion(completion) : normalizeEvidenceHealth(child.evidence_health),
     trustedDone: completion ? completion.trustedDone : child.trusted_done === true,
     primaryDiagnostic: child.primary_diagnostic ? normalizeDiagnostic(child.primary_diagnostic, id) : null
   };
@@ -1513,6 +1537,9 @@ function normalizeText(value, fallback) {
     return String(value);
   }
   return fallback;
+}
+function nullableBoolean(value) {
+  return typeof value === "boolean" ? value : null;
 }
 function nullableText(value) {
   const normalized2 = normalizeText(value, "");
@@ -3678,6 +3705,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   }
   renderChildren(container, model, children) {
     var _a;
+    const legacy = model.currentTask.trustLevel === "legacy_v3";
     const section2 = container.createDiv({ cls: "flowdesk-child-section" });
     const heading = section2.createDiv({ cls: "flowdesk-section-heading" });
     heading.createDiv({
@@ -3686,14 +3714,14 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     });
     heading.createDiv({
       cls: "flowdesk-section-meta",
-      text: `${children.filter((child) => !child.history).length} \u9879\u672A\u5B8C\u6210\u6216\u72B6\u6001\u672A\u77E5`
+      text: `${children.filter((child) => !child.history).length} \u9879${legacy ? "\u672A\u5B8C\u6210" : "\u672A\u7ED3\u675F"}\u6216\u72B6\u6001\u672A\u77E5`
     });
     const list = section2.createDiv({ cls: "flowdesk-child-list" });
     const historical = children.filter((child) => child.history);
     let historyList = null;
     if (historical.length) {
       const history = section2.createEl("details", { cls: "flowdesk-task-history" });
-      history.createEl("summary", { text: `\u5DF2\u5B8C\u6210 \xB7 ${historical.length}` });
+      history.createEl("summary", { text: `${legacy ? "\u5DF2\u5B8C\u6210" : "\u5DF2\u7ED3\u675F"} \xB7 ${historical.length}` });
       historyList = history.createDiv({ cls: "flowdesk-child-list" });
     }
     for (const child of children) {
