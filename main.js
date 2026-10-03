@@ -1023,29 +1023,35 @@ function shellQuote(value) {
 
 // src/tasknotes-read.ts
 var isRecord = (value) => Boolean(value && typeof value === "object" && !Array.isArray(value));
-async function readTaskDetails({ taskPath, apiUrl, auth, signal }) {
+async function readTaskDetails({ taskPath, apiUrl, auth, signal, transport }) {
   const fail = (message, code = "tasknotes_read_invalid") => {
     throw Object.assign(new Error(formatTaskNotesAuthError(message, auth.token)), { code });
   };
+  const checkCancelled = () => {
+    if (signal.aborted) throw Object.assign(new Error("TaskNotes \u539F\u6587\u8BFB\u53D6\u5DF2\u53D6\u6D88"), { name: "AbortError", code: "ABORT_ERR" });
+  };
+  checkCancelled();
   let response;
   try {
-    response = await fetch(`${apiUrl.replace(/\/+$/, "")}/api/tasks/${encodeURIComponent(taskPath)}`, {
-      method: "GET",
+    response = await transport({
+      url: `${apiUrl.replace(/\/+$/, "")}/api/tasks/${encodeURIComponent(taskPath)}`,
       headers: auth.token ? { Authorization: `Bearer ${auth.token}` } : {},
-      signal,
-      redirect: "error"
+      signal
     });
   } catch (error) {
+    checkCancelled();
     return fail(`TaskNotes \u539F\u6587\u8BFB\u53D6\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`);
   }
-  const raw = await response.text();
+  checkCancelled();
+  const raw = response.text;
+  const ok = response.status >= 200 && response.status < 300;
   let value;
   try {
     value = JSON.parse(raw);
   } catch (e) {
-    if (response.ok) return fail("TaskNotes \u539F\u6587\u54CD\u5E94\u4E0D\u662F\u6709\u6548 JSON");
+    if (ok) return fail("TaskNotes \u539F\u6587\u54CD\u5E94\u4E0D\u662F\u6709\u6548 JSON");
   }
-  if (!response.ok) {
+  if (!ok) {
     const upstream = isRecord(value) ? value : {};
     return fail(
       `TaskNotes API ${response.status}: ${typeof upstream.error === "string" ? upstream.error : raw || response.statusText}`,
@@ -1060,6 +1066,62 @@ async function readTaskDetails({ taskPath, apiUrl, auth, signal }) {
   if (typeof value.details !== "string") return fail("TaskNotes \u539F\u6587 details \u5FC5\u987B\u662F\u5B57\u7B26\u4E32");
   return { id: taskPath, details: value.details, ...value.contexts === void 0 ? {} : { contexts: Array.isArray(value.contexts) && value.contexts.every((x) => typeof x === "string") ? value.contexts : null }, source: { kind: "tasknotes-api", taskId: taskPath, readAt: (/* @__PURE__ */ new Date()).toISOString() } };
 }
+
+// src/tasknotes-desktop-http.ts
+var import_http = require("http");
+var import_https = require("https");
+var desktopTaskNotesRead = ({ url, headers, signal }) => {
+  if (signal.aborted) return Promise.reject(Object.assign(new Error("TaskNotes \u539F\u6587\u8BFB\u53D6\u5DF2\u53D6\u6D88"), { name: "AbortError", code: "ABORT_ERR" }));
+  return new Promise((resolve5, reject) => {
+    const target = new URL(url);
+    if (target.protocol !== "http:" && target.protocol !== "https:") {
+      reject(new Error("TaskNotes API \u5730\u5740\u5FC5\u987B\u4F7F\u7528 HTTP/HTTPS"));
+      return;
+    }
+    if (target.username || target.password) {
+      reject(new Error("TaskNotes API \u5730\u5740\u4E0D\u80FD\u5305\u542B\u5185\u5D4C\u51ED\u636E"));
+      return;
+    }
+    const request = target.protocol === "https:" ? import_https.request : import_http.request;
+    const pending = request(target, {
+      method: "GET",
+      headers: { ...headers, "Accept-Encoding": "identity" },
+      signal,
+      agent: false
+    }, (response) => {
+      var _a, _b;
+      response.once("error", reject);
+      response.once("aborted", () => reject(new Error("TaskNotes \u54CD\u5E94\u672A\u5B8C\u6574\u7ED3\u675F")));
+      const status = (_a = response.statusCode) != null ? _a : 0;
+      const statusText = (_b = response.statusMessage) != null ? _b : "";
+      if (status >= 300 && status < 400) {
+        resolve5({ status, statusText, text: "" });
+        response.destroy();
+        return;
+      }
+      const encoding = response.headers["content-encoding"];
+      if (encoding && encoding.trim().toLowerCase() !== "identity") {
+        reject(new Error("TaskNotes Content-Encoding \u4E0D\u53D7\u652F\u6301\uFF08\u53EA\u63A5\u53D7 identity\uFF09"));
+        response.destroy();
+        return;
+      }
+      response.setEncoding("utf8");
+      let text2 = "";
+      response.on("data", (chunk) => {
+        text2 += chunk;
+      });
+      response.once("end", () => {
+        if (!response.complete) {
+          reject(new Error("TaskNotes \u54CD\u5E94\u672A\u5B8C\u6574\u7ED3\u675F"));
+          return;
+        }
+        resolve5({ status, statusText, text: text2 });
+      });
+    });
+    pending.once("error", reject);
+    pending.end();
+  });
+};
 
 // src/task-current-progress.ts
 var unknown = (gap) => ({ status: "unknown", progress: null, next: null, timestamp: null, source: null, gaps: [gap] });
@@ -2370,7 +2432,6 @@ var WorkCaseDashboardRenderer = class {
     container.addClass("flowdesk-case-dashboard");
     if (!state.model) {
       this.renderShell(container, state);
-      this.renderFullCaseContent(container, state);
       return;
     }
     const presentation = createWorkCasePresentation(state.model);
@@ -2391,7 +2452,6 @@ var WorkCaseDashboardRenderer = class {
     this.renderProgress(container, state, presentation);
     this.renderSections(container, state, presentation);
     this.renderRelated(container, state, presentation);
-    this.renderFullCaseContent(container, state);
     this.renderResume(container, state);
     this.renderTechnicalContext(container, presentation);
     this.renderDiagnostics(container, presentation);
@@ -2638,20 +2698,6 @@ var WorkCaseDashboardRenderer = class {
         );
       }
     }
-  }
-  renderFullCaseContent(container, state) {
-    if (!state.caseContent) return;
-    const observation = state.caseContent;
-    const section2 = container.createEl("details", { cls: "flowdesk-case-recovery flowdesk-case-full-content" });
-    section2.createEl("summary", { text: "\u5B8C\u6574Case\u539F\u6587\uFF08\u5355\u72ECvault\u8BFB\u53D6\uFF09" });
-    if (observation.error) {
-      section2.createDiv({ cls: "flowdesk-case-error", text: `Case\u539F\u6587\u8BFB\u53D6\u5931\u8D25\uFF1A${observation.error}` });
-      return;
-    }
-    section2.createDiv({ cls: "flowdesk-muted", text: `${observation.source} \xB7 ${observation.casePath} \xB7 \u72EC\u7ACB\u8BFB\u53D6\u65F6\u95F4 ${observation.readAt}\uFF1B\u4E0D\u80FD\u8BC1\u660E\u4E0Esnapshot\u540C\u8F6E\u4E00\u81F4\u3002` });
-    const body = section2.createDiv({ cls: "flowdesk-contract-scope-markdown markdown-rendered" });
-    if (this.dependencies.renderMarkdown) void this.dependencies.renderMarkdown(observation.details, body, observation.casePath).catch(() => body.setText(observation.details));
-    else body.setText(observation.details);
   }
   renderResume(container, state) {
     if (!state.model) return;
@@ -3226,7 +3272,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
   async loadTaskDetails(taskPath, signal) {
     var _a;
     const auth = resolveTaskNotesAuth((_a = this.settings.tasknotesEnv) != null ? _a : "{}");
-    return readTaskDetails({ taskPath, signal, auth, apiUrl: resolveTaskNotesApiUrl(this.settings.apiUrl, auth.env) });
+    return readTaskDetails({ taskPath, signal, auth, apiUrl: resolveTaskNotesApiUrl(this.settings.apiUrl, auth.env), transport: desktopTaskNotesRead });
   }
   async loadCaseContent(casePath, signal) {
     const file = this.app.vault.getAbstractFileByPath(casePath);
@@ -3316,7 +3362,6 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       openTask: (taskPath, origin) => this.openTask(taskPath, origin),
       openCaseSource: (casePath, source) => this.openCaseSource(casePath, source),
       openRelated: (target, casePath) => this.openRelated(target, casePath),
-      renderMarkdown: (text2, element, sourcePath) => this.renderSourceMarkdown(text2, element, sourcePath),
       copyText: (text2) => navigator.clipboard.writeText(text2),
       openTaskSource: (taskPath, source) => this.openSnapshotSource(taskPath, source, "\u6062\u590D\u5F15\u7528")
     });

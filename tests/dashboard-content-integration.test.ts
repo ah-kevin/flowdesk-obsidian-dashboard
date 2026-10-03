@@ -16,7 +16,7 @@ async function setup(t:any) {
     requests.push([req.method,req.url,req.headers.authorization]);res.setHeader("Content-Type","application/json");
     if(req.url==="/api/tasks/query"){res.end(JSON.stringify({tasks:[],filtered:0}));return;}
     const id=decodeURIComponent(req.url!.slice("/api/tasks/".length));
-    if(slow && req.headers["user-agent"]?.startsWith("node")) await new Promise<void>(resolve=>{release=resolve;});
+    if(slow && (!req.headers["user-agent"] || req.headers["user-agent"].startsWith("node"))) await new Promise<void>(resolve=>{release=resolve;});
     res.end(JSON.stringify({success:true,data:{id,path:id,title:id,status:"done",projects:[],tags:["reviewed"],details:currentDetails}}));
   });
   const bundle=fixture.path("plugin.cjs");compilePlugin(bundle);

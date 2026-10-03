@@ -1,6 +1,6 @@
 {
   "name": "flowdesk-dashboard-obsidian-plugin",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "private": true,
   "description": "Local Obsidian plugin for rendering FlowDesk execution snapshots.",
   "main": "main.js",

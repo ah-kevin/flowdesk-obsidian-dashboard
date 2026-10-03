@@ -20,7 +20,6 @@ export interface WorkCaseRendererDependencies {
   ): Promise<void> | void;
   openCaseSource(casePath: string, source: WorkCaseSourceRange): Promise<void> | void;
   openRelated(target: string, casePath: string): Promise<void> | void;
-  renderMarkdown?(text: string, element: HTMLElement, sourcePath: string): Promise<void>;
   copyText?(text: string): Promise<void>;
   openTaskSource?(taskPath: string, source: SnapshotSource): Promise<void>;
 }
@@ -36,7 +35,6 @@ export class WorkCaseDashboardRenderer {
     container.addClass("flowdesk-case-dashboard");
     if (!state.model) {
       this.renderShell(container, state);
-      this.renderFullCaseContent(container, state);
       return;
     }
     const presentation = createWorkCasePresentation(state.model);
@@ -57,7 +55,6 @@ export class WorkCaseDashboardRenderer {
     this.renderProgress(container, state, presentation);
     this.renderSections(container, state, presentation);
     this.renderRelated(container, state, presentation);
-    this.renderFullCaseContent(container, state);
     this.renderResume(container, state);
     this.renderTechnicalContext(container, presentation);
     this.renderDiagnostics(container, presentation);
@@ -347,18 +344,6 @@ export class WorkCaseDashboardRenderer {
         );
       }
     }
-  }
-
-  private renderFullCaseContent(container: HTMLElement, state: WorkCaseRenderState): void {
-    if (!state.caseContent) return;
-    const observation = state.caseContent;
-    const section = container.createEl("details", {cls:"flowdesk-case-recovery flowdesk-case-full-content"});
-    section.createEl("summary", {text:"完整Case原文（单独vault读取）"});
-    if (observation.error) { section.createDiv({cls:"flowdesk-case-error",text:`Case原文读取失败：${observation.error}`}); return; }
-    section.createDiv({cls:"flowdesk-muted",text:`${observation.source} · ${observation.casePath} · 独立读取时间 ${observation.readAt}；不能证明与snapshot同轮一致。`});
-    const body = section.createDiv({cls:"flowdesk-contract-scope-markdown markdown-rendered"});
-    if (this.dependencies.renderMarkdown) void this.dependencies.renderMarkdown(observation.details, body, observation.casePath).catch(() => body.setText(observation.details));
-    else body.setText(observation.details);
   }
 
   private renderResume(container: HTMLElement, state: WorkCaseRenderState): void {

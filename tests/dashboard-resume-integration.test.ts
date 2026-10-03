@@ -31,7 +31,7 @@ test("compiled Case consumes same real bundle and independent full Case content,
   const state=view.caseAdapter.getRenderState();
   assert.ok(state.model.resumeBundle);assert.equal(state.caseContent.details,fixture.caseText);
   assert.match(root.allText().join("\n"),/核对中文文档（最新）|Case目标/);
-  assert.ok(root.allText().includes(fixture.caseText));
+  assert.ok(!root.allText().includes(fixture.caseText));assert.equal(root.findByClass("flowdesk-case-full-content").length,0);assert.ok(!root.allText().some(x=>x.includes("完整Case原文")));
   await root.findByClass("flowdesk-case-copy-resume")[0].click();
   assert.match(copied[0],/上下文原文|摘要原文/);assert.match(copied[0],/核对中文文档（最新）/);
   assert.match(copied[0],/本地.*读取|独立/);assert.match(copied[0],/原owner|旧执行/);

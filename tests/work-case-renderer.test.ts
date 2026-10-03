@@ -434,3 +434,39 @@ test("Case hierarchy puts read health and current ahead of relations and technic
  assert.ok(root.findByClass("flowdesk-case-related-link").some(x=>x.text==="工作站"));
  assert.equal(root.findByClass("flowdesk-case-progress-bar").length,0);
 });
+
+test("model 存在与缺失两条路线都不重复渲染完整Case原文，恢复数据与动作保留", async () => {
+  const { createCaseContent } = await import("../src/case-content");
+  const snapshot = structuredClone(canonical);
+  const model = createWorkCaseViewModel(snapshot, snapshot.source.path);
+  const caseContent = createCaseContent(snapshot.source.path, "## Context\n\n唯一独立全文标记", "local-read");
+  const copied: string[] = [];
+  const renderer = new WorkCaseDashboardRenderer({
+    refresh: () => {},
+    openTask: () => {},
+    openCaseSource: () => {},
+    openRelated: () => {},
+    copyText: (text) => { copied.push(text); },
+  });
+  const base = { casePath: snapshot.source.path, loadedAt: "12:00:00", staleReason: "", error: "", loading: false, caseContent };
+
+  const withModel = new FakeElement();
+  renderer.render(withModel as unknown as HTMLElement, { ...base, model });
+  const withoutModel = new FakeElement();
+  renderer.render(withoutModel as unknown as HTMLElement, { ...base, model: null });
+
+  for (const root of [withModel, withoutModel]) {
+    assert.equal(root.findByClass("flowdesk-case-full-content").length, 0);
+    assert.equal(root.allText().some((text) => text.includes("完整Case原文")), false);
+  }
+  // 无 model 路线没有恢复摘要，独立全文不应出现在任何文本里；有 model 时仅由恢复摘要承载 sections。
+  assert.equal(withoutModel.allText().some((text) => text.includes("唯一独立全文标记")), false);
+  assert.equal(withModel.allText().includes(caseContent.details), false);
+  assert.ok(withoutModel.allText().includes("WORK CASE"));
+  assert.ok(withoutModel.findByClass("flowdesk-case-header").length > 0);
+
+  assert.equal(withModel.findByClass("flowdesk-case-resume").length, 1);
+  withModel.findByClass("flowdesk-case-copy-resume")[0].click();
+  assert.equal(copied.length, 1);
+  assert.match(copied[0], /Case独立原文读取时间：local-read/);
+});

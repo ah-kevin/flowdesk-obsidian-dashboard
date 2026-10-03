@@ -46,6 +46,7 @@ import {
   type SnapshotInvocation,
 } from "./snapshot-invocation";
 import { readTaskDetails, type TaskDetailsRead } from "./tasknotes-read";
+import { desktopTaskNotesRead } from "./tasknotes-desktop-http";
 import { createTaskCurrentProgress } from "./task-current-progress";
 import { TaskContentRenderer } from "./task-content-renderer";
 import { rawContentDiffers, type TaskRawContentObservation } from "./task-content";
@@ -321,7 +322,7 @@ export default class FlowDeskDashboardPlugin extends Plugin {
 
   async loadTaskDetails(taskPath: string, signal: AbortSignal): Promise<TaskDetailsRead> {
     const auth = resolveTaskNotesAuth(this.settings.tasknotesEnv ?? "{}");
-    return readTaskDetails({ taskPath, signal, auth, apiUrl: resolveTaskNotesApiUrl(this.settings.apiUrl, auth.env) });
+    return readTaskDetails({ taskPath, signal, auth, apiUrl: resolveTaskNotesApiUrl(this.settings.apiUrl, auth.env), transport: desktopTaskNotesRead });
   }
 
   async loadCaseContent(casePath: string, signal: AbortSignal): Promise<CaseContentObservation> {
@@ -497,7 +498,6 @@ class FlowDeskDashboardView extends ItemView {
       openCaseSource: (casePath, source) =>
         this.openCaseSource(casePath, source),
       openRelated: (target, casePath) => this.openRelated(target, casePath),
-      renderMarkdown: (text, element, sourcePath) => this.renderSourceMarkdown(text, element, sourcePath),
       copyText: (text) => navigator.clipboard.writeText(text),
       openTaskSource: (taskPath, source) => this.openSnapshotSource(taskPath, source, "恢复引用"),
     });

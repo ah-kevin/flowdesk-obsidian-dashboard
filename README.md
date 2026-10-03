@@ -8,6 +8,11 @@ TaskNotes 任务或 Work Case 的 FlowDesk snapshot。插件分别调用本机 F
 本项目走 GitHub Release、BRAT 或手动安装，不以提交 Obsidian 官方 Community
 Directory 作为发布路径。
 
+## 2.0.2 更新
+
+- Task API 原文读取改用桌面只读 HTTP，避免 renderer Origin 被 TaskNotes 拒绝；保留取消、重定向拒绝、身份核对与凭据脱敏。
+- 配合 Core canonical Progress 投影修复，日志之后还有其他章节时也能呈现进展片段；日期不完整仍保留 unknown 并隐藏 Next。
+
 ## 2.0.1 更新
 
 - Case 引用保留原始标题、路径、顺序和来源，明确展示缺失、歧义与不可用状态；仓库引用按准确 Case cwd 核对。
@@ -95,12 +100,12 @@ Release 必需文件：
 发布一个版本（版本号以 `manifest.json` 为准）：
 
 ```bash
-git tag "v2.0.1"
-git push origin "v2.0.1"
+git tag "v2.0.2"
+git push origin "v2.0.2"
 ```
 
-CI 会校验 tag 必须等于 `v<manifest.version>`。例如 `manifest.json` 版本为 `2.0.1`
-时，release tag 必须是 `v2.0.1`。
+CI 会校验 tag 必须等于 `v<manifest.version>`。例如 `manifest.json` 版本为 `2.0.2`
+时，release tag 必须是 `v2.0.2`。
 
 版本要求：
 
@@ -286,9 +291,10 @@ Case显式读取Core `--resume-bundle`，默认schema1保持兼容。仅在CLI�
 Task状态/goal/result/blocker/next、resume_sources、resume_missing和operation refs原值保留。
 歧义候选、字节截断、omitted_count、401和partial均可见；操作refs只表示引用，不证明完成。
 
-Core不投影Context/Summary全文，因此“完整Case原文”独立使用vault.cachedRead，保留全部
+Core不投影Context/Summary全文，因此Case全文独立使用vault.cachedRead，保留全部
 正文和Goal/Current/Context/Summary来源，标单独读取时间，不能证明与snapshot同轮一致。
-独立全文也可在snapshot失败时阅读；旧请求和取消响应仍受selection/controller/generation门禁，
+Dashboard不再单独渲染“完整Case原文”区块（Obsidian可直接打开Case）；该读取结果仅作为数据
+供恢复摘要和其他载体使用，snapshot失败时仍可读取。旧请求和取消响应仍受selection/controller/generation门禁，
 原有500ms关联事件合并刷新保持。读取时间只标本地观测，原来源时间只使用已有timestamp。
 
 恢复摘要包含Case决策及来源；继续工作复制包含当前观测的准确Task ID/原状态/结果/Next、cwd/branch、缺口与来源，并要求显式选择，不自动全部执行。

@@ -153,3 +153,49 @@ test("canonical_quoted_blank_after_header_is_only_a_first_event_interval",async(
     }
   }
 });
+
+
+test("canonical_progress_survives_later_headings_without_receipt_based_display_authorization",async(t)=>{
+  const {fixture}=await realContent(t),task=fixture.tasks[0];
+  for(const laterHeading of [false,true])for(const legacy of [false,true]){
+    task.details="## 目标\n\nOwned projection regression.\n\n## Progress\n\n> [!faq]- 详细过程日志\n"+
+      (legacy?"> - [x] `2026-10-01 10:00` 旧日期原文。\n":"")+
+      (laterHeading?"\n## 历史说明\n\n独立历史段，不与 Progress 拼接。\n":"");
+    task.status="in-progress";
+    const update=buildTaskUpdate(task.details,task.status,{task_id:task.id,operation_id:randomUUID(),expected:{task_id:task.id,status:task.status,details_sha256:sha256(task.details)},timestamp:"2026-10-03T13:00:00Z",mode:"progress",checks:[],progress:"真实 writer 新进展 **原文**",next:"新 Next 仅在当前性可确认时显示。"});
+    task.details=update.details;task.status=update.status;
+    const snapshot=await fixture.taskSnapshot(task.id),content=createTaskContent(snapshot,task.id),section=progressSection(content);
+    assert.ok(section,"projection missing: laterHeading="+laterHeading+", legacy="+legacy);
+    assert.equal(section.source?.line_start,5);
+    assert.ok(section.text.includes("真实 writer 新进展 **原文**"));
+    assert.equal(section.text.includes("旧日期原文。"),legacy);
+    assert.equal(section.text.includes("<!-- flowdesk.task-update/"),!laterHeading);
+    assert.ok(!section.text.includes("独立历史段"));
+    const requests=fixture.requests.length,current=createTaskCurrentProgress(content,context);
+    assert.equal(current.status,legacy?"unknown":"current");
+    assert.equal(current.progress,"真实 writer 新进展 **原文**");
+    assert.equal(current.next,legacy?null:"新 Next 仅在当前性可确认时显示。");
+    assert.equal(current.timestamp,"2026-10-03T13:00:00Z");
+    assert.equal(current.source,section.source);
+    if(legacy)assert.match(current.gaps.join("\n"),/日期.*缺口.*最新性未知/);
+    assert.equal(fixture.requests.length,requests,"display performs no additional API read");
+    assert.equal(snapshot.snapshot_schema_version,4);
+    assert.equal(snapshot.protocol.producer_protocol_version,4);
+  }
+});
+
+test("real_producer_preserves_duplicate_and_malformed_progress_for_unknown_display",async(t)=>{
+  const {fixture}=await realContent(t),task=fixture.tasks[0];
+  for(const body of [
+    "> [!faq]- 详细过程日志\n> - [x] `2026-10-03T13:00:00Z` 第一候选。\n\n## Progress\n\n> [!faq]- 详细过程日志\n>   缺事件的候选。",
+    "> [!faq]- 详细过程日志\n>   只有续行，没有事件。",
+    "人工普通正文不符合 canonical callout。",
+  ]){
+    task.details="## 目标\n\nOwned projection regression.\n\n## Progress\n\n"+body;task.status="in-progress";
+    const content=createTaskContent(await fixture.taskSnapshot(task.id),task.id),requests=fixture.requests.length;
+    assert.equal(content.domainSections.filter(s=>s.heading==="Progress"&&s.level===2).length,body.includes("\n## Progress")?2:1);
+    const current=createTaskCurrentProgress(content,context);
+    assert.equal(current.status,"unknown");assert.equal(current.progress,null);assert.equal(current.next,null);
+    assert.equal(fixture.requests.length,requests);
+  }
+});
