@@ -41,3 +41,24 @@ export function rawContentDiffers(content: TaskContent, observation: TaskRawCont
   // Legacy structured scope is generated prose, so compare scope through source-backed fields only.
   return fragments.some(x => normalize(x) !== "" && !details.includes(normalize(x)));
 }
+
+
+export type TaskReadingSection = {kind: "domain" | "execution" | "verification" | "delivery"; section: SnapshotBodySection};
+/** Order projected body sections by reliable API-details positions, preserving ties and gaps. */
+export function createTaskReadingSections(content: TaskContent): {sections: TaskReadingSection[]; orderComplete: boolean} {
+  const entries: TaskReadingSection[] = [
+    ...content.domainSections.map(section => ({kind: "domain" as const, section})),
+    ...(["execution", "verification", "delivery"] as const).flatMap(kind => content.records[kind].map(section => ({kind, section}))),
+  ];
+  const position = (entry: TaskReadingSection): number | null => {
+    const line = entry.section.source?.line_start;
+    return typeof line === "number" && Number.isInteger(line) && line > 0 ? line : null;
+  };
+  return {
+    orderComplete: entries.every(entry => position(entry) !== null),
+    sections: entries.map((entry,index) => ({entry,index,line:position(entry)})).sort((a,b) => {
+      if (a.line === null || b.line === null) return a.line === b.line ? a.index-b.index : a.line === null ? 1 : -1;
+      return a.line-b.line || a.index-b.index;
+    }).map(item => item.entry),
+  };
+}

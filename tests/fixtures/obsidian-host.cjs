@@ -22,7 +22,7 @@ async function renderMarkdown(app,text,element){
   }
   if(app?.markdownDelay)await app.markdownDelay();
 }
-class TFile { static [Symbol.hasInstance](value){return !!value && typeof value.path==='string' && value.extension==='md';} constructor(path){this.path=path;this.extension='md';} }
+class TFile { static [Symbol.hasInstance](value){return !!value && typeof value.path==='string' && typeof value.extension==='string';} constructor(path){this.path=path;this.extension='md';} }
 module.exports = {
   App: HostClass, ItemView, MarkdownRenderer: { render:renderMarkdown }, MarkdownView: HostClass,
   Modal: HostClass, Notice: HostClass, Plugin, PluginSettingTab: HostClass,

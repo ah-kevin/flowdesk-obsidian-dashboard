@@ -16,6 +16,7 @@ const dependencies = ["bin/flowdesk-execution-snapshot", "bin/flowdesk-work-case
   "lib/flowdesk_execution_snapshot.py", "lib/flowdesk_work_case_snapshot.py",
   "mcp/src/__tests__/support/guard-preload.cjs", "tests/support/sitecustomize.py",
   "mcp/src/tools/task-update-details.ts", "mcp/node_modules/zod/package.json",
+  "mcp/package.json", "mcp/dist/tools/context-builder-tools.js", "mcp/node_modules/@modelcontextprotocol/sdk/package.json",
   "tests/fixtures/execution_snapshot/sdd_v3_real_root_snapshot.json"];
 const coreCandidate = coreCandidates.find(root => dependencies.every(file => {
   try { accessSync(path.join(root, file), constants.R_OK); return true; } catch { return false; }
@@ -53,7 +54,9 @@ const data = {version:1, fixture_root:temporaryDirectory, original_home:original
   executables:[], interpreters:[], shells:[], scripts:[], shell_commands:[], commands:[], endpoints:[],
   protected_roots:[originalHome,"/tmp/flowdesk-mcp.log","/private/tmp/flowdesk-mcp.log","/tmp/flowdesk-session-registry.json","/tmp/flowdesk-session-registry.lock", ...(originalVault ? [originalVault] : [])],
   readable_roots:[path.join(repositoryRoot,"src"), path.join(repositoryRoot,"tests"), path.join(repositoryRoot,"styles.css"), path.join(repositoryRoot,"node_modules"),
-    path.join(core,"lib"),path.join(core,"bin"),support,path.dirname(preload),path.join(core,"tests/fixtures/execution_snapshot/sdd_v3_real_root_snapshot.json"),node,...pythonRuntime.paths], violation_file:violationFile};
+    path.join(core,"lib"),path.join(core,"bin"),
+    // Read-only compiled consumer and its installed runtime dependencies, never arbitrary HOME/state.
+    path.join(core,"mcp/dist"),path.join(core,"mcp/package.json"),path.join(core,"mcp/node_modules"),support,path.dirname(preload),path.join(core,"tests/fixtures/execution_snapshot/sdd_v3_real_root_snapshot.json"),node,...pythonRuntime.paths], violation_file:violationFile};
 for (const name of ["home", "vault", "state", "tmp", "bin"]) mkdirSync(path.join(temporaryDirectory, name));
 symlinkSync(node, path.join(temporaryDirectory, "bin/node"));
 const quoteShell = value => "'" + value.replaceAll("'", "'\\''") + "'";

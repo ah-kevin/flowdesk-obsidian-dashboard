@@ -46,6 +46,7 @@ import {
   type SnapshotInvocation,
 } from "./snapshot-invocation";
 import { readTaskDetails, type TaskDetailsRead } from "./tasknotes-read";
+import { createTaskCurrentProgress } from "./task-current-progress";
 import { TaskContentRenderer } from "./task-content-renderer";
 import { rawContentDiffers, type TaskRawContentObservation } from "./task-content";
 import {
@@ -677,6 +678,26 @@ class FlowDeskDashboardView extends ItemView {
     const presentation = createDashboardPresentation(model);
     this.renderHeader(container, model, presentation);
     this.renderTrustStrip(container, presentation.trust);
+    const current = createTaskCurrentProgress(model.content, {
+      statusIsCompleted: model.currentTask.statusIsCompleted,
+      observedAt: model.observation.generatedAt,
+      observationHealthy: model.observation.isTrustworthy && !model.observation.isStale && !state.error && !model.diagnostics.some(diagnostic=>/truncat|body_omitted|progress_omitted|response_too_large/i.test(diagnostic.code)),
+    });
+    const progressPanel = container.createDiv({cls:"flowdesk-task-current-progress flowdesk-dashboard-section"});
+    progressPanel.createDiv({cls:"flowdesk-dashboard-section-title",text:current.status==="historical"?"最近 Progress（历史）":current.status==="current"?"当前 Progress / Next":current.progress?"Progress 片段（当前性未确认）":"当前 Progress：unknown"});
+    if(current.timestamp)progressPanel.createDiv({cls:"flowdesk-muted",text:`事件时间：${current.timestamp} · snapshot 生成于 ${model.observation.generatedAt}`});
+    for(const [field,text] of [["progress",current.progress],["next",current.next]] as const){
+      if(text===null)continue;
+      if(field==="next")progressPanel.createDiv({cls:"flowdesk-summary-label",text:"Next（仅展示）"});
+      const body=progressPanel.createDiv({cls:"flowdesk-contract-scope-markdown markdown-rendered",attr:{"data-current-field":field}});
+      void this.renderSourceMarkdown(text,body,model.currentTask.id).catch(()=>{body.setText(text);});
+    }
+    for(const gap of current.gaps)progressPanel.createDiv({cls:"flowdesk-muted",text:gap});
+    if(current.source){
+      const source=progressPanel.createEl("button",{cls:"flowdesk-content-source",text:"打开 Progress 原文"});
+      const projected=model.content.domainSections.find(section=>section.level===2&&section.heading==="Progress");
+      source.addEventListener("click",()=>{void this.openSnapshotSource(model.currentTask.id,current.source!,"Progress",projected?.text??"");});
+    }
     this.renderPrimaryDiagnostic(
       container,
       presentation.primaryStatus,
@@ -1351,25 +1372,39 @@ class FlowDeskDashboardView extends ItemView {
     if (!request.current()) return;
     if (target.kind === "url") { window.open(target.url, "_blank"); return; }
     if (target.kind === "vault") {
-      const literalHashFile = target.exactFile === true && target.resolvedPath?.includes("#");
-      if (literalHashFile) {
-        const file = this.app.vault.getAbstractFileByPath(target.resolvedPath!);
-        if (file instanceof TFile && file.path === target.resolvedPath) { await this.openNavigationFile(file, request.signal); return; }
-        target = {kind:"unavailable",label:target.label,reason:"已确认的vault原文件当前不可用；不把字面#重新解释为subpath。"};
+      const destination = target.resolvedPath ?? this.vaultLinkResolver(sourcePath)(target.linkText);
+      const baseFile = destination ? this.app.vault.getAbstractFileByPath(destination) : null;
+      if (!(baseFile instanceof TFile) || (target.exactFile && baseFile.path !== target.resolvedPath)) {
+        target = {kind:"unavailable",label:target.label,reason:`未找到已确认的vault原文件：${target.linkText}；不会创建或改选同名笔记。`};
+      } else if (baseFile.extension.toLowerCase() === "json") {
+        // Classify the confirmed base file, not linkText whose subpath can hide the extension.
+        const fragment = target.fragment ?? (target.exactFile ? undefined : parseLinktext(target.linkText).subpath || undefined);
+        target = {...target,resolvedPath:baseFile.path,...(fragment ? {fragment} : {})};
       } else {
-        const destination = this.vaultLinkResolver(sourcePath)(target.linkText);
-        if (destination) { await this.app.workspace.openLinkText(target.linkText, sourcePath, false);return; }
-        target = {kind:"unavailable",label:target.label,reason:`未找到vault原文：${target.linkText}；不会创建新笔记。`};
+        const directFile = target.exactFile === true && (target.resolvedPath?.includes("#") || (target.resolvedPath && target.resolvedPath!==target.resolvedPath.trim()) || (target.fileUrl && (!target.fragment || target.resolvedPath?.includes("%"))));
+        if (directFile) {
+          await this.openNavigationFile(baseFile, request.signal);
+          if (!target.fragment) return;
+          // Literal #, percent or edge-whitespace filenames keep their exact TFile; fragment location remains unverified.
+        } else {
+          await this.app.workspace.openLinkText(target.linkText, sourcePath, false);return;
+        }
       }
     }
     this.relatedTargetPanel?.remove();
     const panel = this.contentEl.createDiv({cls:"flowdesk-dashboard-section flowdesk-related-target"});this.relatedTargetPanel = panel;
-    const pathText = target.kind === "repository" ? target.absolutePath : raw;
-    panel.createDiv({cls:"flowdesk-dashboard-section-title",text:target.kind === "repository" ? "仓库文档" : "引用定位缺口"});
-    panel.createDiv({cls:"flowdesk-muted",text:target.kind === "repository" ? `原文件：${pathText}；仓库引用：${target.repositoryPath}` : target.reason});
-    const copy = panel.createEl("button",{cls:"flowdesk-copy-related-path",text:target.kind === "repository" ? "复制原文件路径" : "复制原引用"});
+    const isFileTarget = target.kind === "repository" || target.kind === "vault";
+    const pathText = target.kind === "repository" ? target.absolutePath : target.kind === "vault" && target.resolvedPath ? path.join(context.vaultRoot,target.resolvedPath) : raw;
+    panel.createDiv({cls:"flowdesk-dashboard-section-title",text:isFileTarget ? "引用资料" : "引用定位缺口"});
+    panel.createDiv({cls:"flowdesk-muted",text:target.kind === "repository" ? `原文件：${pathText}；仓库引用：${target.repositoryPath}` : target.kind === "vault" ? `原文件：${pathText}` : target.reason});
+    if ((target.kind === "repository" || target.kind === "vault") && target.fragment) panel.createDiv({cls:"flowdesk-muted",text:`文件可定位，章节未验证（${target.fragment}）；打开整文件，不猜章节位置。`});
+    const copy = panel.createEl("button",{cls:"flowdesk-copy-related-path",text:isFileTarget ? "复制原文件路径" : "复制原引用"});
     copy.addEventListener("click",()=>{void navigator.clipboard.writeText(pathText);});
-    if (target.kind === "repository") {
+    if (isFileTarget) {
+      const reference = panel.createEl("button",{cls:"flowdesk-copy-related-reference",text:"复制原引用"});
+      reference.addEventListener("click",()=>{void navigator.clipboard.writeText(raw);});
+    }
+    if (target.kind === "repository" && /\.md$/i.test(path.extname(target.absolutePath))) {
       const documentPath = target.absolutePath;
       const result = panel.createDiv({cls:"flowdesk-repository-open-feedback",attr:{role:"status"},text:"点击后向 Obsidian 提交打开此原文件的请求。"});
       const openDocument = panel.createEl("button",{cls:"flowdesk-open-repository-document",text:"在 Obsidian 打开文档",attr:{"aria-label":"明确向指定Obsidian提交此Markdown原文件"}});
@@ -1383,6 +1418,8 @@ class FlowDeskDashboardView extends ItemView {
       const steps = `${pathText}\n在Obsidian命令面板选择 Open file from outside the vault…，选择此路径对应的原文件。`;
       panel.createDiv({cls:"flowdesk-muted",text:steps});
       const copySteps = panel.createEl("button",{text:"复制打开步骤"});copySteps.addEventListener("click",()=>{void navigator.clipboard.writeText(steps);});
+    } else if (isFileTarget && /\.json$/i.test(path.extname(pathText))) {
+      panel.createDiv({cls:"flowdesk-muted",text:"JSON资料仅提供准确路径与原引用；可通过关联的Markdown证据索引查看说明。"});
     }
   }
 

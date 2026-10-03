@@ -23,3 +23,96 @@ test("production adapter unsupported/missing/non-Markdown/app failure never call
   const timeout=await normal.open(file);assert.equal(timeout.kind,"unknown");assert.match(timeout.message,/超时|未知/);assert.equal(calls,1);
   const failing=new RepositoryMarkdownOpener({platform:"darwin",inspect:()=>valid,execute:async()=>{calls++;throw Error("owned rejection");}});assert.equal((await failing.open(file)).kind,"unknown");assert.equal(calls,2);
 });
+
+
+test("compiled_related_json_has_only_copy_and_external_fragment_opens_exact_markdown_base",async(t)=>{
+  const fixture=await ownedEnvironment(t);
+  const {compilePlugin}=await import("./support/owned-environment.ts");const {createRequire}=await import("node:module");
+  const {pathToFileURL}=await import("node:url");const {TestElement}=await import("./support/dom.ts");
+  const bundle=fixture.path("plugin.cjs");compilePlugin(bundle);const Plugin=createRequire(import.meta.url)(bundle).default;
+  const plugin=new Plugin(),root=new TestElement(),copied:string[]=[],calls:any[]=[];
+  plugin.app={vault:{adapter:{getBasePath:()=>fixture.env.OBSIDIAN_VAULT},on(){},getAbstractFileByPath(){return null;}},metadataCache:{on(){},getFirstLinkpathDest(){return null;}},workspace:{on(){},onLayoutReady(){}}};
+  await plugin.onload();const view=plugin.views.get("flowdesk-dashboard-view")({app:plugin.app,contentEl:root});t.after(()=>view.onClose());
+  const prior=Object.getOwnPropertyDescriptor(globalThis,"navigator");Object.defineProperty(globalThis,"navigator",{configurable:true,value:{clipboard:{writeText:async(text:string)=>{copied.push(text);}}}});
+  t.after(()=>{if(prior)Object.defineProperty(globalThis,"navigator",prior);else delete (globalThis as any).navigator;});
+  plugin.repositoryOpenDependencies={platform:"darwin",inspect:()=>({isFile:()=>true,isDirectory:()=>true}),execute:async(...args:any[])=>{calls.push(args);}};
+  const json=fixture.path("原始 evidence.json");writeFileSync(json,"{}");const jsonRef=`[原始证据](<${pathToFileURL(json).href}>)`;
+  await view.openRelated(jsonRef,"Tasks/Owned.md");
+  assert.equal(root.findByClass("flowdesk-open-repository-document").length,0,"JSON must not offer Markdown opener");
+  await root.findByClass("flowdesk-copy-related-path")[0].click();assert.equal(copied.pop(),json);
+  await root.findByClass("flowdesk-copy-related-reference")[0].click();assert.equal(copied.pop(),jsonRef);assert.equal(calls.length,0);
+  const markdown=fixture.path("中文 %23 #.md");writeFileSync(markdown,"# Heading");const raw=`[实施文档](<${pathToFileURL(markdown).href}#Heading>)`;
+  await view.openRelated(raw,"Tasks/Owned.md");assert.match(root.allText().join("\n"),/文件可定位.*章节未验证/);
+  await root.findByClass("flowdesk-copy-related-reference")[0].click();assert.equal(copied.pop(),raw);
+  await root.findByClass("flowdesk-open-repository-document")[0].click();
+  assert.deepEqual(calls,[["/usr/bin/open",["-a","/Applications/Obsidian.app",markdown],{timeoutMs:10000}]]);
+});
+
+
+test("compiled_file_url_vault_literal_percent_uses_confirmed_file_without_native_reparse",async(t)=>{
+  const fixture=await ownedEnvironment(t);const {compilePlugin}=await import("./support/owned-environment.ts");
+  const {createRequire}=await import("node:module");const {pathToFileURL}=await import("node:url");const path=await import("node:path");
+  const {TestElement}=await import("./support/dom.ts");const bundle=fixture.path("plugin.cjs");compilePlugin(bundle);
+  const Plugin=createRequire(import.meta.url)(bundle).default,plugin=new Plugin(),root=new TestElement();
+  const relative="Literal%23.md",file={path:relative,extension:"md"},absolute=path.join(fixture.env.OBSIDIAN_VAULT!,relative);writeFileSync(absolute,"# Heading");
+  const opened:any[]=[],linked:string[]=[],copied:string[]=[];
+  plugin.app={vault:{adapter:{getBasePath:()=>fixture.env.OBSIDIAN_VAULT},on(){},getAbstractFileByPath:(p:string)=>p===relative?file:null},metadataCache:{on(){},getFirstLinkpathDest(){return {path:"Wrong.md",extension:"md"};}},workspace:{on(){},onLayoutReady(){},getLeaf:()=>({openFile:async(f:any)=>{opened.push(f);}}),openLinkText:async(link:string)=>{linked.push(link);}}};
+  await plugin.onload();const view=plugin.views.get("flowdesk-dashboard-view")({app:plugin.app,contentEl:root});t.after(()=>view.onClose());
+  const prior=Object.getOwnPropertyDescriptor(globalThis,"navigator");Object.defineProperty(globalThis,"navigator",{configurable:true,value:{clipboard:{writeText:async(text:string)=>{copied.push(text);}}}});
+  t.after(()=>{if(prior)Object.defineProperty(globalThis,"navigator",prior);else delete (globalThis as any).navigator;});
+  await view.openRelated(pathToFileURL(absolute).href,"Tasks/Owned.md");assert.deepEqual(opened,[file]);assert.deepEqual(linked,[]);
+  const raw=`[准确资料](<${pathToFileURL(absolute).href}#Heading>)`;
+  await view.openRelated(raw,"Tasks/Owned.md");assert.deepEqual(opened,[file,file]);assert.deepEqual(linked,[]);assert.match(root.allText().join("\n"),/文件可定位.*章节未验证/);
+  await root.findByClass("flowdesk-copy-related-reference")[0].click();assert.equal(copied.pop(),raw);
+});
+
+
+test("review_compiled_raw_parenthesized_filename_keeps_original_identity",async(t)=>{
+  const fixture=await ownedEnvironment(t);const {compilePlugin}=await import("./support/owned-environment.ts");const {createRequire}=await import("node:module");
+  const {TestElement}=await import("./support/dom.ts");const path=await import("node:path");const bundle=fixture.path("plugin.cjs");compilePlugin(bundle);
+  const Plugin=createRequire(import.meta.url)(bundle).default,plugin=new Plugin(),root=new TestElement(),linked:string[]=[];
+  const raw="[owner](draft).md",file={path:raw,extension:"md"};writeFileSync(path.join(fixture.env.OBSIDIAN_VAULT!,raw),"owned original");
+  plugin.app={vault:{adapter:{getBasePath:()=>fixture.env.OBSIDIAN_VAULT},on(){},getAbstractFileByPath:(p:string)=>p===raw?file:null},metadataCache:{on(){},getFirstLinkpathDest(){return null;}},workspace:{on(){},onLayoutReady(){},openLinkText:async(link:string)=>{linked.push(link);}}};
+  await plugin.onload();const view=plugin.views.get("flowdesk-dashboard-view")({app:plugin.app,contentEl:root});t.after(()=>view.onClose());
+  await view.openRelated(raw,"Tasks/Owned.md");assert.deepEqual(linked,[raw]);assert.equal(root.findByClass("flowdesk-related-target").length,0);
+});
+
+test("review_compiled_wiki_and_raw_json_fragments_copy_exact_base_without_open",async(t)=>{
+  const fixture=await ownedEnvironment(t);const {compilePlugin}=await import("./support/owned-environment.ts");const {createRequire}=await import("node:module");
+  const {TestElement}=await import("./support/dom.ts");const path=await import("node:path");const bundle=fixture.path("plugin.cjs");compilePlugin(bundle);
+  const Plugin=createRequire(import.meta.url)(bundle).default,plugin=new Plugin(),root=new TestElement(),linked:string[]=[],opened:any[]=[],copied:string[]=[],executed:any[]=[];
+  const base="Notes/evidence.json",file={path:base,extension:"json"},absolute=path.join(fixture.env.OBSIDIAN_VAULT!,base);mkdirSync(path.dirname(absolute),{recursive:true});writeFileSync(absolute,"{}");
+  plugin.app={vault:{adapter:{getBasePath:()=>fixture.env.OBSIDIAN_VAULT},on(){},getAbstractFileByPath:(p:string)=>p===base?file:null},metadataCache:{on(){},getFirstLinkpathDest:(p:string,source:string)=>{assert.equal(source,"Tasks/Owned.md");return p===base?file:null;}},workspace:{on(){},onLayoutReady(){},openLinkText:async(link:string)=>{linked.push(link);},getLeaf:()=>({openFile:async(f:any)=>{opened.push(f);}})}};
+  await plugin.onload();const view=plugin.views.get("flowdesk-dashboard-view")({app:plugin.app,contentEl:root});t.after(()=>view.onClose());
+  plugin.repositoryOpenDependencies={platform:"darwin",inspect:()=>({isFile:()=>true,isDirectory:()=>true}),execute:async(...args:any[])=>{executed.push(args);}};
+  const prior=Object.getOwnPropertyDescriptor(globalThis,"navigator");Object.defineProperty(globalThis,"navigator",{configurable:true,value:{clipboard:{writeText:async(text:string)=>{copied.push(text);}}}});
+  t.after(()=>{if(prior)Object.defineProperty(globalThis,"navigator",prior);else delete (globalThis as any).navigator;});
+  for(const raw of ["[[Notes/evidence.json#Heading|证据]]","Notes/evidence.json#Heading","[[Notes/evidence.json#^block]]","Notes/evidence.json#^block"]){
+    await view.openRelated(raw,"Tasks/Owned.md");assert.deepEqual(linked,[],raw);assert.deepEqual(opened,[],raw);assert.equal(root.findByClass("flowdesk-open-repository-document").length,0);
+    await root.findByClass("flowdesk-copy-related-path")[0].click();assert.equal(copied.pop(),absolute);
+    await root.findByClass("flowdesk-copy-related-reference")[0].click();assert.equal(copied.pop(),raw);
+    assert.ok(root.allText().some(text=>text.includes(raw.includes("#^block")?"#^block":"#Heading")),"fragment retained separately from path");assert.match(root.allText().join("\n"),/JSON资料仅提供/);
+  }
+  assert.deepEqual(executed,[]);
+});
+
+
+test("compiled_missing_raw_absolute_trailing_space_only_copies_original_and_never_opens_decoy",async(t)=>{
+  const fixture=await ownedEnvironment(t),{compilePlugin}=await import("./support/owned-environment.ts"),{createRequire}=await import("node:module"),{TestElement}=await import("./support/dom.ts");
+  const bundle=fixture.path("plugin.cjs");compilePlugin(bundle);const Plugin=createRequire(import.meta.url)(bundle).default,plugin=new Plugin(),root=new TestElement(),copied:string[]=[],executed:any[]=[];
+  plugin.app={vault:{adapter:{getBasePath:()=>fixture.env.OBSIDIAN_VAULT},on(){},getAbstractFileByPath(){return null;}},metadataCache:{on(){},getFirstLinkpathDest(){return null;}},workspace:{on(){},onLayoutReady(){}}};await plugin.onload();
+  const view=plugin.views.get("flowdesk-dashboard-view")({app:plugin.app,contentEl:root});t.after(()=>view.onClose());
+  const prior=Object.getOwnPropertyDescriptor(globalThis,"navigator");Object.defineProperty(globalThis,"navigator",{configurable:true,value:{clipboard:{writeText:async(text:string)=>{copied.push(text);}}}});t.after(()=>{if(prior)Object.defineProperty(globalThis,"navigator",prior);else delete (globalThis as any).navigator;});
+  plugin.repositoryOpenDependencies={platform:"darwin",inspect:()=>({isFile:()=>true,isDirectory:()=>true}),execute:async(...args:any[])=>{executed.push(args);}};
+  const decoy=fixture.path("tail.md"),raw=decoy+" ";writeFileSync(decoy,"wrong trimmed target");await view.openRelated(raw,"Tasks/Owned.md");
+  assert.equal(root.findByClass("flowdesk-open-repository-document").length,0);await root.findByClass("flowdesk-copy-related-path")[0].click();assert.equal(copied.pop(),raw);assert.deepEqual(executed,[]);
+});
+
+
+test("compiled_literal_raw_vault_space_uses_confirmed_TFile_without_link_normalization",async(t)=>{
+  const fixture=await ownedEnvironment(t),{compilePlugin}=await import("./support/owned-environment.ts"),{createRequire}=await import("node:module"),{TestElement}=await import("./support/dom.ts"),path=await import("node:path");
+  const bundle=fixture.path("plugin.cjs");compilePlugin(bundle);const Plugin=createRequire(import.meta.url)(bundle).default,plugin=new Plugin(),root=new TestElement(),opened:any[]=[],linked:string[]=[];
+  const raw=" leading.md",literal={path:raw,extension:"md"},decoy={path:"leading.md",extension:"md"};for(const file of [literal,decoy])writeFileSync(path.join(fixture.env.OBSIDIAN_VAULT!,file.path),"owned original or decoy");
+  plugin.app={vault:{adapter:{getBasePath:()=>fixture.env.OBSIDIAN_VAULT},on(){},getAbstractFileByPath:(p:string)=>[literal,decoy].find(file=>file.path===p)??null},metadataCache:{on(){},getFirstLinkpathDest(){return decoy;}},workspace:{on(){},onLayoutReady(){},getLeaf:()=>({openFile:async(file:any)=>{opened.push(file);}}),openLinkText:async(link:string)=>{linked.push(link);}}};await plugin.onload();
+  const view=plugin.views.get("flowdesk-dashboard-view")({app:plugin.app,contentEl:root});t.after(()=>view.onClose());await view.openRelated(raw,"Tasks/Owned.md");assert.deepEqual(opened,[literal]);assert.deepEqual(linked,[]);
+});

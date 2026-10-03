@@ -1,4 +1,4 @@
-import type { TaskContent } from "./task-content";
+import { createTaskReadingSections, type TaskContent } from "./task-content";
 import type { SnapshotBodySection, SnapshotContractItem } from "./snapshot-model";
 
 export class TaskContentRenderer {
@@ -16,7 +16,10 @@ export class TaskContentRenderer {
     const source = (parent: HTMLElement, section: SnapshotBodySection) => {
       const button = parent.createEl("button", { cls: "flowdesk-content-source", text: section.source ? "打开这一条原文" : "打开任务原文", attr: { "aria-label": `${section.source ? "打开这一条原文" : "打开任务原文"}：${section.heading}` } });
       button.addEventListener("click", () => { void this.dependencies.openSource(content.taskId, section); });
-      if (section.source) parent.createDiv({ cls: "flowdesk-muted", text: `${section.source.section ?? section.heading}${section.source.line_start ? ` · API details 第 ${section.source.line_start} 行` : ""}` });
+      if (section.source) {
+        const line=section.source.line_start,reliable=typeof line==="number"&&Number.isInteger(line)&&line>0;
+        parent.createDiv({ cls: "flowdesk-muted", text: `${section.source.section ?? section.heading}${reliable ? ` · API details 第 ${line} 行` : " · API details 行位置未知"}` });
+      }
     };
     const section = (heading: string, text: string, original?: SnapshotBodySection, open = false, cls = "flowdesk-contract-item-details") => {
       const element = container.createEl("details", { cls });
@@ -41,10 +44,12 @@ export class TaskContentRenderer {
       const original = { heading: "验收原文条目", level: 2, text: item.text ?? item.label ?? "", source: item.source };
       section("验收原文条目（原文勾选）", `- [${item.checked ? "x" : " "}] ${original.text}`, original);
     }
-    for (const original of content.domainSections) section(original.heading, original.text, original);
-    for (const [kind, label] of [["execution", "执行"], ["verification", "验证"], ["delivery", "交付"]] as const) {
-      const rounds = content.records[kind];
-      rounds.forEach((original, index) => section(`${label} · ${original.heading}${original.timestamp ? ` · ${original.timestamp}` : ""}`, original.text, original, index === rounds.length - 1, "flowdesk-contract-item-details flowdesk-record-round"));
+    const reading = createTaskReadingSections(content);
+    if (!reading.orderComplete) container.createDiv({cls:"flowdesk-muted",text:"部分段落无可靠位置，完整顺序请查看 API 原文。"});
+    const labels = {domain:"正文",execution:"执行",verification:"验证",delivery:"交付"};
+    for (const {kind,section:original} of reading.sections) {
+      const heading = `${labels[kind]} · H${original.level} · ${original.heading}${original.timestamp ? ` · ${original.timestamp}` : ""}`;
+      section(heading, original.text, original, true, kind === "domain" ? "flowdesk-contract-item-details" : "flowdesk-contract-item-details flowdesk-record-round");
     }
   }
 }

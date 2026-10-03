@@ -237,6 +237,27 @@ var TrailingRefreshScheduler = class {
   }
 };
 
+// src/reference-text.ts
+function parseReferenceText(raw) {
+  const text2 = raw.trim();
+  const result = (target, label, syntax, error = null) => ({ target, label, syntax, error });
+  const wiki = text2.match(/^\[\[([^\]]+)\]\]$/);
+  if (wiki) {
+    const separator = wiki[1].indexOf("|");
+    return result(separator < 0 ? wiki[1] : wiki[1].slice(0, separator), separator < 0 ? null : wiki[1].slice(separator + 1).trim() || null, "wiki");
+  }
+  const markdown = text2.match(/^\[([\s\S]*)\]\(([\s\S]+)\)$/);
+  if (markdown) {
+    let target = markdown[2].trim();
+    if (target.startsWith("<") || target.endsWith(">")) {
+      if (!target.startsWith("<") || !target.endsWith(">")) return result(text2, markdown[1], "markdown", "\u5F15\u7528\u94FE\u63A5\u8BED\u6CD5\u65E0\u6548");
+      target = target.slice(1, -1);
+    }
+    return result(target, markdown[1].trim() || null, "markdown", target ? null : "\u5F15\u7528\u76EE\u6807\u4E3A\u7A7A");
+  }
+  return result(/^[a-z][a-z0-9+.-]*:/i.test(text2) ? text2 : raw, null, "raw");
+}
+
 // src/entity-presentation.ts
 function formatEntityStatus(kind, raw, statusIsCompleted) {
   var _a, _b;
@@ -278,12 +299,11 @@ function groupTaskRows(rows) {
   const rank = (row) => ["in-progress", "running"].includes(row.status.trim().toLowerCase()) ? 0 : row.isBlocked ? 1 : 2;
   return { current: current.map((row, index) => ({ row, index })).sort((a, b) => rank(a.row) - rank(b.row) || a.index - b.index).map((x) => x.row), history };
 }
-function formatReferenceLabel(target) {
-  const link = target.trim().replace(/^\[\[/, "").replace(/\]\]$/, "");
-  const alias = link.indexOf("|");
-  if (alias >= 0 && link.slice(alias + 1).trim()) return link.slice(alias + 1).trim();
-  const path6 = link.split("#")[0].replace(/\\/g, "/");
-  return (path6.split("/").pop() || path6).replace(/\.md$/i, "") || target;
+function formatReferenceLabel(raw) {
+  const parsed = parseReferenceText(raw);
+  if (parsed.label) return parsed.label;
+  const target = parsed.target.split("#")[0].replace(/\\/g, "/");
+  return (target.split("/").pop() || target).replace(/\.md$/i, "") || raw;
 }
 
 // src/dashboard-presentation.ts
@@ -570,14 +590,14 @@ function createProgressStatus(model) {
   }
   const ended = model.children.filter((child) => child.subtreeTerminal === true);
   const unfinished = model.children.filter((child) => child.subtreeTerminal === false);
-  const unknown = model.children.filter((child) => child.subtreeTerminal === null);
+  const unknown2 = model.children.filter((child) => child.subtreeTerminal === null);
   const blocked = unfinished.filter((child) => child.statusIsCompleted === false && child.isBlocked);
   const total = model.children.length;
   const allEnded = total > 0 && model.rollup.childrenTerminal === true && ended.length === total;
   return {
-    tone: blocked.length ? "error" : unknown.length || model.rollup.childrenTerminal === null ? "warning" : allEnded ? "healthy" : total ? "running" : "warning",
+    tone: blocked.length ? "error" : unknown2.length || model.rollup.childrenTerminal === null ? "warning" : allEnded ? "healthy" : total ? "running" : "warning",
     title: total ? `\u76F4\u63A5\u5B50\u4EFB\u52A1\uFF1A\u6210\u529F ${model.rollup.childrenTrustedDone}/${total} \xB7 \u5DF2\u7ED3\u675F ${ended.length}/${total}` : "\u672A\u89C2\u5BDF\u5230\u76F4\u63A5\u5B50\u4EFB\u52A1",
-    reason: blocked.length ? `${blocked.length} \u4E2A\u672A\u7ED3\u675F\u5B50\u4EFB\u52A1\u88AB\u963B\u585E\uFF1A${formatTaskReferences(blocked)}` : unknown.length ? `${unknown.length} \u4E2A\u5B50\u4EFB\u52A1\u7684\u5B50\u6811\u72B6\u6001\u672A\u77E5\uFF1A${formatTaskReferences(unknown)}` : unfinished.length ? `${unfinished.length} \u4E2A\u5B50\u4EFB\u52A1\u6216\u5176\u540E\u4EE3\u672A\u7ED3\u675F\uFF1A${formatTaskReferences(unfinished)}` : allEnded ? "\u76F4\u63A5\u5B50\u4EFB\u52A1\u53CA\u5176\u540E\u4EE3\u5747\u5DF2\u7ED3\u675F\uFF1B\u6210\u529F\u5B8C\u6210\u4E0E\u5F53\u524D\u4EFB\u52A1\u72B6\u6001\u72EC\u7ACB\u663E\u793A\u3002" : total ? "\u5B50\u4EFB\u52A1\u6C47\u603B\u72B6\u6001\u672A\u77E5\uFF0C\u9700\u6838\u5BF9\u6765\u6E90\u3002" : "\u672A\u89C2\u5BDF\u5230\u76F4\u63A5\u5B50\u4EFB\u52A1\uFF0C\u4E0D\u636E\u6B64\u5224\u5B9A\u7ED3\u675F\u3002",
+    reason: blocked.length ? `${blocked.length} \u4E2A\u672A\u7ED3\u675F\u5B50\u4EFB\u52A1\u88AB\u963B\u585E\uFF1A${formatTaskReferences(blocked)}` : unknown2.length ? `${unknown2.length} \u4E2A\u5B50\u4EFB\u52A1\u7684\u5B50\u6811\u72B6\u6001\u672A\u77E5\uFF1A${formatTaskReferences(unknown2)}` : unfinished.length ? `${unfinished.length} \u4E2A\u5B50\u4EFB\u52A1\u6216\u5176\u540E\u4EE3\u672A\u7ED3\u675F\uFF1A${formatTaskReferences(unfinished)}` : allEnded ? "\u76F4\u63A5\u5B50\u4EFB\u52A1\u53CA\u5176\u540E\u4EE3\u5747\u5DF2\u7ED3\u675F\uFF1B\u6210\u529F\u5B8C\u6210\u4E0E\u5F53\u524D\u4EFB\u52A1\u72B6\u6001\u72EC\u7ACB\u663E\u793A\u3002" : total ? "\u5B50\u4EFB\u52A1\u6C47\u603B\u72B6\u6001\u672A\u77E5\uFF0C\u9700\u6838\u5BF9\u6765\u6E90\u3002" : "\u672A\u89C2\u5BDF\u5230\u76F4\u63A5\u5B50\u4EFB\u52A1\uFF0C\u4E0D\u636E\u6B64\u5224\u5B9A\u7ED3\u675F\u3002",
     remediation: nextStep || "\u672A\u8BB0\u5F55\u4E0B\u4E00\u6B65",
     location: "\u76F4\u63A5\u5B50\u4EFB\u52A1",
     diagnostic: null
@@ -1041,59 +1061,116 @@ async function readTaskDetails({ taskPath, apiUrl, auth, signal }) {
   return { id: taskPath, details: value.details, ...value.contexts === void 0 ? {} : { contexts: Array.isArray(value.contexts) && value.contexts.every((x) => typeof x === "string") ? value.contexts : null }, source: { kind: "tasknotes-api", taskId: taskPath, readAt: (/* @__PURE__ */ new Date()).toISOString() } };
 }
 
-// src/task-content-renderer.ts
-var TaskContentRenderer = class {
-  constructor(dependencies) {
-    this.dependencies = dependencies;
+// src/task-current-progress.ts
+var unknown = (gap) => ({ status: "unknown", progress: null, next: null, timestamp: null, source: null, gaps: [gap] });
+function instant(value) {
+  var _a;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!match) return null;
+  const [year, month, day, hour, minute, second] = match.slice(1, 7).map(Number);
+  const calendar = /* @__PURE__ */ new Date(0);
+  calendar.setUTCFullYear(year, month - 1, day);
+  if (calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 || calendar.getUTCDate() !== day || hour > 23 || minute > 59 || second > 59) return null;
+  const offset = match[8];
+  if (offset !== "Z" && (Number(offset.slice(1, 3)) > 23 || Number(offset.slice(4)) > 59)) return null;
+  const epoch = Date.parse(`${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}${offset}`);
+  return Number.isFinite(epoch) ? { seconds: epoch / 1e3, fraction: ((_a = match[7]) != null ? _a : "").replace(/0+$/, "") } : null;
+}
+function compare(a, b) {
+  if (a.seconds !== b.seconds) return a.seconds - b.seconds;
+  const length = Math.max(a.fraction.length, b.fraction.length), left = a.fraction.padEnd(length, "0"), right = b.fraction.padEnd(length, "0");
+  return left === right ? 0 : left < right ? -1 : 1;
+}
+function fenceScan(lines) {
+  const outside = [];
+  let fence = null;
+  for (const [index, line] of lines.entries()) {
+    outside.push(fence === null);
+    const visible = !fence && (index === 0 || line.startsWith("\u4E0B\u4E00\u6B65\uFF1A")) ? line.replace(/^(?:进展|完成|下一步)：/, "") : line;
+    const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(visible);
+    if (!marker) continue;
+    if (!fence) fence = { marker: marker[1][0], length: marker[1].length };
+    else if (marker[1][0] === fence.marker && marker[1].length >= fence.length && !marker[2].trim()) fence = null;
   }
-  render(container, content) {
-    var _a, _b;
-    const body = (parent, text2) => {
-      const element = parent.createDiv({ cls: "flowdesk-contract-scope-markdown markdown-rendered" });
-      void this.dependencies.renderMarkdown(text2, element, content.taskId).catch(() => {
-        element.setText(text2);
-      });
-    };
-    const source = (parent, section3) => {
-      var _a2;
-      const button = parent.createEl("button", { cls: "flowdesk-content-source", text: section3.source ? "\u6253\u5F00\u8FD9\u4E00\u6761\u539F\u6587" : "\u6253\u5F00\u4EFB\u52A1\u539F\u6587", attr: { "aria-label": `${section3.source ? "\u6253\u5F00\u8FD9\u4E00\u6761\u539F\u6587" : "\u6253\u5F00\u4EFB\u52A1\u539F\u6587"}\uFF1A${section3.heading}` } });
-      button.addEventListener("click", () => {
-        void this.dependencies.openSource(content.taskId, section3);
-      });
-      if (section3.source) parent.createDiv({ cls: "flowdesk-muted", text: `${(_a2 = section3.source.section) != null ? _a2 : section3.heading}${section3.source.line_start ? ` \xB7 API details \u7B2C ${section3.source.line_start} \u884C` : ""}` });
-    };
-    const section2 = (heading, text2, original, open = false, cls = "flowdesk-contract-item-details") => {
-      const element = container.createEl("details", { cls });
-      element.open = open;
-      element.createEl("summary", { text: heading });
-      if (text2) body(element, text2);
-      else element.createDiv({ cls: "flowdesk-muted", text: "\u6295\u5F71\u672A\u63D0\u4F9B\u5185\u5BB9\uFF1B\u53EF\u67E5\u770B\u5B8C\u6574 API \u539F\u6587\u3002" });
-      source(element, original != null ? original : { heading, level: 2, text: text2 });
-    };
-    for (const [heading, text2] of [["\u76EE\u6807", content.goal], ["\u80CC\u666F", content.why], ["\u8303\u56F4", content.scopeText], ["\u6267\u884C\u6E05\u5355", content.steps]]) {
-      if (text2 || heading === "\u8303\u56F4") section2(heading, text2, void 0, heading === "\u76EE\u6807");
+  return { outside, closed: fence === null };
+}
+function parseEvent(event) {
+  var _a, _b, _c;
+  const time = event.timestamp === null ? null : instant(event.timestamp), scan = fenceScan(event.lines);
+  if (!scan.closed) return null;
+  const fields = (prefix) => event.lines.flatMap((line, index) => scan.outside[index] && line.startsWith(prefix) ? [index] : []);
+  const operations = fields("\u64CD\u4F5C\uFF1A"), nexts = fields("\u4E0B\u4E00\u6B65\uFF1A");
+  if (operations.length > 1 || nexts.length > 1 || operations.length === 1 && event.lines.slice(operations[0] + 1).some((line) => line.trim()) || nexts[0] === 0) return null;
+  const end = (_a = operations[0]) != null ? _a : event.lines.length, nextIndex = nexts[0];
+  if (nextIndex !== void 0 && nextIndex >= end) return null;
+  const progressLines = event.lines.slice(0, nextIndex != null ? nextIndex : end);
+  progressLines[0] = (_c = (_b = progressLines[0]) == null ? void 0 : _b.replace(/^(?:进展|完成)：/, "")) != null ? _c : "";
+  const progress = progressLines.join("\n");
+  const next = nextIndex === void 0 ? null : [event.lines[nextIndex].slice("\u4E0B\u4E00\u6B65\uFF1A".length), ...event.lines.slice(nextIndex + 1, end)].join("\n");
+  return progress.trim() && (next === null || next.trim()) ? { progress, next, time } : null;
+}
+function createTaskCurrentProgress(content, context) {
+  var _a, _b;
+  if (!context.observationHealthy) return unknown("snapshot \u89C2\u6D4B\u6709\u7F3A\u53E3\u6216\u5DF2\u8FC7\u671F\uFF1B\u5F53\u524D\u8FDB\u5C55 unknown\u3002");
+  const sections = content.domainSections.filter((section3) => section3.level === 2 && section3.heading === "Progress");
+  if (sections.length !== 1) return unknown(sections.length ? "Progress \u6BB5\u4E0D\u552F\u4E00\uFF1B\u5F53\u524D\u8FDB\u5C55 unknown\u3002" : "snapshot \u672A\u63D0\u4F9B\u5B8C\u6574 canonical Progress\uFF1B\u53EF\u4E3B\u52A8\u8BFB\u53D6 API \u539F\u6587\u3002");
+  const section2 = sections[0], source = section2.source, start = source == null ? void 0 : source.line_start, end = source == null ? void 0 : source.line_end;
+  if (typeof start !== "number" || typeof end !== "number" || !Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || (source == null ? void 0 : source.truncated) === true || (source == null ? void 0 : source.omitted) === true) return unknown("Progress \u6765\u6E90\u8303\u56F4\u7F3A\u5931\u6216\u660E\u786E\u4E0D\u5B8C\u6574\uFF1B\u5F53\u524D\u8FDB\u5C55 unknown\u3002");
+  const lines = section2.text.replace(/\r\n/g, "\n").split("\n");
+  const boundary = lines.findIndex((line) => line.startsWith("<!-- flowdesk.task-update/"));
+  if (boundary >= 0) {
+    if (lines.slice(boundary).some((line) => line.trim() && !/^<!-- flowdesk\.task-update\/.* -->$/.test(line))) return unknown("Progress \u5C3E\u90E8\u7ED3\u6784\u4E0D\u5B8C\u6574\uFF1B\u5F53\u524D\u8FDB\u5C55 unknown\u3002");
+    lines.splice(boundary);
+  }
+  while (lines.length && !lines[0].trim()) lines.shift();
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  if (lines[0] !== "> [!faq]- \u8BE6\u7EC6\u8FC7\u7A0B\u65E5\u5FD7" || lines.filter((line) => line === "> [!faq]- \u8BE6\u7EC6\u8FC7\u7A0B\u65E5\u5FD7").length !== 1) return unknown("Progress callout \u7F3A\u5931\u3001\u91CD\u590D\u6216\u7ED3\u6784\u7834\u635F\uFF1B\u5F53\u524D\u8FDB\u5C55 unknown\u3002");
+  const events = [];
+  for (let index = 1; index < lines.length; index++) {
+    const line = lines[index], match = /^> - \[x\] (.*)$/.exec(line);
+    if (match) {
+      const dated = /^`([^`]*)`(?: (.*))?$/.exec(match[1]);
+      events.push({ timestamp: dated ? dated[1] : null, lines: [dated ? (_a = dated[2]) != null ? _a : "" : match[1]] });
+      continue;
     }
-    const items = (heading, entries) => {
-      var _a2, _b2, _c, _d;
-      for (const item of entries) {
-        const original = { heading, level: 2, text: (_b2 = (_a2 = item.text) != null ? _a2 : item.label) != null ? _b2 : "", source: item.source };
-        const id = (_d = (_c = item.uid) != null ? _c : item.id) != null ? _d : "";
-        section2(`${heading}${id ? ` \xB7 ${id}` : ""}`, original.text, original);
+    if (!line.trim() || !events.length && /^> *$/.test(line)) {
+      let following = index + 1;
+      while (following < lines.length && (!lines[following].trim() || /^> *$/.test(lines[following]))) following++;
+      if (/^> - \[x\] /.test((_b = lines[following]) != null ? _b : "") && (!events.length || fenceScan(events[events.length - 1].lines).closed)) {
+        index = following - 1;
+        continue;
       }
-    };
-    items("\u9700\u6C42\u539F\u6587\u6761\u76EE", content.requirements);
-    items("\u573A\u666F\u539F\u6587\u6761\u76EE", content.scenarios);
-    for (const item of content.acceptance) {
-      const original = { heading: "\u9A8C\u6536\u539F\u6587\u6761\u76EE", level: 2, text: (_b = (_a = item.text) != null ? _a : item.label) != null ? _b : "", source: item.source };
-      section2("\u9A8C\u6536\u539F\u6587\u6761\u76EE\uFF08\u539F\u6587\u52FE\u9009\uFF09", `- [${item.checked ? "x" : " "}] ${original.text}`, original);
+      return unknown("Progress \u4E8B\u4EF6\u6216\u7EED\u884C\u7ED3\u6784\u4E0D\u5B8C\u6574\uFF1B\u5F53\u524D\u8FDB\u5C55 unknown\u3002");
     }
-    for (const original of content.domainSections) section2(original.heading, original.text, original);
-    for (const [kind, label] of [["execution", "\u6267\u884C"], ["verification", "\u9A8C\u8BC1"], ["delivery", "\u4EA4\u4ED8"]]) {
-      const rounds = content.records[kind];
-      rounds.forEach((original, index) => section2(`${label} \xB7 ${original.heading}${original.timestamp ? ` \xB7 ${original.timestamp}` : ""}`, original.text, original, index === rounds.length - 1, "flowdesk-contract-item-details flowdesk-record-round"));
-    }
+    if (!events.length || line !== ">" && !line.startsWith(">   ")) return unknown("Progress \u4E8B\u4EF6\u6216\u7EED\u884C\u7ED3\u6784\u4E0D\u5B8C\u6574\uFF1B\u5F53\u524D\u8FDB\u5C55 unknown\u3002");
+    events[events.length - 1].lines.push(line === ">" ? "" : line.slice(4));
   }
-};
+  if (!events.length) return unknown("Progress \u6CA1\u6709\u53EF\u6838\u5BF9\u65E5\u671F\u7684\u4E8B\u4EF6\uFF1B\u5F53\u524D\u8FDB\u5C55 unknown\u3002");
+  const parsed = events.map((event) => ({ event, value: parseEvent(event) }));
+  if (parsed.some((item) => !item.value)) return unknown("Progress \u5B57\u6BB5\u6216 Markdown \u56F4\u680F\u6709\u7F3A\u53E3\uFF1B\u5F53\u524D\u8FDB\u5C55 unknown\u3002");
+  const readable = parsed;
+  const valid = readable.filter((item) => item.value.time !== null);
+  if (!valid.length) return unknown("Progress \u65E5\u671F\u4E0D\u5B8C\u6574\uFF0C\u6CA1\u6709\u53EF\u6BD4\u8F83\u65E5\u671F\u7684\u7247\u6BB5\uFF1B\u6700\u65B0\u6027\u672A\u77E5\uFF0C\u4E0D\u5C55\u793A\u5F53\u524D Next\u3002");
+  const observedAt = instant(context.observedAt);
+  if (!observedAt) return unknown("snapshot \u89C2\u6D4B\u65F6\u95F4\u7F3A\u5931\u6216\u4E0D\u53EF\u6BD4\u8F83\uFF1B\u5F53\u524D\u8FDB\u5C55 unknown\u3002");
+  if (valid.some((item) => compare(item.value.time, observedAt) > 0)) return unknown("Progress \u542B\u672A\u6765\u65E5\u671F\uFF1B\u5F53\u524D\u8FDB\u5C55 unknown\u3002");
+  const byInstant = /* @__PURE__ */ new Map();
+  for (const { value } of valid) {
+    const key = `${value.time.seconds}:${value.time.fraction}`, previous = byInstant.get(key);
+    if (previous && (previous.progress !== value.progress || previous.next !== value.next)) return unknown("\u540C\u4E00\u65F6\u523B\u7684 Progress \u5185\u5BB9\u51B2\u7A81\uFF1B\u5F53\u524D\u8FDB\u5C55 unknown\u3002");
+    byInstant.set(key, value);
+  }
+  const latest = valid.reduce((a, b) => compare(a.value.time, b.value.time) > 0 ? a : b);
+  if (valid.length !== readable.length) {
+    const gaps2 = ["Progress \u65E5\u671F\u6709\u7F3A\u53E3\uFF1B\u4EC5\u5C55\u793A\u53EF\u6BD4\u8F83\u65E5\u671F\u4E2D\u6700\u8FD1\u7684\u7247\u6BB5\uFF0C\u6700\u65B0\u6027\u672A\u77E5\uFF1B\u4E0D\u5C55\u793A\u5F53\u524D Next\u3002"];
+    if (context.statusIsCompleted === null) gaps2.push("\u751F\u547D\u5468\u671F\u672A\u77E5\u3002");
+    return { status: "unknown", progress: latest.value.progress, next: null, timestamp: latest.event.timestamp, source, gaps: gaps2 };
+  }
+  const status = context.statusIsCompleted === true ? "historical" : context.statusIsCompleted === false ? "current" : "unknown";
+  const next = status === "current" ? latest.value.next : null;
+  const gaps = status === "unknown" ? ["\u751F\u547D\u5468\u671F\u672A\u77E5\uFF1B\u4E0D\u5C55\u793A\u5F53\u524D Next\u3002"] : status === "current" && next === null ? ["\u8BE5\u6B21 Progress \u672A\u63D0\u4F9B Next\u3002"] : [];
+  return { status, progress: latest.value.progress, next, timestamp: latest.event.timestamp, source, gaps };
+}
 
 // src/task-content.ts
 var text = (value) => typeof value === "string" ? value : "";
@@ -1139,6 +1216,83 @@ function rawContentDiffers(content, observation, snapshot) {
   ];
   return fragments.some((x) => normalize2(x) !== "" && !details.includes(normalize2(x)));
 }
+function createTaskReadingSections(content) {
+  const entries = [
+    ...content.domainSections.map((section2) => ({ kind: "domain", section: section2 })),
+    ...["execution", "verification", "delivery"].flatMap((kind) => content.records[kind].map((section2) => ({ kind, section: section2 })))
+  ];
+  const position = (entry) => {
+    var _a;
+    const line = (_a = entry.section.source) == null ? void 0 : _a.line_start;
+    return typeof line === "number" && Number.isInteger(line) && line > 0 ? line : null;
+  };
+  return {
+    orderComplete: entries.every((entry) => position(entry) !== null),
+    sections: entries.map((entry, index) => ({ entry, index, line: position(entry) })).sort((a, b) => {
+      if (a.line === null || b.line === null) return a.line === b.line ? a.index - b.index : a.line === null ? 1 : -1;
+      return a.line - b.line || a.index - b.index;
+    }).map((item) => item.entry)
+  };
+}
+
+// src/task-content-renderer.ts
+var TaskContentRenderer = class {
+  constructor(dependencies) {
+    this.dependencies = dependencies;
+  }
+  render(container, content) {
+    var _a, _b;
+    const body = (parent, text2) => {
+      const element = parent.createDiv({ cls: "flowdesk-contract-scope-markdown markdown-rendered" });
+      void this.dependencies.renderMarkdown(text2, element, content.taskId).catch(() => {
+        element.setText(text2);
+      });
+    };
+    const source = (parent, section3) => {
+      var _a2;
+      const button = parent.createEl("button", { cls: "flowdesk-content-source", text: section3.source ? "\u6253\u5F00\u8FD9\u4E00\u6761\u539F\u6587" : "\u6253\u5F00\u4EFB\u52A1\u539F\u6587", attr: { "aria-label": `${section3.source ? "\u6253\u5F00\u8FD9\u4E00\u6761\u539F\u6587" : "\u6253\u5F00\u4EFB\u52A1\u539F\u6587"}\uFF1A${section3.heading}` } });
+      button.addEventListener("click", () => {
+        void this.dependencies.openSource(content.taskId, section3);
+      });
+      if (section3.source) {
+        const line = section3.source.line_start, reliable = typeof line === "number" && Number.isInteger(line) && line > 0;
+        parent.createDiv({ cls: "flowdesk-muted", text: `${(_a2 = section3.source.section) != null ? _a2 : section3.heading}${reliable ? ` \xB7 API details \u7B2C ${line} \u884C` : " \xB7 API details \u884C\u4F4D\u7F6E\u672A\u77E5"}` });
+      }
+    };
+    const section2 = (heading, text2, original, open = false, cls = "flowdesk-contract-item-details") => {
+      const element = container.createEl("details", { cls });
+      element.open = open;
+      element.createEl("summary", { text: heading });
+      if (text2) body(element, text2);
+      else element.createDiv({ cls: "flowdesk-muted", text: "\u6295\u5F71\u672A\u63D0\u4F9B\u5185\u5BB9\uFF1B\u53EF\u67E5\u770B\u5B8C\u6574 API \u539F\u6587\u3002" });
+      source(element, original != null ? original : { heading, level: 2, text: text2 });
+    };
+    for (const [heading, text2] of [["\u76EE\u6807", content.goal], ["\u80CC\u666F", content.why], ["\u8303\u56F4", content.scopeText], ["\u6267\u884C\u6E05\u5355", content.steps]]) {
+      if (text2 || heading === "\u8303\u56F4") section2(heading, text2, void 0, heading === "\u76EE\u6807");
+    }
+    const items = (heading, entries) => {
+      var _a2, _b2, _c, _d;
+      for (const item of entries) {
+        const original = { heading, level: 2, text: (_b2 = (_a2 = item.text) != null ? _a2 : item.label) != null ? _b2 : "", source: item.source };
+        const id = (_d = (_c = item.uid) != null ? _c : item.id) != null ? _d : "";
+        section2(`${heading}${id ? ` \xB7 ${id}` : ""}`, original.text, original);
+      }
+    };
+    items("\u9700\u6C42\u539F\u6587\u6761\u76EE", content.requirements);
+    items("\u573A\u666F\u539F\u6587\u6761\u76EE", content.scenarios);
+    for (const item of content.acceptance) {
+      const original = { heading: "\u9A8C\u6536\u539F\u6587\u6761\u76EE", level: 2, text: (_b = (_a = item.text) != null ? _a : item.label) != null ? _b : "", source: item.source };
+      section2("\u9A8C\u6536\u539F\u6587\u6761\u76EE\uFF08\u539F\u6587\u52FE\u9009\uFF09", `- [${item.checked ? "x" : " "}] ${original.text}`, original);
+    }
+    const reading = createTaskReadingSections(content);
+    if (!reading.orderComplete) container.createDiv({ cls: "flowdesk-muted", text: "\u90E8\u5206\u6BB5\u843D\u65E0\u53EF\u9760\u4F4D\u7F6E\uFF0C\u5B8C\u6574\u987A\u5E8F\u8BF7\u67E5\u770B API \u539F\u6587\u3002" });
+    const labels = { domain: "\u6B63\u6587", execution: "\u6267\u884C", verification: "\u9A8C\u8BC1", delivery: "\u4EA4\u4ED8" };
+    for (const { kind, section: original } of reading.sections) {
+      const heading = `${labels[kind]} \xB7 H${original.level} \xB7 ${original.heading}${original.timestamp ? ` \xB7 ${original.timestamp}` : ""}`;
+      section2(heading, original.text, original, true, kind === "domain" ? "flowdesk-contract-item-details" : "flowdesk-contract-item-details flowdesk-record-round");
+    }
+  }
+};
 
 // src/snapshot-model.ts
 function createDashboardViewModel(value, options = {}) {
@@ -2590,20 +2744,13 @@ function locateTaskSource(fileText, details, section2) {
   return { kind: "line", editorLine: offset + startLine - 1 };
 }
 function resolveRelatedTarget(raw, context) {
-  var _a, _b, _c;
-  let target = raw.trim(), label = target;
+  var _a;
+  const parsed = parseReferenceText(raw);
+  let target = parsed.target;
+  const label = (_a = parsed.label) != null ? _a : target;
   const unavailable = (reason) => ({ kind: "unavailable", label, reason });
-  const wiki = target.match(/^\[\[([^\]]+)\]\]$/);
-  if (wiki) {
-    const parts = wiki[1].split("|");
-    return { kind: "vault", linkText: parts[0], label: (_a = parts[1]) != null ? _a : parts[0] };
-  }
-  const markdown = target.match(/^\[([^\]]*)\]\((.+)\)$/);
-  if (markdown) {
-    label = markdown[1];
-    target = markdown[2];
-    if (target.startsWith("<") && target.endsWith(">")) target = target.slice(1, -1);
-  }
+  if (parsed.error) return unavailable(parsed.error);
+  if (parsed.syntax === "wiki") return { kind: "vault", linkText: target, label };
   if (/^https?:\/\//i.test(target)) {
     try {
       const url = new URL(target);
@@ -2612,21 +2759,37 @@ function resolveRelatedTarget(raw, context) {
       return unavailable("\u7F51\u9875\u94FE\u63A5\u65E0\u6548");
     }
   }
+  let explicitFileUrl, fragment;
   if (/^file:/i.test(target)) {
     try {
-      target = (0, import_url.fileURLToPath)(target);
+      const url = new URL(target);
+      if (target.split("#", 1)[0].includes("?")) return unavailable("\u6587\u4EF6URL\u67E5\u8BE2\u53C2\u6570\u65E0\u6548\uFF1B\u4FDD\u7559\u539F\u5F15\u7528\u6838\u5BF9");
+      if (url.hostname && url.hostname !== "localhost") return unavailable("\u6587\u4EF6URL\u4E0D\u5C5E\u4E8E\u672C\u673A\u6587\u4EF6\u7CFB\u7EDF");
+      fragment = url.hash || void 0;
+      if (fragment) decodeURIComponent(fragment.slice(1));
+      explicitFileUrl = url.href;
+      target = (0, import_url.fileURLToPath)(url);
+      if (target.includes("\0")) return unavailable("\u6587\u4EF6URL\u8DEF\u5F84\u65E0\u6548");
     } catch (e) {
-      return unavailable("\u6587\u4EF6URL\u65E0\u6548\u6216\u4E0D\u5C5E\u4E8E\u672C\u673A\u6587\u4EF6\u7CFB\u7EDF");
+      return unavailable("\u6587\u4EF6URL\u65E0\u6548\u3001\u7F16\u7801\u975E\u6CD5\u6216\u4E0D\u5C5E\u4E8E\u672C\u673A\u6587\u4EF6\u7CFB\u7EDF");
     }
   } else if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return unavailable("\u5F53\u524D\u4E0D\u652F\u6301\u6B64\u94FE\u63A5\u7C7B\u578B");
+  const literalWhitespace = !explicitFileUrl && parsed.syntax === "raw" && target !== target.trim();
   if (!path3.isAbsolute(target)) {
     let decoded = target;
     try {
       decoded = decodeURIComponent(target);
     } catch (e) {
     }
-    const exactResolution = (_b = context.resolveVaultLink) == null ? void 0 : _b.call(context, target);
-    const decodedResolution = !exactResolution && decoded !== target ? (_c = context.resolveVaultLink) == null ? void 0 : _c.call(context, decoded) : null;
+    const resolveVaultCandidate = (candidate) => {
+      var _a2;
+      const resolved = (_a2 = context.resolveVaultLink) == null ? void 0 : _a2.call(context, candidate);
+      if (!resolved) return null;
+      if (literalWhitespace && path3.posix.normalize(candidate) !== resolved && path3.posix.normalize(path3.posix.join(path3.posix.dirname(context.casePath), candidate)) !== resolved) return null;
+      return resolved;
+    };
+    const exactResolution = resolveVaultCandidate(target);
+    const decodedResolution = !exactResolution && decoded !== target ? resolveVaultCandidate(decoded) : null;
     const resolvedPath = exactResolution || decodedResolution;
     if (resolvedPath) {
       const linkText = exactResolution ? target : decoded;
@@ -2634,12 +2797,12 @@ function resolveRelatedTarget(raw, context) {
       return { kind: "vault", linkText, label, resolvedPath, exactFile };
     }
   }
-  if (/^(?:Notes|Tasks|TaskNotes)\//.test(target) || target.startsWith("#")) return { kind: "vault", linkText: target, label };
+  if (!literalWhitespace && /^(?:Notes|Tasks|TaskNotes)\//.test(target) || target.startsWith("#")) return { kind: "vault", linkText: target, label };
   if (!target || !path3.isAbsolute(target) && !/[./\\]/.test(target)) return unavailable("\u5F15\u7528\u6CA1\u6709\u660E\u786Evault\u6216\u4ED3\u5E93\u6765\u6E90\uFF1B\u53EF\u590D\u5236\u539F\u5F15\u7528\u6838\u5BF9");
   if (!path3.isAbsolute(target) && (!context.cwd || !path3.isAbsolute(context.cwd))) return unavailable("\u7F3A\u5C11\u552F\u4E00\u660E\u786E\u7684Case cwd\uFF0C\u4E0D\u80FD\u5B9A\u4F4D\u4ED3\u5E93\u76F8\u5BF9\u8DEF\u5F84");
   if (!path3.isAbsolute(target) && !(0, import_fs.existsSync)(context.cwd)) return unavailable("Case checkout\u76EE\u5F55\u5728\u672C\u673A\u4E0D\u5B58\u5728");
   let absolutePath = path3.isAbsolute(target) ? path3.normalize(target) : path3.resolve(context.cwd, target);
-  if (!(0, import_fs.existsSync)(absolutePath) && /%[0-9a-f]{2}/i.test(target)) {
+  if (!explicitFileUrl && !(0, import_fs.existsSync)(absolutePath) && /%[0-9a-f]{2}/i.test(target)) {
     try {
       const decoded = decodeURIComponent(target);
       absolutePath = path3.isAbsolute(decoded) ? path3.normalize(decoded) : path3.resolve(context.cwd, decoded);
@@ -2647,15 +2810,18 @@ function resolveRelatedTarget(raw, context) {
       return unavailable("\u6587\u4EF6\u8DEF\u5F84\u7F16\u7801\u65E0\u6548");
     }
   }
-  const vaultRelative = path3.relative(context.vaultRoot, absolutePath);
-  if (vaultRelative && !vaultRelative.startsWith(".." + path3.sep) && vaultRelative !== ".." && !path3.isAbsolute(vaultRelative)) return { kind: "vault", linkText: vaultRelative.split(path3.sep).join("/"), label, resolvedPath: vaultRelative.split(path3.sep).join("/"), exactFile: true };
-  if (!(0, import_fs.existsSync)(absolutePath)) return unavailable(`\u4ED3\u5E93\u6587\u4EF6\u5728\u672C\u673A\u4E0D\u5B58\u5728\uFF1A${absolutePath}`);
+  if (!(0, import_fs.existsSync)(absolutePath)) return unavailable(`\u6587\u4EF6\u5728\u672C\u673A\u4E0D\u5B58\u5728\uFF1A${absolutePath}`);
   try {
     if (!(0, import_fs.statSync)(absolutePath).isFile()) return unavailable(`\u5F15\u7528\u4E0D\u662F\u6587\u4EF6\uFF1A${absolutePath}`);
   } catch (e) {
-    return unavailable(`\u65E0\u6CD5\u786E\u8BA4\u4ED3\u5E93\u6587\u4EF6\uFF1A${absolutePath}`);
+    return unavailable(`\u65E0\u6CD5\u786E\u8BA4\u539F\u6587\u4EF6\uFF1A${absolutePath}`);
   }
-  return { kind: "repository", absolutePath, repositoryPath: context.cwd ? path3.relative(context.cwd, absolutePath) : target, label, fileUrl: (0, import_url.pathToFileURL)(absolutePath).href };
+  const vaultRelative = path3.relative(context.vaultRoot, absolutePath);
+  if (vaultRelative && !vaultRelative.startsWith(".." + path3.sep) && vaultRelative !== ".." && !path3.isAbsolute(vaultRelative)) {
+    const resolvedPath = vaultRelative.split(path3.sep).join("/");
+    return { kind: "vault", linkText: resolvedPath + (fragment ? "#" + decodeURIComponent(fragment.slice(1)) : ""), label, resolvedPath, exactFile: true, ...explicitFileUrl ? { fileUrl: explicitFileUrl } : {}, ...fragment ? { fragment } : {} };
+  }
+  return { kind: "repository", absolutePath, repositoryPath: context.cwd ? path3.relative(context.cwd, absolutePath) : target, label, fileUrl: explicitFileUrl != null ? explicitFileUrl : (0, import_url.pathToFileURL)(absolutePath).href, ...fragment ? { fragment } : {} };
 }
 function buildRepositoryOpenInvocation(target, platform) {
   if (platform !== "darwin" || !path3.isAbsolute(target.absolutePath)) return null;
@@ -3386,6 +3552,31 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     const presentation = createDashboardPresentation(model);
     this.renderHeader(container, model, presentation);
     this.renderTrustStrip(container, presentation.trust);
+    const current = createTaskCurrentProgress(model.content, {
+      statusIsCompleted: model.currentTask.statusIsCompleted,
+      observedAt: model.observation.generatedAt,
+      observationHealthy: model.observation.isTrustworthy && !model.observation.isStale && !state.error && !model.diagnostics.some((diagnostic) => /truncat|body_omitted|progress_omitted|response_too_large/i.test(diagnostic.code))
+    });
+    const progressPanel = container.createDiv({ cls: "flowdesk-task-current-progress flowdesk-dashboard-section" });
+    progressPanel.createDiv({ cls: "flowdesk-dashboard-section-title", text: current.status === "historical" ? "\u6700\u8FD1 Progress\uFF08\u5386\u53F2\uFF09" : current.status === "current" ? "\u5F53\u524D Progress / Next" : current.progress ? "Progress \u7247\u6BB5\uFF08\u5F53\u524D\u6027\u672A\u786E\u8BA4\uFF09" : "\u5F53\u524D Progress\uFF1Aunknown" });
+    if (current.timestamp) progressPanel.createDiv({ cls: "flowdesk-muted", text: `\u4E8B\u4EF6\u65F6\u95F4\uFF1A${current.timestamp} \xB7 snapshot \u751F\u6210\u4E8E ${model.observation.generatedAt}` });
+    for (const [field, text2] of [["progress", current.progress], ["next", current.next]]) {
+      if (text2 === null) continue;
+      if (field === "next") progressPanel.createDiv({ cls: "flowdesk-summary-label", text: "Next\uFF08\u4EC5\u5C55\u793A\uFF09" });
+      const body = progressPanel.createDiv({ cls: "flowdesk-contract-scope-markdown markdown-rendered", attr: { "data-current-field": field } });
+      void this.renderSourceMarkdown(text2, body, model.currentTask.id).catch(() => {
+        body.setText(text2);
+      });
+    }
+    for (const gap of current.gaps) progressPanel.createDiv({ cls: "flowdesk-muted", text: gap });
+    if (current.source) {
+      const source = progressPanel.createEl("button", { cls: "flowdesk-content-source", text: "\u6253\u5F00 Progress \u539F\u6587" });
+      const projected = model.content.domainSections.find((section2) => section2.level === 2 && section2.heading === "Progress");
+      source.addEventListener("click", () => {
+        var _a;
+        void this.openSnapshotSource(model.currentTask.id, current.source, "Progress", (_a = projected == null ? void 0 : projected.text) != null ? _a : "");
+      });
+    }
     this.renderPrimaryDiagnostic(
       container,
       presentation.primaryStatus,
@@ -4045,7 +4236,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     view.editor.focus();
   }
   async openRelated(raw, sourcePath, sourceError) {
-    var _a, _b;
+    var _a, _b, _c, _d, _e;
     const request = this.beginNavigation();
     let context = { casePath: sourcePath, cwd: null, vaultRoot: this.plugin.vaultRoot(), resolveVaultLink: this.vaultLinkResolver(sourcePath) };
     let target = sourceError ? { kind: "unavailable", label: raw, reason: sourceError } : resolveRelatedTarget(raw, context);
@@ -4063,34 +4254,43 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       return;
     }
     if (target.kind === "vault") {
-      const literalHashFile = target.exactFile === true && ((_a = target.resolvedPath) == null ? void 0 : _a.includes("#"));
-      if (literalHashFile) {
-        const file = this.app.vault.getAbstractFileByPath(target.resolvedPath);
-        if (file instanceof import_obsidian.TFile && file.path === target.resolvedPath) {
-          await this.openNavigationFile(file, request.signal);
-          return;
-        }
-        target = { kind: "unavailable", label: target.label, reason: "\u5DF2\u786E\u8BA4\u7684vault\u539F\u6587\u4EF6\u5F53\u524D\u4E0D\u53EF\u7528\uFF1B\u4E0D\u628A\u5B57\u9762#\u91CD\u65B0\u89E3\u91CA\u4E3Asubpath\u3002" };
+      const destination = (_a = target.resolvedPath) != null ? _a : this.vaultLinkResolver(sourcePath)(target.linkText);
+      const baseFile = destination ? this.app.vault.getAbstractFileByPath(destination) : null;
+      if (!(baseFile instanceof import_obsidian.TFile) || target.exactFile && baseFile.path !== target.resolvedPath) {
+        target = { kind: "unavailable", label: target.label, reason: `\u672A\u627E\u5230\u5DF2\u786E\u8BA4\u7684vault\u539F\u6587\u4EF6\uFF1A${target.linkText}\uFF1B\u4E0D\u4F1A\u521B\u5EFA\u6216\u6539\u9009\u540C\u540D\u7B14\u8BB0\u3002` };
+      } else if (baseFile.extension.toLowerCase() === "json") {
+        const fragment = (_b = target.fragment) != null ? _b : target.exactFile ? void 0 : (0, import_obsidian.parseLinktext)(target.linkText).subpath || void 0;
+        target = { ...target, resolvedPath: baseFile.path, ...fragment ? { fragment } : {} };
       } else {
-        const destination = this.vaultLinkResolver(sourcePath)(target.linkText);
-        if (destination) {
+        const directFile = target.exactFile === true && (((_c = target.resolvedPath) == null ? void 0 : _c.includes("#")) || target.resolvedPath && target.resolvedPath !== target.resolvedPath.trim() || target.fileUrl && (!target.fragment || ((_d = target.resolvedPath) == null ? void 0 : _d.includes("%"))));
+        if (directFile) {
+          await this.openNavigationFile(baseFile, request.signal);
+          if (!target.fragment) return;
+        } else {
           await this.app.workspace.openLinkText(target.linkText, sourcePath, false);
           return;
         }
-        target = { kind: "unavailable", label: target.label, reason: `\u672A\u627E\u5230vault\u539F\u6587\uFF1A${target.linkText}\uFF1B\u4E0D\u4F1A\u521B\u5EFA\u65B0\u7B14\u8BB0\u3002` };
       }
     }
-    (_b = this.relatedTargetPanel) == null ? void 0 : _b.remove();
+    (_e = this.relatedTargetPanel) == null ? void 0 : _e.remove();
     const panel = this.contentEl.createDiv({ cls: "flowdesk-dashboard-section flowdesk-related-target" });
     this.relatedTargetPanel = panel;
-    const pathText = target.kind === "repository" ? target.absolutePath : raw;
-    panel.createDiv({ cls: "flowdesk-dashboard-section-title", text: target.kind === "repository" ? "\u4ED3\u5E93\u6587\u6863" : "\u5F15\u7528\u5B9A\u4F4D\u7F3A\u53E3" });
-    panel.createDiv({ cls: "flowdesk-muted", text: target.kind === "repository" ? `\u539F\u6587\u4EF6\uFF1A${pathText}\uFF1B\u4ED3\u5E93\u5F15\u7528\uFF1A${target.repositoryPath}` : target.reason });
-    const copy = panel.createEl("button", { cls: "flowdesk-copy-related-path", text: target.kind === "repository" ? "\u590D\u5236\u539F\u6587\u4EF6\u8DEF\u5F84" : "\u590D\u5236\u539F\u5F15\u7528" });
+    const isFileTarget = target.kind === "repository" || target.kind === "vault";
+    const pathText = target.kind === "repository" ? target.absolutePath : target.kind === "vault" && target.resolvedPath ? path5.join(context.vaultRoot, target.resolvedPath) : raw;
+    panel.createDiv({ cls: "flowdesk-dashboard-section-title", text: isFileTarget ? "\u5F15\u7528\u8D44\u6599" : "\u5F15\u7528\u5B9A\u4F4D\u7F3A\u53E3" });
+    panel.createDiv({ cls: "flowdesk-muted", text: target.kind === "repository" ? `\u539F\u6587\u4EF6\uFF1A${pathText}\uFF1B\u4ED3\u5E93\u5F15\u7528\uFF1A${target.repositoryPath}` : target.kind === "vault" ? `\u539F\u6587\u4EF6\uFF1A${pathText}` : target.reason });
+    if ((target.kind === "repository" || target.kind === "vault") && target.fragment) panel.createDiv({ cls: "flowdesk-muted", text: `\u6587\u4EF6\u53EF\u5B9A\u4F4D\uFF0C\u7AE0\u8282\u672A\u9A8C\u8BC1\uFF08${target.fragment}\uFF09\uFF1B\u6253\u5F00\u6574\u6587\u4EF6\uFF0C\u4E0D\u731C\u7AE0\u8282\u4F4D\u7F6E\u3002` });
+    const copy = panel.createEl("button", { cls: "flowdesk-copy-related-path", text: isFileTarget ? "\u590D\u5236\u539F\u6587\u4EF6\u8DEF\u5F84" : "\u590D\u5236\u539F\u5F15\u7528" });
     copy.addEventListener("click", () => {
       void navigator.clipboard.writeText(pathText);
     });
-    if (target.kind === "repository") {
+    if (isFileTarget) {
+      const reference = panel.createEl("button", { cls: "flowdesk-copy-related-reference", text: "\u590D\u5236\u539F\u5F15\u7528" });
+      reference.addEventListener("click", () => {
+        void navigator.clipboard.writeText(raw);
+      });
+    }
+    if (target.kind === "repository" && /\.md$/i.test(path5.extname(target.absolutePath))) {
       const documentPath = target.absolutePath;
       const result = panel.createDiv({ cls: "flowdesk-repository-open-feedback", attr: { role: "status" }, text: "\u70B9\u51FB\u540E\u5411 Obsidian \u63D0\u4EA4\u6253\u5F00\u6B64\u539F\u6587\u4EF6\u7684\u8BF7\u6C42\u3002" });
       const openDocument = panel.createEl("button", { cls: "flowdesk-open-repository-document", text: "\u5728 Obsidian \u6253\u5F00\u6587\u6863", attr: { "aria-label": "\u660E\u786E\u5411\u6307\u5B9AObsidian\u63D0\u4EA4\u6B64Markdown\u539F\u6587\u4EF6" } });
@@ -4114,6 +4314,8 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       copySteps.addEventListener("click", () => {
         void navigator.clipboard.writeText(steps);
       });
+    } else if (isFileTarget && /\.json$/i.test(path5.extname(pathText))) {
+      panel.createDiv({ cls: "flowdesk-muted", text: "JSON\u8D44\u6599\u4EC5\u63D0\u4F9B\u51C6\u786E\u8DEF\u5F84\u4E0E\u539F\u5F15\u7528\uFF1B\u53EF\u901A\u8FC7\u5173\u8054\u7684Markdown\u8BC1\u636E\u7D22\u5F15\u67E5\u770B\u8BF4\u660E\u3002" });
     }
   }
 };

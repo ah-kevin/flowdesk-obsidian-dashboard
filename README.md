@@ -8,6 +8,14 @@ TaskNotes 任务或 Work Case 的 FlowDesk snapshot。插件分别调用本机 F
 本项目走 GitHub Release、BRAT 或手动安装，不以提交 Obsidian 官方 Community
 Directory 作为发布路径。
 
+## 2.0.1 更新
+
+- Case 引用保留原始标题、路径、顺序和来源，明确展示缺失、歧义与不可用状态；仓库引用按准确 Case cwd 核对。
+- Task 当前进展从 canonical Progress 的日期与来源核对最近片段；日期、生命周期或正文不完整时显示 unknown，不把历史 Next 当作当前动作。
+- 完整保留 legacy Activity、Details、Steps、Implementation 与多轮记录，来源导航无法唯一定位时打开整张原文。
+
+完整隔离测试与受控 Core 集成用于源码验收；真实 Obsidian 安装、布局与原文定位需由安装后的宿主验证。
+
 ## 运行依赖与安全边界
 
 - 仅支持 Obsidian desktop，`manifest.json` 中 `isDesktopOnly` 固定为 `true`。
@@ -87,12 +95,12 @@ Release 必需文件：
 发布一个版本（版本号以 `manifest.json` 为准）：
 
 ```bash
-git tag "v0.1.2"
-git push origin "v0.1.2"
+git tag "v2.0.1"
+git push origin "v2.0.1"
 ```
 
-CI 会校验 tag 必须等于 `v<manifest.version>`。例如 `manifest.json` 版本为 `0.1.2`
-时，release tag 必须是 `v0.1.2`。
+CI 会校验 tag 必须等于 `v<manifest.version>`。例如 `manifest.json` 版本为 `2.0.1`
+时，release tag 必须是 `v2.0.1`。
 
 版本要求：
 

@@ -49,7 +49,7 @@ test("schema 3/4 Task 4 nullable ending model and presentation keep the reviewed
 test("Task 2 renderer 的关键 DOM class 集合保持新基线 exact-equal", () => {
   const source = ["main.ts", "task-content-renderer.ts"].map(file => readFileSync(path.join(process.cwd(), "src", file), "utf8")).join("\n");
   // Task 3 adds a separate read-only navigation panel; keep the Task 2 class baseline unchanged.
-  const task3Additions = new Set(["flowdesk-related-target", "flowdesk-copy-related-path", "flowdesk-task-resume-reference", "flowdesk-copy-task-reference", "flowdesk-repository-open-feedback", "flowdesk-open-repository-document"]);
+  const task3Additions = new Set(["flowdesk-related-target", "flowdesk-copy-related-path", "flowdesk-copy-related-reference", "flowdesk-task-current-progress", "flowdesk-task-resume-reference", "flowdesk-copy-task-reference", "flowdesk-repository-open-feedback", "flowdesk-open-repository-document"]);
   const classes = [...source.matchAll(/cls:\s*["`']([^"`']+)["`']/g)]
     .flatMap((match) => match[1].split(/\s+/))
     .filter(

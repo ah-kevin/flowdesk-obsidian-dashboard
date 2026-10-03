@@ -1,3 +1,4 @@
+import { parseReferenceText } from "./reference-text";
 import type { PresentationTone } from "./dashboard-presentation";
 
 /** Display translation only; this never changes producer lifecycle or acceptance. */
@@ -36,10 +37,9 @@ export function groupTaskRows<T extends {status: string; isBlocked: boolean; com
   return {current: current.map((row,index)=>({row,index})).sort((a,b)=>rank(a.row)-rank(b.row)||a.index-b.index).map(x=>x.row), history};
 }
 
-export function formatReferenceLabel(target: string): string {
-  const link = target.trim().replace(/^\[\[/, "").replace(/\]\]$/, "");
-  const alias = link.indexOf("|");
-  if (alias >= 0 && link.slice(alias + 1).trim()) return link.slice(alias + 1).trim();
-  const path = link.split("#")[0].replace(/\\/g,"/");
-  return (path.split("/").pop() || path).replace(/\.md$/i, "") || target;
+export function formatReferenceLabel(raw: string): string {
+  const parsed = parseReferenceText(raw);
+  if (parsed.label) return parsed.label;
+  const target = parsed.target.split("#")[0].replace(/\\/g,"/");
+  return (target.split("/").pop() || target).replace(/\.md$/i, "") || raw;
 }

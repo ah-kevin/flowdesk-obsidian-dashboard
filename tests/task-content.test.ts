@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import * as readingHelpers from "../src/task-content.ts";
 import { createTaskContent, rawContentDiffers } from "../src/task-content.ts";
 import { createDashboardViewModel } from "../src/snapshot-model.ts";
 import { createDashboardPresentation } from "../src/dashboard-presentation.ts";
@@ -44,4 +45,16 @@ test("raw comparison detects scope, acceptance and typed fragment changes withou
   const content=createTaskContent(snapshot,snapshot.current_task.id);
   const raw:any={taskId:content.taskId,details:"目标\n旧范围\n旧验收\n旧需求",source:"tasknotes-api",readAt:"2026-10-02T03:00:00Z",error:null};
   assert.equal(rawContentDiffers(content,raw,snapshot),true);
+});
+
+
+test("reading_union_copies_arrays_and_keeps_exact_source_objects",()=>{
+  const content=createTaskContent(structuredClone(baseline),baseline.current_task.id);
+  const e={heading:"Execution Result",level:2,text:"E",source:{line_start:1,line_end:2}};
+  const h3={heading:"普通标题",level:3,text:"H3",source:{line_start:3,line_end:4}};
+  content.domainSections=[h3];content.records={execution:[e],verification:[],delivery:[]};
+  const original=JSON.stringify(content),helper=(readingHelpers as any).createTaskReadingSections;
+  assert.equal(typeof helper,"function");const result=helper(content);
+  assert.equal(result.orderComplete,true);assert.deepEqual(result.sections.map((x:any)=>x.kind),["execution","domain"]);
+  assert.equal(result.sections[1].section,h3);assert.equal(result.sections[0].section.source,e.source);assert.equal(JSON.stringify(content),original);
 });

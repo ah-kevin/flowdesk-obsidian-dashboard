@@ -1,11 +1,12 @@
 import * as path from "path";
 import { existsSync, statSync } from "fs";
 import { fileURLToPath, pathToFileURL } from "url";
+import { parseReferenceText } from "./reference-text";
 import type { SnapshotBodySection } from "./snapshot-model";
 
 export type RelatedTarget =
-  | { kind: "vault"; linkText: string; label: string; resolvedPath?: string; exactFile?: boolean }
-  | { kind: "repository"; absolutePath: string; repositoryPath: string; label: string; fileUrl: string }
+  | { kind: "vault"; linkText: string; label: string; resolvedPath?: string; exactFile?: boolean; fragment?: string; fileUrl?: string }
+  | { kind: "repository"; absolutePath: string; repositoryPath: string; label: string; fileUrl: string; fragment?: string }
   | { kind: "url"; url: string; label: string }
   | { kind: "unavailable"; label: string; reason: string };
 export interface RelatedContext { casePath: string; cwd: string | null; vaultRoot: string; resolveVaultLink?: (linkText:string)=>string|null }
@@ -29,19 +30,38 @@ export function locateTaskSource(fileText: string, details: string, section: Sna
 }
 
 export function resolveRelatedTarget(raw: string, context: RelatedContext): RelatedTarget {
-  let target=raw.trim(),label=target;
+  const parsed = parseReferenceText(raw);
+  let target=parsed.target;
+  const label=parsed.label ?? target;
   const unavailable=(reason:string):RelatedTarget=>({kind:"unavailable",label,reason});
-  const wiki=target.match(/^\[\[([^\]]+)\]\]$/);
-  if(wiki){const parts=wiki[1].split("|");return {kind:"vault",linkText:parts[0],label:parts[1]??parts[0]};}
-  const markdown=target.match(/^\[([^\]]*)\]\((.+)\)$/);
-  if(markdown){label=markdown[1];target=markdown[2];if(target.startsWith("<")&&target.endsWith(">"))target=target.slice(1,-1);}
+  if(parsed.error)return unavailable(parsed.error);
+  if(parsed.syntax==="wiki")return {kind:"vault",linkText:target,label};
   if(/^https?:\/\//i.test(target)) {try{const url=new URL(target);return {kind:"url",url:url.href,label};}catch{return unavailable("网页链接无效");}}
-  if(/^file:/i.test(target)){try{target=fileURLToPath(target);}catch{return unavailable("文件URL无效或不属于本机文件系统");}}
+  let explicitFileUrl: string | undefined, fragment: string | undefined;
+  if(/^file:/i.test(target)){
+    try {
+      const url=new URL(target);
+      // A query is not a local file identity, including an explicitly empty query.
+      if(target.split("#",1)[0].includes("?"))return unavailable("文件URL查询参数无效；保留原引用核对");
+      if(url.hostname && url.hostname!=="localhost")return unavailable("文件URL不属于本机文件系统");
+      fragment=url.hash || undefined;
+      if(fragment)decodeURIComponent(fragment.slice(1)); // reject malformed fragment encoding without changing its identity
+      explicitFileUrl=url.href;
+      target=fileURLToPath(url); // one decode; never enter the legacy raw-path fallback below
+      if(target.includes("\0"))return unavailable("文件URL路径无效");
+    } catch {return unavailable("文件URL无效、编码非法或不属于本机文件系统");}
+  }
   else if(/^[a-z][a-z0-9+.-]*:/i.test(target))return unavailable("当前不支持此链接类型");
+  const literalWhitespace=!explicitFileUrl&&parsed.syntax==="raw"&&target!==target.trim();
   if(!path.isAbsolute(target)) {
     let decoded=target;try{decoded=decodeURIComponent(target);}catch{/* keep exact literal for vault resolution */}
-    const exactResolution=context.resolveVaultLink?.(target);
-    const decodedResolution=!exactResolution&&decoded!==target?context.resolveVaultLink?.(decoded):null;
+    const resolveVaultCandidate=(candidate:string):string|null=>{
+      const resolved=context.resolveVaultLink?.(candidate);if(!resolved)return null;
+      if(literalWhitespace&&path.posix.normalize(candidate)!==resolved&&path.posix.normalize(path.posix.join(path.posix.dirname(context.casePath),candidate))!==resolved)return null;
+      return resolved;
+    };
+    const exactResolution=resolveVaultCandidate(target);
+    const decodedResolution=!exactResolution&&decoded!==target?resolveVaultCandidate(decoded):null;
     const resolvedPath=exactResolution||decodedResolution;
     if(resolvedPath){
       const linkText=exactResolution?target:decoded;
@@ -49,21 +69,25 @@ export function resolveRelatedTarget(raw: string, context: RelatedContext): Rela
       return {kind:"vault",linkText,label,resolvedPath,exactFile};
     }
   }
-  if(/^(?:Notes|Tasks|TaskNotes)\//.test(target)||target.startsWith("#"))return {kind:"vault",linkText:target,label};
+  // A rejected literal filesystem target cannot regain vault identity through the namespace fallback.
+  if((!literalWhitespace&&/^(?:Notes|Tasks|TaskNotes)\//.test(target))||target.startsWith("#"))return {kind:"vault",linkText:target,label};
   if(!target||(!path.isAbsolute(target)&&!/[./\\]/.test(target)))return unavailable("引用没有明确vault或仓库来源；可复制原引用核对");
   if(!path.isAbsolute(target)&&(!context.cwd||!path.isAbsolute(context.cwd)))return unavailable("缺少唯一明确的Case cwd，不能定位仓库相对路径");
   if(!path.isAbsolute(target)&&!existsSync(context.cwd!))return unavailable("Case checkout目录在本机不存在");
   let absolutePath=path.isAbsolute(target)?path.normalize(target):path.resolve(context.cwd!,target);
-  if(!existsSync(absolutePath)&&/%[0-9a-f]{2}/i.test(target)) {
+  if(!explicitFileUrl&&!existsSync(absolutePath)&&/%[0-9a-f]{2}/i.test(target)) {
     try { const decoded=decodeURIComponent(target); absolutePath=path.isAbsolute(decoded)?path.normalize(decoded):path.resolve(context.cwd!,decoded); }
     catch { return unavailable("文件路径编码无效"); }
   }
-  const vaultRelative=path.relative(context.vaultRoot,absolutePath);
-  if(vaultRelative&&!vaultRelative.startsWith(".."+path.sep)&&vaultRelative!==".."&&!path.isAbsolute(vaultRelative))return {kind:"vault",linkText:vaultRelative.split(path.sep).join("/"),label,resolvedPath:vaultRelative.split(path.sep).join("/"),exactFile:true};
-  if(!existsSync(absolutePath))return unavailable(`仓库文件在本机不存在：${absolutePath}`);
+  if(!existsSync(absolutePath))return unavailable(`文件在本机不存在：${absolutePath}`);
   try { if(!statSync(absolutePath).isFile())return unavailable(`引用不是文件：${absolutePath}`); }
-  catch { return unavailable(`无法确认仓库文件：${absolutePath}`); }
-  return {kind:"repository",absolutePath,repositoryPath:context.cwd?path.relative(context.cwd,absolutePath):target,label,fileUrl:pathToFileURL(absolutePath).href};
+  catch { return unavailable(`无法确认原文件：${absolutePath}`); }
+  const vaultRelative=path.relative(context.vaultRoot,absolutePath);
+  if(vaultRelative&&!vaultRelative.startsWith(".."+path.sep)&&vaultRelative!==".."&&!path.isAbsolute(vaultRelative)){
+    const resolvedPath=vaultRelative.split(path.sep).join("/");
+    return {kind:"vault",linkText:resolvedPath+(fragment ? "#"+decodeURIComponent(fragment.slice(1)) : ""),label,resolvedPath,exactFile:true,...(explicitFileUrl ? {fileUrl:explicitFileUrl} : {}),...(fragment ? {fragment} : {})};
+  }
+  return {kind:"repository",absolutePath,repositoryPath:context.cwd?path.relative(context.cwd,absolutePath):target,label,fileUrl:explicitFileUrl ?? pathToFileURL(absolutePath).href,...(fragment ? {fragment} : {})};
 }
 
 export function buildRepositoryOpenInvocation(target: Extract<RelatedTarget,{kind:"repository"}>, platform: NodeJS.Platform): {executable:string;args:string[]}|null {

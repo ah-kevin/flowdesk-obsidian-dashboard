@@ -41,3 +41,21 @@ test("prototype property names are custom statuses and respect native ending def
     assert.equal(formatEntityStatus("case", status).label, `${status}（未知状态）`);
   }
 });
+
+
+test("markdown_file_label_is_used_by_case_related_buttons", async () => {
+  const {readFileSync}=await import("node:fs");
+  const {WorkCaseDashboardRenderer}=await import("../src/work-case-renderer");
+  const {createWorkCaseViewModel}=await import("../src/work-case-model");
+  const {TestElement}=await import("./support/dom");
+  const snapshot=JSON.parse(readFileSync("tests/fixtures/work-case-canonical.json","utf8"));
+  const raw="[实施方案（中文）](<file:///owned/docs/%E4%B8%AD%E6%96%87%20%2523%23.md#Heading>)";
+  snapshot.related.plans=[raw];
+  const opened:string[]=[];const root=new TestElement();
+  new WorkCaseDashboardRenderer({refresh(){},openTask(){},openCaseSource(){},openRelated:(target)=>{opened.push(target);}})
+    .render(root as unknown as HTMLElement,{casePath:snapshot.source.path,model:createWorkCaseViewModel(snapshot,snapshot.source.path),loadedAt:"",staleReason:"",error:"",loading:false});
+  const button=root.findByClass("flowdesk-case-related-link").find(x=>x.attrs.title===raw)!;
+  assert.equal(button.text,"实施方案（中文）");
+  await button.click();assert.deepEqual(opened,[raw]);
+  assert.equal(formatReferenceLabel("[旧资料](<docs/legacy.md>)"),"旧资料");
+});
