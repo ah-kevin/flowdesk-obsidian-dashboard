@@ -16,7 +16,7 @@ export function createCaseContent(casePath:string,details:string,readAt:string):
     const heading=line.match(/^(#{1,6})\s+(.+?)\s*#*$/);
     if(heading)headings.push({heading:heading[2],level:heading[1].length,index});
   }
-  const selected=new Set(["Goal","Current","Context","Summary","Decisions","目标","决策","背景","摘要"]);
+  const selected=new Set(["Goal","Current","Context","Summary","Decisions","Progress","目标","决策","背景","摘要"]);
   const sections=headings.filter(h=>selected.has(h.heading)).map(h=>{
     const end=headings.find(n=>n.index>h.index&&n.level<=h.level)?.index??lines.length;
     return {heading:h.heading,level:h.level,text:lines.slice(h.index+1,end).join("\n"),source:{lineStart:h.index+1,lineEnd:end}};

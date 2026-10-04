@@ -134,12 +134,12 @@ test("renderer 用 canonical model 渲染三层驾驶舱并接通只读导航", 
     assert.ok(root.allText().includes(text), text);
   }
   root.findByClass("flowdesk-case-task-row")[0].click();
-  root.findByClass("flowdesk-case-source-action")[0].click();
+  assert.equal(root.findByClass("flowdesk-case-source-action").length,0);
   root.findByClass("flowdesk-case-related-link")[0].click();
   assert.deepEqual(openedTasks, [
     { taskPath: "Tasks/Long.md", origin: "work-case" },
   ]);
-  assert.deepEqual(openedSources, [31]);
+  assert.deepEqual(openedSources, []);
   assert.deepEqual(openedRelated, [
     {
       target: "[[Notes/Projects/FlowDesk]]",
@@ -264,8 +264,8 @@ test("最近 Progress 使用新到旧时间线并只标记第一条为最新", (
     [["最新"], [], []]
   );
 
-  for (const row of rows) row.findByClass("flowdesk-case-source-action")[0].click();
-  assert.deepEqual(openedSources, [75, 74, 73]);
+  assert.ok(rows.every(row=>row.findByClass("flowdesk-case-source-action").length===0));
+  assert.deepEqual(openedSources, []);
 });
 
 test("案卷内容优先展开 Goal Blockers Outcome 并隐藏空分组", () => {
@@ -398,7 +398,7 @@ test("关联导航完整保留中英文及无空格长链接并逐项保持可�
 
   const relatedSection = root.findByClass("flowdesk-case-related")[0];
   const links = relatedSection.findByClass("flowdesk-case-related-link");
-  assert.deepEqual(links.map((link) => link.text), ["超长中文关联计划显示增强实施方案", "Long English Work Case Navigation Plan", "UnbrokenPath".repeat(20)]);
+  assert.deepEqual(links.map((link) => link.findByClass("flowdesk-reference-title")[0].text), ["超长中文关联计划显示增强实施方案", "Long English Work Case Navigation Plan", "UnbrokenPath".repeat(20)]);
   for (const link of links) link.click();
   assert.deepEqual(
     openedRelated,
@@ -440,7 +440,9 @@ test("model 存在与缺失两条路线都不重复渲染完整Case原文，恢�
   const model = createWorkCaseViewModel(snapshot, snapshot.source.path);
   const caseContent = createCaseContent(snapshot.source.path, "## Context\n\n唯一独立全文标记", "local-read");
   const copied: string[] = [];
+  let menu:Array<{label:string;run:()=>unknown}>=[];
   const renderer = new WorkCaseDashboardRenderer({
+    openActions: (_title,actions)=>{menu=actions;},
     refresh: () => {},
     openTask: () => {},
     openCaseSource: () => {},
@@ -464,8 +466,9 @@ test("model 存在与缺失两条路线都不重复渲染完整Case原文，恢�
   assert.ok(withoutModel.allText().includes("WORK CASE"));
   assert.ok(withoutModel.findByClass("flowdesk-case-header").length > 0);
 
-  assert.equal(withModel.findByClass("flowdesk-case-resume").length, 1);
-  withModel.findByClass("flowdesk-case-copy-resume")[0].click();
+  assert.equal(withModel.findByClass("flowdesk-case-resume").length, 0);
+  withModel.findByClass("flowdesk-more-actions")[0].click();
+  menu.find(action=>action.label==="复制完整恢复资料")!.run();
   assert.equal(copied.length, 1);
   assert.match(copied[0], /Case独立原文读取时间：local-read/);
 });

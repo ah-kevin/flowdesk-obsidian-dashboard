@@ -11,6 +11,14 @@ Object.assign(HTMLElement.prototype,{
   removeClass(this:HTMLElement,name:string){this.classList.remove(name);},
 });
 export class App {}
+export class Component {
+  children:Component[]=[];callbacks:Array<()=>void>=[];loaded=false;
+  load(){this.loaded=true;for(const child of this.children)child.load();}
+  unload(){for(const child of this.children)child.unload();for(const callback of this.callbacks)callback();this.callbacks=[];this.loaded=false;}
+  addChild<T extends Component>(child:T):T{this.children.push(child);if(this.loaded)child.load();return child;}
+  removeChild<T extends Component>(child:T):T{child.unload();this.children=this.children.filter(value=>value!==child);return child;}
+  register(callback:()=>void){this.callbacks.push(callback);}
+}
 export class Plugin {
   app:any;manifest={id:"flowdesk-dashboard"};views=new Map();commands:any[]=[];
   async loadData(){return (window as any).__PREVIEW_DATA__.settings??{};}
@@ -18,7 +26,7 @@ export class Plugin {
   registerView(type:string,factory:any){this.views.set(type,factory);}
   addRibbonIcon(){}addCommand(command:any){this.commands.push(command);}registerEvent(){}addSettingTab(){}
 }
-export class ItemView {app:any;contentEl:HTMLElement;containerEl:HTMLElement;constructor(leaf:any){this.app=leaf.app;this.contentEl=leaf.contentEl;this.containerEl=leaf.contentEl;}}
+export class ItemView extends Component {app:any;contentEl:HTMLElement;containerEl:HTMLElement;constructor(leaf:any){super();this.app=leaf.app;this.contentEl=leaf.contentEl;this.containerEl=leaf.contentEl;this.load();}}
 export class MarkdownView {}
 export class WorkspaceLeaf {}
 export class TAbstractFile {}

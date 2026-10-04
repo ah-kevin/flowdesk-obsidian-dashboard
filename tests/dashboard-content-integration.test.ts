@@ -35,24 +35,24 @@ async function setup(t:any) {
   return {fixture,plugin,view,root,taskPath,requests,opens,setDetails:(d:string)=>{currentDetails=d;},setSlow:()=>{slow=true;},release:()=>{release?.();},hasWaiting:()=>!!release};
 }
 
-test("plain_requirements_remain_visible_in_full_api_text via compiled Dashboard and real producer, zero writes",async(t)=>{
+test("plain_requirements_remain_available_in_full_api_data via compiled Dashboard and real producer, zero writes",async(t)=>{
   const {view,root,taskPath,requests,opens}=await setup(t);
   await view.loadTask(taskPath);
   const model=view.taskAdapter.getRenderState().snapshot;
   assert.deepEqual(model.contract.task_contract.requirements,[]);
   assert.ok(!model.contract.task_contract.domain_sections.some((x:any)=>x.heading==="Requirements"));
   await view.refreshCurrentTask();
-  await root.findByClass("flowdesk-content-source")[0].click();
+  await root.findByClass("flowdesk-current-task-link")[0].click();
   assert.deepEqual(opens,[taskPath]);
-  await root.findByClass("flowdesk-content-read")[0].click();
+  await view.loadRawTaskContent(taskPath);
   const deadline=Date.now()+2000;
   while(view.rawContentLoading && Date.now()<deadline) await new Promise(resolve=>setImmediate(resolve));
   assert.equal(view.rawContentLoading,false);
-  for(const line of requirementLines)assert.ok(root.allText().includes(details),line);
+  for(const line of requirementLines)assert.ok(view.rawTaskContent.details.includes(line),line);
   assert.equal(requirementLines.length,8);
-  assert.match(root.allText().join("\n"),/单独API原文观测|单独 API 原文观测/);
-  assert.match(root.allText().join("\n"),/tasknotes-api/);
-  assert.ok(root.allText().includes(taskPath));
+  assert.equal(view.rawTaskContent.source,"tasknotes-api");
+  assert.equal(view.rawTaskContent.taskId,taskPath);
+  assert.equal(root.findByClass("flowdesk-raw-content").length,0);
   assert.doesNotMatch(root.allText().join("\n"),/证据有效|验收通过|复核任务/);
   assert.equal(typeof view.plugin.submitTaskReview,"undefined");
   assert.ok(requests.every(x=>x[0]==="GET"||(x[0]==="POST"&&x[1]==="/api/tasks/query")));
@@ -62,7 +62,8 @@ test("plain_requirements_remain_visible_in_full_api_text via compiled Dashboard 
 test("raw empty, error and changed observations never overwrite status or upgrade snapshot health",async(t)=>{
   const {view,root,taskPath,setDetails}=await setup(t);
   await view.loadTask(taskPath);setDetails("");await view.loadRawTaskContent(taskPath);
-  assert.match(root.allText().join("\n"),/API原文为空/);
+  assert.equal(view.rawTaskContent.details,"");
+  assert.equal(view.rawTaskContent.error,null);
   assert.match(root.allText().join("\n"),/snapshot.*差异|snapshot.*变化/);
   assert.equal(view.taskAdapter.getRenderState().snapshot.current_task.status,"done");
 });

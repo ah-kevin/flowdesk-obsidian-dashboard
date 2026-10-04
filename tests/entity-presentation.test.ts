@@ -55,7 +55,7 @@ test("markdown_file_label_is_used_by_case_related_buttons", async () => {
   new WorkCaseDashboardRenderer({refresh(){},openTask(){},openCaseSource(){},openRelated:(target)=>{opened.push(target);}})
     .render(root as unknown as HTMLElement,{casePath:snapshot.source.path,model:createWorkCaseViewModel(snapshot,snapshot.source.path),loadedAt:"",staleReason:"",error:"",loading:false});
   const button=root.findByClass("flowdesk-case-related-link").find(x=>x.attrs.title===raw)!;
-  assert.equal(button.text,"实施方案（中文）");
+  assert.equal(button.findByClass("flowdesk-reference-title")[0].text,"实施方案（中文）");
   await button.click();assert.deepEqual(opened,[raw]);
   assert.equal(formatReferenceLabel("[旧资料](<docs/legacy.md>)"),"旧资料");
 });

@@ -2130,3 +2130,122 @@
   .flowdesk-dashboard .flowdesk-child-row { grid-template-columns: 9px minmax(0, 1fr); }
   .flowdesk-dashboard .flowdesk-child-status { grid-column: 2; justify-self: start; }
 }
+
+/* Confirmed reading layout: preserve Case cards; simplify Task chapters. */
+.flowdesk-dashboard { gap: 10px; padding: 16px 16px 24px; }
+.flowdesk-dashboard .flowdesk-task-header { padding: 2px 0 12px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.flowdesk-dashboard .flowdesk-task-meta-actions,
+.flowdesk-dashboard .flowdesk-header-actions { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; margin-left: auto; }
+.flowdesk-dashboard .flowdesk-task-top-row { align-items: center; }
+.flowdesk-dashboard .flowdesk-task-overview { padding: 12px; box-shadow: none; }
+.flowdesk-dashboard .flowdesk-task-specification,
+.flowdesk-dashboard .flowdesk-acceptance-group,
+.flowdesk-dashboard .flowdesk-contract-item-details {
+  border: 0; border-bottom: 1px solid var(--background-modifier-border);
+  border-radius: 0; margin: 0; padding: 12px 0; background: transparent;
+}
+.flowdesk-dashboard .flowdesk-task-specification > summary,
+.flowdesk-dashboard .flowdesk-acceptance-group > summary,
+.flowdesk-dashboard .flowdesk-contract-item-details > summary {
+  display: flex; align-items: center; gap: 7px; list-style: none;
+  font-size: 13px; line-height: 1.5; font-weight: 600; cursor: pointer;
+}
+.flowdesk-dashboard .flowdesk-task-specification > summary::-webkit-details-marker,
+.flowdesk-dashboard .flowdesk-acceptance-group > summary::-webkit-details-marker { display: none; }
+.flowdesk-dashboard .flowdesk-task-specification > summary::before,
+.flowdesk-dashboard .flowdesk-acceptance-group > summary::before,
+.flowdesk-dashboard .flowdesk-contract-item-details > summary::before {
+  content: "›"; display: inline-block; width: 9px; color: var(--text-muted);
+  font-size: 15px; line-height: 1; transform: rotate(0deg);
+}
+.flowdesk-dashboard .flowdesk-task-specification[open] > summary::before,
+.flowdesk-dashboard .flowdesk-acceptance-group[open] > summary::before,
+.flowdesk-dashboard .flowdesk-contract-item-details[open] > summary::before { transform: rotate(90deg); }
+.flowdesk-dashboard .flowdesk-specification-section { padding: 3px 0; }
+.flowdesk-dashboard .flowdesk-specification-section h3 { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+.flowdesk-dashboard .flowdesk-acceptance-list { margin: 8px 0 3px; }
+.flowdesk-dashboard .flowdesk-acceptance-item { grid-template-columns: 14px minmax(0, 1fr); gap: 6px; align-items: start; padding: 5px 0; border: 0; font-size: 13px; line-height: 1.55; }
+.flowdesk-dashboard .flowdesk-contract-reading .flowdesk-contract-scope-markdown { padding: 4px 0 2px; }
+.flowdesk-dashboard .flowdesk-acceptance-item .flowdesk-contract-scope-markdown { padding: 0; margin: 0; font-size: inherit; line-height: inherit; }
+.flowdesk-dashboard .flowdesk-acceptance-marker { width: 14px; font-size: 14px; line-height: 1.55; padding: 0; margin: 0; }
+.flowdesk-dashboard .flowdesk-acceptance-group > .flowdesk-muted { font-size: 11px; line-height: 1.5; margin: 7px 0 4px; }
+.flowdesk-dashboard .flowdesk-specification-section li:has(> input[type="checkbox"]) { list-style: none; }
+.flowdesk-dashboard .flowdesk-specification-section input[type="checkbox"] { width: 13px; height: 13px; margin: 0 6px 0 0; vertical-align: -2px; }
+.flowdesk-dashboard .flowdesk-process-entry { padding: 14px 0; }
+.flowdesk-dashboard .flowdesk-task-history { padding: 0 10px 10px; }
+.flowdesk-dashboard .flowdesk-task-history > summary { display: flex; align-items: center; gap: 7px; padding: 9px 0 2px; list-style: none; font-size: 12px; line-height: 1.5; }
+.flowdesk-dashboard .flowdesk-task-history > summary::-webkit-details-marker { display: none; }
+.flowdesk-dashboard .flowdesk-task-history > summary::before { content: "›"; width: 9px; color: var(--text-muted); font-size: 15px; }
+.flowdesk-dashboard .flowdesk-task-history[open] > summary::before { transform: rotate(90deg); }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-progress-log { padding: 15px 0 10px; border-bottom: 1px solid var(--background-modifier-border); }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 0 0 6px; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-heading h3 { margin: 0; font-size: 13px; font-weight: 650; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-count { color: var(--text-muted); font-size: 11px; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-entry { position: relative; border-left: 1px solid var(--background-modifier-border); padding: 8px 0 10px 14px; margin-left: 4px; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-entry::before { content: ""; position: absolute; left: -3px; top: 14px; width: 5px; height: 5px; border-radius: 50%; background: var(--text-muted); }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-entry:first-child::before { background: var(--text-accent); }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-date { display: block; color: var(--text-muted); font-size: 11px; line-height: 1.5; margin-bottom: 5px; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-excerpt { margin: 0; color: var(--text-normal); font-size: 13px; line-height: 1.65; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-body { font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-body p { margin: 4px 0; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-body ul { padding-left: 18px; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-body pre { overflow: auto; max-width: 100%; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-all { margin-top: 4px; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-all > summary { color: var(--text-accent); font-size: 12px; padding: 7px 0; cursor: pointer; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-full { max-height: min(60vh, 520px); overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.flowdesk-dashboard .flowdesk-log-more { margin: 8px 0; font-size: 12px; color: var(--text-accent); }
+.flowdesk-dashboard .flowdesk-process-records > summary { color: var(--text-muted); font-size: 12px; }
+.flowdesk-dashboard .flowdesk-contract-summary > .flowdesk-dashboard-section-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 650; margin: 17px 0 8px; }
+.flowdesk-dashboard .flowdesk-content-icon { display: inline-flex; color: var(--text-accent); }
+.flowdesk-dashboard .flowdesk-content-caption { margin-left: auto; font-size: 11px; font-weight: 400; color: var(--text-muted); }
+.flowdesk-case-dashboard .flowdesk-case-record-group,
+.flowdesk-case-dashboard .flowdesk-case-record-more { padding: 0; position: relative; border-left-width: 1px; }
+.flowdesk-case-dashboard .flowdesk-case-record-group.is-goal,
+.flowdesk-case-dashboard .flowdesk-case-record-group.is-blockers,
+.flowdesk-case-dashboard .flowdesk-case-record-group.is-outcome { border-left-width: 1px; }
+.flowdesk-case-dashboard .flowdesk-case-record-group > summary,
+.flowdesk-case-dashboard .flowdesk-case-record-more > summary { display: flex; align-items: center; gap: 8px; list-style: none; padding: 12px; font-size: 13px; font-weight: 600; line-height: 1.5; }
+.flowdesk-case-dashboard .flowdesk-case-record-group > summary::-webkit-details-marker,
+.flowdesk-case-dashboard .flowdesk-case-record-more > summary::-webkit-details-marker { display: none; }
+.flowdesk-case-dashboard .flowdesk-case-record-group > summary::before,
+.flowdesk-case-dashboard .flowdesk-case-record-more > summary::before { content: "›"; width: 9px; flex: 0 0 9px; color: var(--text-muted); font-size: 15px; }
+.flowdesk-case-dashboard .flowdesk-case-record-group[open] > summary::before,
+.flowdesk-case-dashboard .flowdesk-case-record-more[open] > summary::before { transform: rotate(90deg); }
+.flowdesk-case-dashboard .flowdesk-case-record-group.is-goal::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--fd-blue); pointer-events: none; }
+.flowdesk-case-dashboard .flowdesk-case-record-heading,
+.flowdesk-case-dashboard .flowdesk-case-record-text { margin: 0; padding: 0 12px 10px; }
+.flowdesk-case-dashboard .flowdesk-case-progress-history { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; margin-top: 10px; border: 0; border-radius: 4px; box-shadow: none; background: transparent; color: var(--text-accent); padding: 4px 0; font-size: 12px; }
+.flowdesk-case-dashboard .flowdesk-case-progress-history:hover { text-decoration: underline; text-underline-offset: 3px; }
+.flowdesk-dashboard .flowdesk-return-resource { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; margin-top: 13px; padding: 6px 11px; background: var(--interactive-accent); color: var(--text-on-accent); border: 0; border-radius: 6px; box-shadow: none; font-size: 12px; font-weight: 600; }
+.flowdesk-dashboard .flowdesk-return-resource:hover { filter: brightness(1.06); }
+.flowdesk-dashboard .flowdesk-return-resource:disabled { opacity: .5; }
+.flowdesk-dashboard .flowdesk-context-pause .flowdesk-subline { margin-top: 8px; overflow-wrap: anywhere; font-size: 11px; }
+.flowdesk-core-settings-status { padding: 13px; margin: 12px 0 2px; background: var(--background-secondary); border: 1px solid var(--background-modifier-border); border-radius: 8px; white-space: normal; }
+.flowdesk-core-settings-status .flowdesk-core-status-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.flowdesk-core-settings-status .flowdesk-core-version { color: var(--text-normal); font-size: 14px; font-weight: 650; }
+.flowdesk-core-settings-status .flowdesk-core-status-head button { margin-left: auto; font-size: 11px; border: 0; padding: 3px 0; background: transparent; color: var(--text-accent); box-shadow: none; }
+.flowdesk-core-settings-status .flowdesk-core-row { display: grid; grid-template-columns: 35px minmax(0, 1fr); gap: 8px; font-size: 12px; line-height: 1.6; margin: 5px 0; }
+.flowdesk-core-settings-status .flowdesk-core-label { color: var(--text-muted); font-size: 11px; }
+.flowdesk-core-settings-status .flowdesk-core-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--text-normal); overflow-wrap: anywhere; }
+.flowdesk-core-settings-status .flowdesk-core-note { font-size: 11px; line-height: 1.5; color: var(--text-muted); margin-top: 10px; }
+.flowdesk-case-dashboard .flowdesk-case-progress-item .flowdesk-case-progress-text { color: var(--text-normal); }
+.flowdesk-dashboard .flowdesk-reading-navigation { padding: 0; }
+.flowdesk-dashboard .flowdesk-more-actions { border: 0; box-shadow: none; background: transparent; padding: 0 7px; color: var(--text-muted); font-size: 21px; line-height: 1; }
+.flowdesk-dashboard .flowdesk-more-actions:hover { color: var(--text-accent); background: var(--background-secondary); }
+.flowdesk-case-dashboard .flowdesk-case-title-link { padding: 0; border: 0; background: transparent; box-shadow: none; font: inherit; color: inherit; text-align: left; }
+.flowdesk-case-dashboard .flowdesk-case-title-link:hover { color: var(--text-accent); text-decoration: underline; text-underline-offset: 3px; }
+
+.flowdesk-case-dashboard .flowdesk-case-title-link { border: 0; box-shadow: none; background: transparent; text-align: left; width: 100%; color: var(--text-normal); }
+.flowdesk-case-dashboard .flowdesk-case-related { position: relative; }
+.flowdesk-case-dashboard .flowdesk-edit-entries { position: absolute; right: 13px; top: 11px; padding: 3px 0; border: 0; box-shadow: none; background: transparent; color: var(--text-muted); font-size: 11px; }
+.flowdesk-case-dashboard .flowdesk-case-related-links { display: flex; flex-direction: column; gap: 2px; }
+.flowdesk-case-dashboard .flowdesk-case-related .flowdesk-case-related-link { display: grid; grid-template-columns: 18px minmax(0, 1fr) 14px; gap: 9px; align-items: center; width: 100%; padding: 8px 4px; border-radius: 4px; }
+.flowdesk-case-dashboard .flowdesk-case-related-link:hover { background: var(--background-secondary); }
+.flowdesk-case-dashboard .flowdesk-reference-title { display: block; color: var(--text-accent); font-size: 13px; line-height: 1.5; }
+.flowdesk-case-dashboard .flowdesk-reference-type { display: block; color: var(--text-muted); font-size: 10px; line-height: 1.5; margin-top: 2px; }
+.flowdesk-case-dashboard .flowdesk-reference-icon, .flowdesk-case-dashboard .flowdesk-reference-arrow { color: var(--text-muted); }
+.flowdesk-dialog-content .flowdesk-menu-action { display: block; width: 100%; min-height: 36px; border: 0; box-shadow: none; border-bottom: 1px solid var(--background-modifier-border); border-radius: 0; background: transparent; padding: 10px 5px; text-align: left; }
+.flowdesk-dialog-content .flowdesk-menu-action:hover { background: var(--background-secondary); color: var(--text-accent); }
+.flowdesk-dialog-content .flowdesk-dialog-text { width: 100%; height: 45vh; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
+.flowdesk-dialog-content .flowdesk-related-target { border: 0; background: transparent; padding: 0; overflow-wrap: anywhere; }
+.flowdesk-dialog-content .markdown-rendered pre, .flowdesk-dialog-content .markdown-rendered table { max-width: 100%; overflow-x: auto; }

@@ -2,6 +2,8 @@ import { createTaskReadingSections, type TaskContent } from "./task-content";
 import type { SnapshotBodySection, SnapshotContractItem } from "./snapshot-model";
 import { excerpt, firstParagraph } from "./reading-presentation";
 import { latestRecord } from "./task-overview";
+import { readProgressSection, renderProgressEvents } from "./progress-history";
+import { bindProgressDisclosure } from "./progress-disclosure";
 
 const recordTitle = (heading: string): string => heading
   .replace(/^Execution Result/, "执行结果")
@@ -12,6 +14,9 @@ export class TaskContentRenderer {
   constructor(private readonly dependencies: {
     renderMarkdown(text: string, element: HTMLElement, taskPath: string): Promise<void>;
     openSource(taskPath: string, section: SnapshotBodySection): Promise<void>;
+    showSourceActions?: boolean;
+    signal?:AbortSignal;
+    trackRender?(promise:Promise<void>):void;
   }) {}
 
   render(container: HTMLElement, content: TaskContent): void {
@@ -20,6 +25,7 @@ export class TaskContentRenderer {
       void this.dependencies.renderMarkdown(text, element, content.taskId).catch(() => element.setText(text));
     };
     const source = (parent: HTMLElement, section: SnapshotBodySection) => {
+      if(!this.dependencies.showSourceActions)return;
       const row = parent.createDiv({cls:"flowdesk-source-actions"});
       const button = row.createEl("button", { cls: "flowdesk-content-source", text: "在原文查看", attr: { "aria-label": `${section.source ? "打开这一条原文" : "打开任务原文"}：${section.heading}` } });
       button.addEventListener("click", () => { void this.dependencies.openSource(content.taskId, section); });
@@ -39,7 +45,7 @@ export class TaskContentRenderer {
       if(!text)continue;
       const section=specification.createDiv({cls:"flowdesk-specification-section"});section.createEl("h3",{text:heading});body(section,text);
     }
-    if(!content.goal&&!content.why&&!content.scopeText&&!content.steps)specification.createDiv({cls:"flowdesk-muted",text:"未提供任务说明；可读取完整 API 原文。"});
+    if(!content.goal&&!content.why&&!content.scopeText&&!content.steps)specification.createDiv({cls:"flowdesk-muted",text:"未提供任务说明；可从任务标题打开原文件。"});
     source(specification,{heading:"任务说明",level:2,text:content.goal});
     const items=(heading:string,entries:SnapshotContractItem[])=>{
       if(!entries.length)return;
@@ -61,7 +67,7 @@ export class TaskContentRenderer {
       source(group,{heading:"验收",level:2,text:""});
     }
     const reading=createTaskReadingSections(content);
-    if(!reading.orderComplete)container.createDiv({cls:"flowdesk-muted",text:"部分段落无可靠位置，完整顺序请查看 API 原文。"});
+    if(!reading.orderComplete)container.createDiv({cls:"flowdesk-muted",text:"部分段落无可靠位置，完整顺序请查看原文件。"});
     for(const [kind,title] of [["execution","执行结果"],["verification","验证结果"],["delivery","交付记录"]] as const) {
       const records=content.records[kind];if(!records.length)continue;
       const result=disclosure(container,title,`result:${kind}`,"flowdesk-contract-item-details flowdesk-record-round");
@@ -71,10 +77,45 @@ export class TaskContentRenderer {
         body(result,excerpt(firstParagraph(latest.text)));source(result,latest);
       } else result.createDiv({cls:"flowdesk-muted",text:"无法确认最近一轮；完整结果保留在过程记录。"});
     }
-    if(!reading.sections.length)return;
-    const history=disclosure(container,`过程记录（${reading.sections.length} 条）`,"process-records","flowdesk-contract-item-details flowdesk-process-records");
+    const progress=readProgressSection(content.domainSections);
+    if(progress){
+      const section=container.createEl("section",{cls:"flowdesk-progress-log"});
+      const heading=section.createDiv({cls:"flowdesk-log-heading"});heading.createEl("h3",{text:"进度日志"});const count=heading.createSpan({cls:"flowdesk-muted",text:`最近 ${Math.min(3,progress.events.length)} 条 · 摘录`});
+      const markdown=(text:string,element:HTMLElement)=>{void this.dependencies.renderMarkdown(text,element,content.taskId).catch(()=>element.setText(text));};
+      const all=disclosure(section,`查看全部进度记录（${progress.events.length} 条）`,"all-progress","flowdesk-log-all");
+      const full=all.createDiv({cls:"flowdesk-log-full",attr:{"data-reading-scroll-key":"progress-history",role:"region","aria-label":"完整进度记录",tabindex:"0"}});
+      const entries=full.createDiv({cls:"flowdesk-log-full-entries"});
+      const more=full.createEl("button",{cls:"flowdesk-log-more",attr:{"data-focus-key":"progress-history-more"}});
+      let shown=0,busy=false,loading:Promise<void>|undefined;
+      const caption=(expanded:boolean)=>count.setText(expanded?`已显示 ${shown}/${progress.events.length} 条 · 原文`:`最近 ${Math.min(3,progress.events.length)} 条 · 摘录`);
+      const load=(desired=Math.max(12,Number(full.getAttribute("data-reading-items"))||0))=>{
+        if(this.dependencies.signal?.aborted)return;
+        if(busy)return loading;
+        if(shown>=progress.events.length)return;
+        const end=Math.min(progress.events.length,Math.max(shown,desired)),jobs:Array<{text:string;element:HTMLElement}>=[];
+        if(end===shown)return;
+        renderProgressEvents(entries,progress.events.slice(progress.events.length-end,progress.events.length-shown),(text,element)=>jobs.push({text,element}),true);
+        shown=end;full.setAttr("data-reading-items",String(shown));busy=true;more.disabled=true;
+        caption(all.open);
+        more.setText(`加载更早记录（剩余 ${progress.events.length-shown} 条）`);more.hidden=shown===progress.events.length;
+        const render=(async()=>{
+          try{for(const job of jobs){if(this.dependencies.signal?.aborted)return;try{await this.dependencies.renderMarkdown(job.text,job.element,content.taskId);}catch{if(!this.dependencies.signal?.aborted)job.element.setText(job.text);}}}
+          finally{busy=false;more.disabled=Boolean(this.dependencies.signal?.aborted);}
+        })();
+        loading=render;
+        this.dependencies.trackRender?.(render);
+        return render;
+      };
+      more.addEventListener("click",()=>load(shown+12));
+      const recent=section.createDiv({cls:"flowdesk-log-recent"});
+      renderProgressEvents(recent,progress.events.slice(-3),markdown,false);
+      bindProgressDisclosure(all,all.querySelectorAll("summary")[0],recent,full,progress.events.length,{signal:this.dependencies.signal,ensureHistory:()=>load(),onChange:caption});
+    }
+    const remaining=reading.sections.filter(item=>item.section!==progress?.section);
+    if(!remaining.length)return;
+    const history=disclosure(container,`其他过程资料（${remaining.length} 段）`,"process-records","flowdesk-contract-item-details flowdesk-process-records");
     history.createDiv({cls:"flowdesk-muted",text:"按原文顺序连续保留正文、历史进度与历轮结果。"});
-    for(const {kind,section:original} of reading.sections) {
+    for(const {kind,section:original} of remaining) {
       const entry=history.createDiv({cls:"flowdesk-process-entry",attr:{"data-record-kind":kind}});
       entry.createEl(original.level===3?"h3":"h2",{text:recordTitle(original.heading)});
       body(entry,original.text);

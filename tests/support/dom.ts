@@ -15,6 +15,7 @@ export class TestElement {
   focus(){if(this.ownerDocument)this.ownerDocument.activeElement=this;}
   setAttr(k:string,v:string){this.attrs[k]=v;}
   addEventListener(name:string,fn:Function){this.listeners.set(name,[...(this.listeners.get(name)??[]),fn]);}
+  dispatchEvent(event:Event){for(const fn of this.listeners.get(event.type)??[])fn(event);return true;}
   async click(){const target=this;let stopped=false;const event={target,stopPropagation(){stopped=true;},stopImmediatePropagation(){stopped=true;},preventDefault(){}};for(let element:TestElement|null=this;element&&!stopped;element=element.parentElement)for(const fn of element.listeners.get("click")??[])await fn(event);}
   closest(selector:string):TestElement|null {for(let element:TestElement|null=this;element;element=element.parentElement)if(element.tag===selector)return element;return null;}
   contains(node:TestElement):boolean {for(let element:TestElement|null=node;element;element=element.parentElement)if(element===this)return true;return false;}

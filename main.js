@@ -34,7 +34,7 @@ __export(main_exports, {
   default: () => FlowDeskDashboardPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian = require("obsidian");
+var import_obsidian2 = require("obsidian");
 var import_child_process2 = require("child_process");
 
 // src/tasknotes-auth.ts
@@ -1265,7 +1265,7 @@ function createTaskCurrentProgress(content, context) {
   var _a, _b;
   if (!context.observationHealthy) return unknown("snapshot \u89C2\u6D4B\u6709\u7F3A\u53E3\u6216\u5DF2\u8FC7\u671F\uFF1B\u5F53\u524D\u8FDB\u5C55 unknown\u3002");
   const sections = content.domainSections.filter((section3) => section3.level === 2 && section3.heading === "Progress");
-  if (sections.length !== 1) return unknown(sections.length ? "Progress \u6BB5\u4E0D\u552F\u4E00\uFF1B\u5F53\u524D\u8FDB\u5C55 unknown\u3002" : "snapshot \u672A\u63D0\u4F9B\u5B8C\u6574 canonical Progress\uFF1B\u53EF\u4E3B\u52A8\u8BFB\u53D6 API \u539F\u6587\u3002");
+  if (sections.length !== 1) return unknown(sections.length ? "Progress \u6BB5\u4E0D\u552F\u4E00\uFF1B\u5F53\u524D\u8FDB\u5C55 unknown\u3002" : "snapshot \u672A\u63D0\u4F9B\u5B8C\u6574 canonical Progress\uFF1B\u53EF\u67E5\u770B\u4EFB\u52A1\u539F\u6587\u4EF6\u3002");
   const section2 = sections[0], source = section2.source, start = source == null ? void 0 : source.line_start, end = source == null ? void 0 : source.line_end;
   if (typeof start !== "number" || typeof end !== "number" || !Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || (source == null ? void 0 : source.truncated) === true || (source == null ? void 0 : source.omitted) === true) return unknown("Progress \u6765\u6E90\u8303\u56F4\u7F3A\u5931\u6216\u660E\u786E\u4E0D\u5B8C\u6574\uFF1B\u5F53\u524D\u8FDB\u5C55 unknown\u3002");
   const lines = section2.text.replace(/\r\n/g, "\n").split("\n");
@@ -1379,7 +1379,7 @@ function renderTaskOverview(container, model, dependencies) {
     record2.createDiv({ cls: "flowdesk-muted", text: gap });
     if (current.status === "unknown") card.createDiv({ cls: "flowdesk-overview-gap", text: gap });
   }
-  if (current.source) {
+  if (current.source && dependencies.showSourceActions) {
     const source = record2.createEl("button", { cls: "flowdesk-content-source", text: "\u6253\u5F00 Progress \u539F\u6587" });
     const original = model.content.domainSections.find((s) => s.level === 2 && s.heading === "Progress");
     source.addEventListener("click", () => {
@@ -1388,6 +1388,150 @@ function renderTaskOverview(container, model, dependencies) {
     });
   }
   return card;
+}
+
+// src/progress-history.ts
+function parseQuotedProgress(text2) {
+  var _a;
+  const lines = text2.replace(/\r\n/g, "\n").split("\n");
+  while (lines.length && !lines[0].trim()) lines.shift();
+  if (lines.shift() !== "> [!faq]- \u8BE6\u7EC6\u8FC7\u7A0B\u65E5\u5FD7") return null;
+  const events = [];
+  let fence = null, receipts = false;
+  const scan = (line) => {
+    const visible = line.replace(/^(?:进展|完成|下一步)：/, "");
+    const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(visible);
+    if (!match) return;
+    if (!fence) fence = { char: match[1][0], length: match[1].length };
+    else if (match[1][0] === fence.char && match[1].length >= fence.length && !match[2].trim()) fence = null;
+  };
+  for (const line of lines) {
+    if (/^<!-- flowdesk\.task-update\/.* -->$/.test(line)) {
+      if (fence) return null;
+      receipts = true;
+      continue;
+    }
+    if (receipts) {
+      if (line.trim()) return null;
+      continue;
+    }
+    const event = /^> - \[[xX ]\] (.*)$/.exec(line);
+    if (event) {
+      if (fence) return null;
+      const dated = /^`([^`]*)`(?: (.*))?$/.exec(event[1]);
+      const body2 = dated ? (_a = dated[2]) != null ? _a : "" : event[1];
+      events.push({ timestamp: dated ? dated[1] : null, lines: [body2] });
+      scan(body2);
+      continue;
+    }
+    if (!line.trim() || /^> *$/.test(line)) {
+      if (events.length) events[events.length - 1].lines.push("");
+      continue;
+    }
+    if (!events.length || !line.startsWith(">   ")) return null;
+    const body = line.slice(4);
+    events[events.length - 1].lines.push(body);
+    scan(body);
+  }
+  if (fence || !events.length || events.some((event) => !event.lines.join("\n").trim())) return null;
+  return events.map((event, sourceIndex) => ({ timestamp: event.timestamp, text: event.lines.join("\n").trimEnd(), sourceIndex }));
+}
+function readProgressSection(sections) {
+  const candidates = sections.filter((section3) => section3.level === 2 && section3.heading === "Progress");
+  if (candidates.length !== 1) return null;
+  const section2 = candidates[0], source = section2.source;
+  if (!Number.isInteger(source == null ? void 0 : source.line_start) || Number(source == null ? void 0 : source.line_start) < 1 || !Number.isInteger(source == null ? void 0 : source.line_end) || Number(source == null ? void 0 : source.line_end) < Number(source == null ? void 0 : source.line_start) || (source == null ? void 0 : source.truncated) === true || (source == null ? void 0 : source.omitted) === true) return null;
+  const events = parseQuotedProgress(section2.text);
+  return events ? { section: section2, events } : null;
+}
+function historyTime(value) {
+  if (!value) return "\u65F6\u95F4\u672A\u8BB0\u5F55";
+  const legacy = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/.exec(value);
+  if (legacy) {
+    const [year, month, day, hour, minute] = legacy.slice(1).map(Number), date = /* @__PURE__ */ new Date(0);
+    date.setUTCFullYear(year, month - 1, day);
+    if (date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day && hour < 24 && minute < 60) return formatDisplayTime(value.replace(" ", "T") + ":00+08:00");
+  }
+  const iso = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (iso) {
+    const [year, month, day, hour, minute, second] = iso.slice(1, 7).map((part) => Number(part != null ? part : 0)), date = /* @__PURE__ */ new Date(0);
+    date.setUTCFullYear(year, month - 1, day);
+    const zone = iso[7];
+    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day || hour > 23 || minute > 59 || second > 59 || zone !== "Z" && (Number(zone.slice(1, 3)) > 23 || Number(zone.slice(4)) > 59)) return value;
+  }
+  return formatDisplayTime(value);
+}
+function renderProgressEvents(parent, events, renderMarkdown, full) {
+  var _a;
+  for (const event of [...events].reverse()) {
+    const row = parent.createDiv({ cls: "flowdesk-log-entry", attr: { "data-source-index": String(event.sourceIndex) } });
+    row.createEl("time", { cls: "flowdesk-log-date", text: historyTime(event.timestamp), attr: { title: (_a = event.timestamp) != null ? _a : "\u539F\u6587\u672A\u63D0\u4F9B\u65E5\u671F" } });
+    const content = row.createDiv({ cls: full ? "flowdesk-log-body markdown-rendered" : "flowdesk-log-excerpt markdown-rendered" });
+    renderMarkdown(full ? event.text : excerpt(firstParagraph(event.text).replace(/^(?:进展|完成)：/, ""), 600), content);
+  }
+}
+
+// src/progress-disclosure.ts
+function bindProgressDisclosure(details, summary, recent, full, count, options) {
+  var _a, _b;
+  let expanded = details.open, animation = null, version = 0;
+  const window2 = (_a = details.ownerDocument) == null ? void 0 : _a.defaultView;
+  const clear = () => {
+    animation == null ? void 0 : animation.cancel();
+    animation = null;
+    for (const element of [recent, full]) {
+      element.style.height = "";
+      element.style.maxHeight = "";
+      element.style.overflow = "";
+    }
+  };
+  const change = (next, motion) => {
+    var _a2, _b2, _c, _d, _e, _f;
+    if ((_a2 = options.signal) == null ? void 0 : _a2.aborted) return;
+    const revision = ++version;
+    const from = (_d = (_c = (_b2 = expanded ? full : recent).getBoundingClientRect) == null ? void 0 : _c.call(_b2).height) != null ? _d : 0;
+    clear();
+    expanded = next;
+    details.open = next;
+    recent.hidden = next;
+    const ready = next ? options.ensureHistory() : void 0;
+    (_e = options.onChange) == null ? void 0 : _e.call(options, next);
+    summary.setText(`${next ? "\u6536\u8D77\u5168\u90E8" : "\u67E5\u770B\u5168\u90E8"}\u8FDB\u5EA6\u8BB0\u5F55\uFF08${count} \u6761\uFF09`);
+    if (!motion || !from || !window2 || typeof full.animate !== "function" || ((_f = window2.matchMedia) == null ? void 0 : _f.call(window2, "(prefers-reduced-motion: reduce)").matches)) return;
+    const target = next ? full : recent;
+    const collapsedHeight = recent.scrollHeight;
+    target.style.maxHeight = "none";
+    target.style.height = `${from}px`;
+    target.style.overflow = next ? "auto" : "hidden";
+    const start = () => {
+      var _a3;
+      if (revision !== version || ((_a3 = options.signal) == null ? void 0 : _a3.aborted)) return;
+      target.style.height = "";
+      const height = next ? Math.min(target.scrollHeight, window2.innerHeight * 0.6, 520) : collapsedHeight;
+      target.style.height = `${from}px`;
+      const current = target.animate([{ height: `${from}px`, opacity: 0.65 }, { height: `${height}px`, opacity: 1 }], { duration: 200, easing: "cubic-bezier(.2, 0, 0, 1)" });
+      animation = current;
+      current.onfinish = () => {
+        if (animation === current) clear();
+      };
+    };
+    if (ready) void ready.then(start, start);
+    else start();
+  };
+  summary.setAttr("data-focus-key", "progress-history-toggle");
+  summary.addEventListener("click", (event) => {
+    event.preventDefault();
+    change(!expanded, true);
+  });
+  details.addEventListener("toggle", () => {
+    if (details.open !== expanded) change(details.open, false);
+  });
+  details.addEventListener("flowdesk-reading-restore", () => change(details.open, false));
+  (_b = options.signal) == null ? void 0 : _b.addEventListener("abort", () => {
+    version++;
+    clear();
+  }, { once: true });
+  recent.hidden = expanded;
 }
 
 // src/task-content-renderer.ts
@@ -1404,6 +1548,7 @@ var TaskContentRenderer = class {
     };
     const source = (parent, section2) => {
       var _a2, _b2;
+      if (!this.dependencies.showSourceActions) return;
       const row = parent.createDiv({ cls: "flowdesk-source-actions" });
       const button = row.createEl("button", { cls: "flowdesk-content-source", text: "\u5728\u539F\u6587\u67E5\u770B", attr: { "aria-label": `${section2.source ? "\u6253\u5F00\u8FD9\u4E00\u6761\u539F\u6587" : "\u6253\u5F00\u4EFB\u52A1\u539F\u6587"}\uFF1A${section2.heading}` } });
       button.addEventListener("click", () => {
@@ -1428,7 +1573,7 @@ var TaskContentRenderer = class {
       section2.createEl("h3", { text: heading });
       body(section2, text2);
     }
-    if (!content.goal && !content.why && !content.scopeText && !content.steps) specification.createDiv({ cls: "flowdesk-muted", text: "\u672A\u63D0\u4F9B\u4EFB\u52A1\u8BF4\u660E\uFF1B\u53EF\u8BFB\u53D6\u5B8C\u6574 API \u539F\u6587\u3002" });
+    if (!content.goal && !content.why && !content.scopeText && !content.steps) specification.createDiv({ cls: "flowdesk-muted", text: "\u672A\u63D0\u4F9B\u4EFB\u52A1\u8BF4\u660E\uFF1B\u53EF\u4ECE\u4EFB\u52A1\u6807\u9898\u6253\u5F00\u539F\u6587\u4EF6\u3002" });
     source(specification, { heading: "\u4EFB\u52A1\u8BF4\u660E", level: 2, text: content.goal });
     const items = (heading, entries) => {
       var _a2, _b2;
@@ -1455,7 +1600,7 @@ var TaskContentRenderer = class {
       source(group, { heading: "\u9A8C\u6536", level: 2, text: "" });
     }
     const reading = createTaskReadingSections(content);
-    if (!reading.orderComplete) container.createDiv({ cls: "flowdesk-muted", text: "\u90E8\u5206\u6BB5\u843D\u65E0\u53EF\u9760\u4F4D\u7F6E\uFF0C\u5B8C\u6574\u987A\u5E8F\u8BF7\u67E5\u770B API \u539F\u6587\u3002" });
+    if (!reading.orderComplete) container.createDiv({ cls: "flowdesk-muted", text: "\u90E8\u5206\u6BB5\u843D\u65E0\u53EF\u9760\u4F4D\u7F6E\uFF0C\u5B8C\u6574\u987A\u5E8F\u8BF7\u67E5\u770B\u539F\u6587\u4EF6\u3002" });
     for (const [kind, title] of [["execution", "\u6267\u884C\u7ED3\u679C"], ["verification", "\u9A8C\u8BC1\u7ED3\u679C"], ["delivery", "\u4EA4\u4ED8\u8BB0\u5F55"]]) {
       const records = content.records[kind];
       if (!records.length) continue;
@@ -1467,10 +1612,66 @@ var TaskContentRenderer = class {
         source(result, latest);
       } else result.createDiv({ cls: "flowdesk-muted", text: "\u65E0\u6CD5\u786E\u8BA4\u6700\u8FD1\u4E00\u8F6E\uFF1B\u5B8C\u6574\u7ED3\u679C\u4FDD\u7559\u5728\u8FC7\u7A0B\u8BB0\u5F55\u3002" });
     }
-    if (!reading.sections.length) return;
-    const history = disclosure(container, `\u8FC7\u7A0B\u8BB0\u5F55\uFF08${reading.sections.length} \u6761\uFF09`, "process-records", "flowdesk-contract-item-details flowdesk-process-records");
+    const progress = readProgressSection(content.domainSections);
+    if (progress) {
+      const section2 = container.createEl("section", { cls: "flowdesk-progress-log" });
+      const heading = section2.createDiv({ cls: "flowdesk-log-heading" });
+      heading.createEl("h3", { text: "\u8FDB\u5EA6\u65E5\u5FD7" });
+      const count = heading.createSpan({ cls: "flowdesk-muted", text: `\u6700\u8FD1 ${Math.min(3, progress.events.length)} \u6761 \xB7 \u6458\u5F55` });
+      const markdown = (text2, element) => {
+        void this.dependencies.renderMarkdown(text2, element, content.taskId).catch(() => element.setText(text2));
+      };
+      const all = disclosure(section2, `\u67E5\u770B\u5168\u90E8\u8FDB\u5EA6\u8BB0\u5F55\uFF08${progress.events.length} \u6761\uFF09`, "all-progress", "flowdesk-log-all");
+      const full = all.createDiv({ cls: "flowdesk-log-full", attr: { "data-reading-scroll-key": "progress-history", role: "region", "aria-label": "\u5B8C\u6574\u8FDB\u5EA6\u8BB0\u5F55", tabindex: "0" } });
+      const entries = full.createDiv({ cls: "flowdesk-log-full-entries" });
+      const more = full.createEl("button", { cls: "flowdesk-log-more", attr: { "data-focus-key": "progress-history-more" } });
+      let shown = 0, busy = false, loading;
+      const caption = (expanded) => count.setText(expanded ? `\u5DF2\u663E\u793A ${shown}/${progress.events.length} \u6761 \xB7 \u539F\u6587` : `\u6700\u8FD1 ${Math.min(3, progress.events.length)} \u6761 \xB7 \u6458\u5F55`);
+      const load = (desired = Math.max(12, Number(full.getAttribute("data-reading-items")) || 0)) => {
+        var _a2, _b2, _c;
+        if ((_a2 = this.dependencies.signal) == null ? void 0 : _a2.aborted) return;
+        if (busy) return loading;
+        if (shown >= progress.events.length) return;
+        const end = Math.min(progress.events.length, Math.max(shown, desired)), jobs = [];
+        if (end === shown) return;
+        renderProgressEvents(entries, progress.events.slice(progress.events.length - end, progress.events.length - shown), (text2, element) => jobs.push({ text: text2, element }), true);
+        shown = end;
+        full.setAttr("data-reading-items", String(shown));
+        busy = true;
+        more.disabled = true;
+        caption(all.open);
+        more.setText(`\u52A0\u8F7D\u66F4\u65E9\u8BB0\u5F55\uFF08\u5269\u4F59 ${progress.events.length - shown} \u6761\uFF09`);
+        more.hidden = shown === progress.events.length;
+        const render = (async () => {
+          var _a3, _b3, _c2;
+          try {
+            for (const job of jobs) {
+              if ((_a3 = this.dependencies.signal) == null ? void 0 : _a3.aborted) return;
+              try {
+                await this.dependencies.renderMarkdown(job.text, job.element, content.taskId);
+              } catch (e) {
+                if (!((_b3 = this.dependencies.signal) == null ? void 0 : _b3.aborted)) job.element.setText(job.text);
+              }
+            }
+          } finally {
+            busy = false;
+            more.disabled = Boolean((_c2 = this.dependencies.signal) == null ? void 0 : _c2.aborted);
+          }
+        })();
+        loading = render;
+        (_c = (_b2 = this.dependencies).trackRender) == null ? void 0 : _c.call(_b2, render);
+        return render;
+      };
+      more.addEventListener("click", () => load(shown + 12));
+      const recent = section2.createDiv({ cls: "flowdesk-log-recent" });
+      renderProgressEvents(recent, progress.events.slice(-3), markdown, false);
+      bindProgressDisclosure(all, all.querySelectorAll("summary")[0], recent, full, progress.events.length, { signal: this.dependencies.signal, ensureHistory: () => load(), onChange: caption });
+    }
+    const remaining = reading.sections.filter((item) => item.section !== (progress == null ? void 0 : progress.section));
+    if (!remaining.length) return;
+    const history = disclosure(container, `\u5176\u4ED6\u8FC7\u7A0B\u8D44\u6599\uFF08${remaining.length} \u6BB5\uFF09`, "process-records", "flowdesk-contract-item-details flowdesk-process-records");
     history.createDiv({ cls: "flowdesk-muted", text: "\u6309\u539F\u6587\u987A\u5E8F\u8FDE\u7EED\u4FDD\u7559\u6B63\u6587\u3001\u5386\u53F2\u8FDB\u5EA6\u4E0E\u5386\u8F6E\u7ED3\u679C\u3002" });
-    for (const { kind, section: original } of reading.sections) {
+    for (const { kind, section: original } of remaining) {
       const entry = history.createDiv({ cls: "flowdesk-process-entry", attr: { "data-record-kind": kind } });
       entry.createEl(original.level === 3 ? "h3" : "h2", { text: recordTitle(original.heading) });
       body(entry, original.text);
@@ -2636,7 +2837,6 @@ ${core.source} \xB7 ${core.root}` : ""}` });
     this.renderTasks(container, presentation);
     this.renderRelated(container, state, presentation);
     this.renderProgress(container, state, presentation);
-    this.renderResume(container, state);
     this.renderSections(container, state, presentation);
     this.renderTechnicalContext(container, presentation);
     this.renderDiagnostics(container, presentation);
@@ -2669,14 +2869,37 @@ ${core.source} \xB7 ${core.root}` : ""}` });
     const header = container.createDiv({ cls: "flowdesk-case-header" });
     const top = header.createDiv({ cls: "flowdesk-case-header-top" });
     top.createDiv({ cls: "flowdesk-case-kicker", text: "\u5DE5\u4F5C\u6848\u5377" });
-    const refresh = top.createEl("button", {
+    const actions = top.createDiv({ cls: "flowdesk-header-actions" });
+    const refresh = actions.createEl("button", {
       cls: "flowdesk-case-refresh",
       text: state.loading ? "\u8BFB\u53D6\u4E2D" : "\u5237\u65B0",
       attr: { "aria-label": state.loading ? "Work Case \u8BFB\u53D6\u4E2D" : "\u5237\u65B0 Work Case" }
     });
     refresh.disabled = state.loading;
     refresh.addEventListener("click", () => void this.dependencies.refresh());
-    header.createDiv({ cls: "flowdesk-case-title", text: presentation.header.title });
+    const more = actions.createEl("button", { cls: "flowdesk-more-actions", text: "\u22EF", attr: { "aria-label": "\u66F4\u591A\u64CD\u4F5C", "data-focus-key": "case-more" } });
+    more.addEventListener("click", () => {
+      var _a2, _b;
+      return (_b = (_a2 = this.dependencies).openActions) == null ? void 0 : _b.call(_a2, "\u66F4\u591A\u64CD\u4F5C", [
+        { label: "\u590D\u5236\u4EA4\u63A5\u4E0A\u4E0B\u6587", run: () => {
+          var _a3, _b2;
+          return (_b2 = (_a3 = this.dependencies).copyText) == null ? void 0 : _b2.call(_a3, createContinuationCard(state.model, { staleReason: state.staleReason, selectedTaskIds: [...this.selectedTasks(state)] }).text);
+        } },
+        { label: "\u67E5\u770B\u4EA4\u63A5\u4E0A\u4E0B\u6587", run: () => {
+          var _a3, _b2;
+          return (_b2 = (_a3 = this.dependencies).openContent) == null ? void 0 : _b2.call(_a3, "\u4EA4\u63A5\u4E0A\u4E0B\u6587", (container2) => this.renderResume(container2, state));
+        } },
+        { label: "\u590D\u5236\u5B8C\u6574\u6062\u590D\u8D44\u6599", run: () => {
+          var _a3, _b2;
+          return (_b2 = (_a3 = this.dependencies).copyText) == null ? void 0 : _b2.call(_a3, this.fullResumeText(state));
+        } },
+        { label: "\u67E5\u770B\u539F\u6587\u4EF6", run: () => this.dependencies.openRelated(state.casePath, state.casePath) }
+      ]);
+    });
+    const title = header.createEl("button", { cls: "flowdesk-case-title flowdesk-case-title-link", text: presentation.header.title });
+    title.addEventListener("click", () => {
+      void this.dependencies.openRelated(state.casePath, state.casePath);
+    });
     const metadata = header.createDiv({ cls: "flowdesk-case-metadata" });
     metadata.createSpan({ cls: "flowdesk-case-status", text: presentation.header.status, attr: { title: ((_a = state.model) == null ? void 0 : _a.workCase.status) || "\u672A\u8BB0\u5F55" } });
     if (presentation.header.project !== "\u672A\u5173\u8054 Project") {
@@ -2724,11 +2947,6 @@ ${core.source} \xB7 ${core.root}` : ""}` });
         full.createEl("summary", { text: "\u5C55\u5F00\u5168\u6587" });
         this.markdown(full, item.value, state.casePath, "flowdesk-case-current-original");
       }
-      const original = card.createEl("button", { cls: "flowdesk-case-source-action", text: "\u5728\u539F\u6587\u67E5\u770B", attr: { "aria-label": `\u6253\u5F00 Current\uFF1A${item.label}` } });
-      original.disabled = !item.source;
-      original.addEventListener("click", () => {
-        if (item.source) void this.dependencies.openCaseSource(state.casePath, item.source);
-      });
     }
   }
   markdown(parent, text2, sourcePath, cls) {
@@ -2806,7 +3024,6 @@ ${core.source} \xB7 ${core.root}` : ""}` });
     );
   }
   renderProgress(container, state, presentation) {
-    var _a;
     const section2 = createSection(container, "\u6700\u8FD1\u8FDB\u5C55", "flowdesk-case-recent-progress");
     if (!presentation.recentProgress.length) {
       section2.createDiv({ cls: "flowdesk-case-empty", text: "\u672A\u8BB0\u5F55\u7ED3\u6784\u5316 Progress\u3002" });
@@ -2819,14 +3036,21 @@ ${core.source} \xB7 ${core.root}` : ""}` });
       if (item.timestamp) meta.createSpan({ cls: "flowdesk-case-progress-time", text: formatDisplayTime(item.timestamp), attr: { title: item.timestamp } });
       if (index === 0) meta.createSpan({ cls: "flowdesk-case-progress-latest", text: "\u6700\u65B0" });
       this.markdown(row, item.text, state.casePath, "flowdesk-case-progress-text");
-      const original = row.createEl("button", { cls: "flowdesk-case-source-action", text: "\u5728\u539F\u6587\u67E5\u770B", attr: { "aria-label": `\u67E5\u770B\u8FDB\u5C55\u539F\u6587\uFF1A${(_a = item.timestamp) != null ? _a : "\u65F6\u95F4\u672A\u8BB0\u5F55"}` } });
-      original.addEventListener("click", () => {
-        void this.dependencies.openCaseSource(state.casePath, item.source);
-      });
     }
-    const history = section2.createEl("button", { cls: "flowdesk-case-progress-history", text: "\u67E5\u770B\u5B8C\u6574\u5386\u53F2" });
+    const history = section2.createEl("button", { cls: "flowdesk-case-progress-history", text: "\u67E5\u770B\u5168\u90E8\u8FDB\u5C55 \u2192" });
     history.addEventListener("click", () => {
-      void this.dependencies.openRelated(state.casePath, state.casePath);
+      var _a, _b;
+      return (_b = (_a = this.dependencies).openContent) == null ? void 0 : _b.call(_a, "\u5168\u90E8\u8FDB\u5C55", (container2) => {
+        var _a2, _b2;
+        const progress = (_b2 = (_a2 = state.caseContent) == null ? void 0 : _a2.sections.filter((item) => item.heading === "Progress")) != null ? _b2 : [];
+        const events = progress.length === 1 ? parseQuotedProgress(progress[0].text) : null;
+        if (events) renderProgressEvents(container2, events, (text2, element) => this.markdown(element, text2, state.casePath, ""), true);
+        else {
+          container2.createDiv({ cls: "flowdesk-muted", text: "\u5B8C\u6574\u8FDB\u5C55\u672A\u80FD\u6574\u7406\uFF1B\u4EE5\u4E0B\u4FDD\u7559\u53EF\u8BFB\u53D6\u7684\u539F\u6587\uFF0C\u4E0D\u4EE3\u8868\u5B8C\u6574\u5386\u53F2\u3002" });
+          for (const item of progress) this.markdown(container2, item.text, state.casePath, "flowdesk-log-body");
+          if (!progress.length) for (const item of state.model.recentProgress) this.markdown(container2, item.text, state.casePath, "flowdesk-log-body");
+        }
+      });
     });
   }
   renderSections(container, state, presentation) {
@@ -2872,15 +3096,16 @@ ${core.source} \xB7 ${core.root}` : ""}` });
     if (!item) return;
     details.createDiv({ cls: "flowdesk-case-record-heading", text: "\u539F\u6587\u6458\u5F55" });
     this.markdown(details, excerpt(firstParagraph(item.text), 480), state.casePath, "flowdesk-case-record-text");
-    const original = details.createEl("button", { cls: "flowdesk-case-record-entry flowdesk-case-source-action", text: "\u5728\u539F\u6587\u67E5\u770B" });
-    original.addEventListener("click", () => {
-      void this.dependencies.openCaseSource(state.casePath, item.source);
-    });
   }
   renderRelated(container, state, presentation) {
-    var _a;
+    var _a, _b, _c;
     if (!presentation.related.length) return;
     const section2 = createSection(container, "\u7CBE\u9009\u5165\u53E3", "flowdesk-case-related");
+    const edit = section2.createEl("button", { cls: "flowdesk-edit-entries", text: "\u7F16\u8F91\u5165\u53E3", attr: { "aria-label": "\u7F16\u8F91\u7CBE\u9009\u5165\u53E3" } });
+    edit.addEventListener("click", () => {
+      var _a2, _b2;
+      void ((_b2 = (_a2 = this.dependencies).editCase) == null ? void 0 : _b2.call(_a2, state.casePath));
+    });
     for (const group of presentation.related) {
       const row = section2.createDiv({ cls: "flowdesk-case-related-row" });
       row.createSpan({ cls: "flowdesk-case-label", text: (_a = { Project: "\u9879\u76EE", Plans: "\u8BA1\u5212", Docs: "\u6587\u6863", Sessions: "\u539F\u4F1A\u8BDD", Related: "\u8D44\u6599" }[group.label]) != null ? _a : group.label });
@@ -2888,9 +3113,15 @@ ${core.source} \xB7 ${core.root}` : ""}` });
       for (const target of group.targets) {
         const link = links.createEl("button", {
           cls: "flowdesk-case-related-link",
-          text: formatReferenceLabel(target),
           attr: { title: target }
         });
+        const web = /^https?:\/\//i.test(parseReferenceText(target).target);
+        const icon = link.createSpan({ cls: "flowdesk-reference-icon", attr: { "aria-hidden": "true" } });
+        (_c = (_b = this.dependencies).icon) == null ? void 0 : _c.call(_b, icon, web ? "globe" : "file-text");
+        const copy = link.createSpan({ cls: "flowdesk-reference-copy" });
+        copy.createSpan({ cls: "flowdesk-reference-title", text: formatReferenceLabel(target) });
+        copy.createSpan({ cls: "flowdesk-reference-type", text: web ? "\u7F51\u9875 \xB7 \u6D4F\u89C8\u5668" : group.label === "Project" ? "\u9879\u76EE \xB7 Obsidian \u7B14\u8BB0" : "\u6587\u6863 \xB7 \u539F\u6587\u4EF6" });
+        link.createSpan({ cls: "flowdesk-reference-arrow", text: web ? "\u2197" : "\u2192", attr: { "aria-hidden": "true" } });
         link.addEventListener(
           "click",
           () => void this.dependencies.openRelated(target, state.casePath)
@@ -2898,22 +3129,30 @@ ${core.source} \xB7 ${core.root}` : ""}` });
       }
     }
   }
-  renderResume(container, state) {
-    if (!state.model) return;
-    const presentation = createResumePresentation(state.model.resumeBundle, state.model);
-    const section2 = createSection(container, "\u7EE7\u7EED\u5DE5\u4F5C", "flowdesk-case-resume");
-    const independent = state.caseContent;
-    const caseLines = (independent == null ? void 0 : independent.error) ? [`Case\u72EC\u7ACB\u539F\u6587\u8BFB\u53D6\u5931\u8D25\uFF1A${independent.error}`] : independent ? [`Case\u72EC\u7ACB\u539F\u6587\u8BFB\u53D6\u65F6\u95F4\uFF1A${independent.readAt}`, ...independent.sections.map((s) => `${s.heading}\uFF08vault-file ${s.source.lineStart}\u2013${s.source.lineEnd}\uFF09\uFF1A
-${s.text}`)] : ["Case\u72EC\u7ACB\u539F\u6587\u672A\u8BFB\u53D6\uFF1BContext/Summary\u9700\u67E5\u770B\u6574\u5F20Case\u3002"];
-    const summary = [presentation.summary, `\u672C\u5730snapshot\u8BFB\u53D6\u65F6\u95F4\uFF1A${state.loadedAt}`, state.staleReason ? `\u65E7\u89C2\u6D4B\uFF1A${state.staleReason}` : "", ...caseLines].filter(Boolean).join("\n\n");
-    const active = state.model.tasks.items.filter((t) => t.statusIsCompleted !== true);
-    const previous = this.taskChoices.get(state.casePath), ids = new Set(active.map((t) => t.id));
+  selectedTasks(state) {
+    const ids = new Set(state.model.tasks.items.filter((task) => task.statusIsCompleted !== true).map((task) => task.id)), previous = this.taskChoices.get(state.casePath);
     const selected = new Set(previous ? [...previous.selected].filter((id) => ids.has(id)) : ids);
     for (const id of ids) if (!(previous == null ? void 0 : previous.known.has(id))) selected.add(id);
     this.taskChoices.set(state.casePath, { selected, known: ids });
     while (this.taskChoices.size > 20) this.taskChoices.delete(this.taskChoices.keys().next().value);
+    return selected;
+  }
+  fullResumeText(state) {
+    const presentation = createResumePresentation(state.model.resumeBundle, state.model), independent = state.caseContent;
+    const caseLines = (independent == null ? void 0 : independent.error) ? [`Case\u72EC\u7ACB\u539F\u6587\u8BFB\u53D6\u5931\u8D25\uFF1A${independent.error}`] : independent ? [`Case\u72EC\u7ACB\u539F\u6587\u8BFB\u53D6\u65F6\u95F4\uFF1A${independent.readAt}`, ...independent.sections.filter((section2) => section2.heading !== "Progress").map((section2) => `${section2.heading}\uFF08vault-file ${section2.source.lineStart}\u2013${section2.source.lineEnd}\uFF09\uFF1A
+${section2.text}`)] : ["Case\u72EC\u7ACB\u539F\u6587\u672A\u8BFB\u53D6\uFF1BContext/Summary\u9700\u67E5\u770B\u6574\u5F20Case\u3002"];
+    return [presentation.summary, `\u672C\u5730snapshot\u8BFB\u53D6\u65F6\u95F4\uFF1A${state.loadedAt}`, state.staleReason ? `\u65E7\u89C2\u6D4B\uFF1A${state.staleReason}` : "", ...caseLines].filter(Boolean).join("\n\n");
+  }
+  renderResume(container, state) {
+    if (!state.model) return;
+    container.addClass("flowdesk-case-dashboard");
+    const presentation = createResumePresentation(state.model.resumeBundle, state.model);
+    const section2 = createSection(container, "\u4EA4\u63A5\u4E0A\u4E0B\u6587", "flowdesk-case-resume");
+    const summary = this.fullResumeText(state);
+    const active = state.model.tasks.items.filter((t) => t.statusIsCompleted !== true);
+    const selected = this.selectedTasks(state);
     const short = section2.createEl("details", { cls: "flowdesk-continuation-preview", attr: { "data-disclosure-key": "continuation-preview" } });
-    short.createEl("summary", { text: "\u67E5\u770B\u7EE7\u7EED\u5DE5\u4F5C\u5361" });
+    short.createEl("summary", { text: "\u67E5\u770B\u4EA4\u63A5\u4E0A\u4E0B\u6587" });
     const content = short.createEl("pre", { cls: "flowdesk-continuation-text" });
     const size = section2.createDiv({ cls: "flowdesk-muted" });
     const update = () => {
@@ -3298,7 +3537,7 @@ function createCaseContent(casePath, details, readAt) {
     const heading = line.match(/^(#{1,6})\s+(.+?)\s*#*$/);
     if (heading) headings.push({ heading: heading[2], level: heading[1].length, index });
   }
-  const selected = /* @__PURE__ */ new Set(["Goal", "Current", "Context", "Summary", "Decisions", "\u76EE\u6807", "\u51B3\u7B56", "\u80CC\u666F", "\u6458\u8981"]);
+  const selected = /* @__PURE__ */ new Set(["Goal", "Current", "Context", "Summary", "Decisions", "Progress", "\u76EE\u6807", "\u51B3\u7B56", "\u80CC\u666F", "\u6458\u8981"]);
   const sections = headings.filter((h) => selected.has(h.heading)).map((h) => {
     var _a, _b;
     const end = (_b = (_a = headings.find((n) => n.index > h.index && n.level <= h.level)) == null ? void 0 : _a.index) != null ? _b : lines.length;
@@ -3410,48 +3649,127 @@ function focusTargets(container) {
   }
   return targets;
 }
+function scrollTargets(container) {
+  return Array.from(container.querySelectorAll("div")).filter((el) => get(el, "data-reading-scroll-key")).map((el) => [get(el, "data-reading-scroll-key"), el]);
+}
 var ReadingStateCache = class {
   constructor(capacity = 20) {
     this.capacity = capacity;
     this.entries = /* @__PURE__ */ new Map();
   }
   capture(key, container, options = {}) {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f;
     if (!key) return;
     const list = disclosures(container);
     if (!list.length) return;
     const previous = this.entries.get(key);
-    const state = { open: (_a = previous == null ? void 0 : previous.open) != null ? _a : /* @__PURE__ */ new Map(), scroll: options.position === false ? (_b = previous == null ? void 0 : previous.scroll) != null ? _b : 0 : container.scrollTop || 0, focus: (_c = previous == null ? void 0 : previous.focus) != null ? _c : null };
+    const state = { open: (_a = previous == null ? void 0 : previous.open) != null ? _a : /* @__PURE__ */ new Map(), scroll: options.position === false ? (_b = previous == null ? void 0 : previous.scroll) != null ? _b : 0 : container.scrollTop || 0, nested: (_c = previous == null ? void 0 : previous.nested) != null ? _c : /* @__PURE__ */ new Map(), focus: (_d = previous == null ? void 0 : previous.focus) != null ? _d : null };
     for (const [id, el] of list) state.open.set(id, el.open);
     focusTargets(container);
-    const active = (_d = container.ownerDocument) == null ? void 0 : _d.activeElement;
+    const active = (_e = container.ownerDocument) == null ? void 0 : _e.activeElement;
     if (options.position !== false) {
+      for (const [id, element] of scrollTargets(container)) state.nested.set(id, { scroll: element.scrollTop || 0, items: get(element, "data-reading-items") });
       if (active && container.contains(active)) state.focus = get(active, "data-reading-focus");
-      else if (active && active !== ((_e = container.ownerDocument) == null ? void 0 : _e.body)) state.focus = null;
+      else if (active && active !== ((_f = container.ownerDocument) == null ? void 0 : _f.body)) state.focus = null;
     }
     this.entries.delete(key);
     this.entries.set(key, state);
     while (this.entries.size > this.capacity) this.entries.delete(this.entries.keys().next().value);
   }
   restore(key, container, options = {}) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     const state = this.entries.get(key);
     if (options.disclosures !== false) {
-      for (const [id, el] of disclosures(container)) if (state == null ? void 0 : state.open.has(id)) el.open = state.open.get(id);
+      for (const [id, el] of scrollTargets(container)) {
+        const items = (_a = state == null ? void 0 : state.nested.get(id)) == null ? void 0 : _a.items;
+        if (items) set(el, "data-reading-items", items);
+      }
+      for (const [id, el] of disclosures(container)) if (state == null ? void 0 : state.open.has(id)) {
+        el.open = state.open.get(id);
+        (_b = el.dispatchEvent) == null ? void 0 : _b.call(el, new Event("flowdesk-reading-restore"));
+      }
     }
     const targets = focusTargets(container);
     if (options.position === false) return;
-    container.scrollTop = (_a = state == null ? void 0 : state.scroll) != null ? _a : 0;
-    const active = (_b = container.ownerDocument) == null ? void 0 : _b.activeElement;
-    if ((state == null ? void 0 : state.focus) && (!active || active === ((_c = container.ownerDocument) == null ? void 0 : _c.body) || container.contains(active))) {
+    container.scrollTop = (_c = state == null ? void 0 : state.scroll) != null ? _c : 0;
+    for (const [id, element] of scrollTargets(container)) element.scrollTop = (_e = (_d = state == null ? void 0 : state.nested.get(id)) == null ? void 0 : _d.scroll) != null ? _e : 0;
+    const active = (_f = container.ownerDocument) == null ? void 0 : _f.activeElement;
+    if ((state == null ? void 0 : state.focus) && (!active || active === ((_g = container.ownerDocument) == null ? void 0 : _g.body) || container.contains(active))) {
       const target = targets.find((el) => get(el, "data-reading-focus") === state.focus);
-      if (target && !target.disabled && (!target.getClientRects || target.getClientRects().length)) (_d = target.focus) == null ? void 0 : _d.call(target, { preventScroll: true });
+      if (target && !target.disabled && (!target.getClientRects || target.getClientRects().length)) (_h = target.focus) == null ? void 0 : _h.call(target, { preventScroll: true });
     }
   }
   clear() {
     this.entries.clear();
   }
 };
+
+// src/dashboard-dialogs.ts
+var import_obsidian = require("obsidian");
+var DashboardContentModal = class extends import_obsidian.Modal {
+  constructor(app, heading, renderBody) {
+    super(app);
+    this.heading = heading;
+    this.renderBody = renderBody;
+    this.markdownScope = new import_obsidian.Component();
+    this.renderController = new AbortController();
+  }
+  get renderSignal() {
+    return this.renderController.signal;
+  }
+  onOpen() {
+    if (this.renderController.signal.aborted) this.renderController = new AbortController();
+    this.markdownScope.load();
+    this.titleEl.setText(this.heading);
+    this.contentEl.empty();
+    this.contentEl.addClass("flowdesk-dialog-content");
+    this.renderBody(this.contentEl);
+  }
+  onClose() {
+    this.renderController.abort();
+    this.markdownScope.unload();
+    this.contentEl.empty();
+  }
+};
+var DashboardActionsModal = class extends DashboardContentModal {
+  constructor(app, heading, actions) {
+    let instance;
+    super(app, heading, (container) => {
+      for (const action of actions) {
+        const button = container.createEl("button", { cls: "flowdesk-menu-action", text: action.label });
+        button.addEventListener("click", async () => {
+          if (button.disabled) return;
+          button.disabled = true;
+          try {
+            if (!action.label.startsWith("\u590D\u5236")) instance.close();
+            await action.run();
+            if (action.label.startsWith("\u590D\u5236")) new import_obsidian.Notice("\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F");
+          } catch (e) {
+            new import_obsidian.Notice("\u64CD\u4F5C\u672A\u5B8C\u6210\uFF0C\u8BF7\u6838\u5BF9\u540E\u91CD\u8BD5\u3002");
+          } finally {
+            button.disabled = false;
+          }
+        });
+      }
+    });
+    instance = this;
+  }
+};
+function createReadOnlyTextModal(app, title, text2) {
+  return new DashboardContentModal(app, title, (container) => {
+    const input = container.createEl("textarea", { cls: "flowdesk-dialog-text", attr: { readonly: "true", "aria-label": title } });
+    input.value = text2;
+    const feedback = container.createDiv({ cls: "flowdesk-muted", attr: { role: "status" } }), copy = container.createEl("button", { text: "\u590D\u5236" });
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(text2);
+        feedback.setText("\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F");
+      } catch (e) {
+        feedback.setText("\u672A\u80FD\u5199\u5165\u526A\u8D34\u677F\uFF0C\u53EF\u9009\u62E9\u6587\u672C\u624B\u52A8\u590D\u5236\u3002");
+      }
+    });
+  });
+}
 
 // src/main.ts
 var FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
@@ -3463,7 +3781,7 @@ var DEFAULT_SETTINGS = {
   apiUrl: "",
   tasknotesEnv: "{}"
 };
-var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
+var FlowDeskDashboardPlugin = class extends import_obsidian2.Plugin {
   constructor() {
     super(...arguments);
     this.coreResolution = null;
@@ -3491,7 +3809,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
         const canRun = this.isTaskFile(file) || ["work-case", "session"].includes(this.workCaseType(file));
         if (checking) return canRun;
         if (!file || !canRun) {
-          new import_obsidian.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u6216 Work Case\u3002");
+          new import_obsidian2.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u6216 Work Case\u3002");
           return false;
         }
         void this.refreshDashboard();
@@ -3517,14 +3835,14 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     );
     const refreshOnChange = (file) => {
       const view = this.getDashboardView();
-      if (view && file instanceof import_obsidian.TFile && view.observesFile(file.path)) view.scheduleRefresh();
+      if (view && file instanceof import_obsidian2.TFile && view.observesFile(file.path)) view.scheduleRefresh();
     };
     this.registerEvent(this.app.vault.on("modify", refreshOnChange));
     this.registerEvent(this.app.vault.on("create", refreshOnChange));
     this.registerEvent(this.app.vault.on("delete", refreshOnChange));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       const view = this.getDashboardView();
-      if (view && file instanceof import_obsidian.TFile && (view.observesFile(file.path) || view.observesFile(oldPath))) view.scheduleRefresh();
+      if (view && file instanceof import_obsidian2.TFile && (view.observesFile(file.path) || view.observesFile(oldPath))) view.scheduleRefresh();
     }));
     this.addSettingTab(new FlowDeskDashboardSettingTab(this.app, this));
   }
@@ -3543,7 +3861,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
       await this.activateWorkCaseDashboard(file);
       return;
     }
-    new import_obsidian.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u6216 Work Case\u3002");
+    new import_obsidian2.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u6216 Work Case\u3002");
   }
   async activateDashboard(taskPath) {
     var _a;
@@ -3672,7 +3990,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
   }
   async loadCaseContent(casePath, signal) {
     const file = this.app.vault.getAbstractFileByPath(casePath);
-    if (!(file instanceof import_obsidian.TFile) || file.path !== casePath) throw new Error("\u672A\u627E\u5230\u51C6\u786ECase\u539F\u6587");
+    if (!(file instanceof import_obsidian2.TFile) || file.path !== casePath) throw new Error("\u672A\u627E\u5230\u51C6\u786ECase\u539F\u6587");
     const details = await this.app.vault.cachedRead(file);
     if (signal.aborted) throw new Error("Case\u539F\u6587\u8BF7\u6C42\u5DF2\u53D6\u6D88");
     return createCaseContent(casePath, details, (/* @__PURE__ */ new Date()).toISOString());
@@ -3740,13 +4058,15 @@ var FlowDeskDashboardPlugin = class extends import_obsidian.Plugin {
     return path6.resolve(basePath);
   }
 };
-var FlowDeskDashboardView = class extends import_obsidian.ItemView {
+var FlowDeskDashboardView = class extends import_obsidian2.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
     this.readingState = new ReadingStateCache();
     this.renderedResource = "";
     this.renderGeneration = 0;
+    this.renderController = new AbortController();
+    this.markdownScope = null;
     this.pendingMarkdown = [];
     this.rendering = false;
     this.readingInteraction = 0;
@@ -3761,10 +4081,10 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     this.rawContentController = null;
     this.rawContentGeneration = 0;
     this.rawContentLoading = false;
-    this.rawContentOpen = false;
     this.navigationController = null;
     this.navigationOpening = null;
     this.relatedTargetPanel = null;
+    this.resourceModal = null;
     this.taskAdapter = new FrozenTaskAdapter({
       shell: () => this.shell,
       loadSnapshot: (taskPath, signal) => this.plugin.loadSnapshot(taskPath, signal),
@@ -3788,14 +4108,42 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       },
       openTask: (taskPath, origin) => this.openTask(taskPath, origin),
       openCaseSource: (casePath, source) => this.openCaseSource(casePath, source),
-      openRelated: (target, casePath) => this.openRelated(target, casePath),
+      openRelated: (target, casePath) => this.openRelated(target, casePath, void 0, true),
       copyText: (text2) => navigator.clipboard.writeText(text2),
       openTaskSource: (taskPath, source) => this.openSnapshotSource(taskPath, source, "\u6062\u590D\u5F15\u7528"),
       renderMarkdown: (text2, element, sourcePath) => this.renderSourceMarkdown(text2, element, sourcePath),
-      openSettings: () => this.plugin.openDashboardSettings()
+      openSettings: () => this.plugin.openDashboardSettings(),
+      openActions: (title, actions) => {
+        this.displayResourceModal(new DashboardActionsModal(this.app, title, actions));
+      },
+      openContent: (title, render) => {
+        this.displayResourceModal(new DashboardContentModal(this.app, title, render));
+      },
+      editCase: (casePath) => this.openCaseProperties(casePath),
+      icon: import_obsidian2.setIcon
     });
     this.shell = new ViewShellController([this.taskAdapter, this.caseAdapter]);
     for (const name of ["pointerdown", "keydown", "wheel"]) this.contentEl.addEventListener(name, this.onReadingInteraction);
+  }
+  closeResourceModal() {
+    const modal = this.resourceModal;
+    this.resourceModal = null;
+    this.relatedTargetPanel = null;
+    modal == null ? void 0 : modal.close();
+  }
+  displayResourceModal(modal) {
+    this.closeResourceModal();
+    const close = modal.onClose.bind(modal);
+    modal.onClose = () => {
+      close();
+      if (this.resourceModal === modal) {
+        this.resourceModal = null;
+        this.relatedTargetPanel = null;
+      }
+    };
+    this.resourceModal = modal;
+    modal.open();
+    return modal;
   }
   cancelNavigation() {
     var _a;
@@ -3810,7 +4158,6 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     this.rawContentController = null;
     this.rawTaskContent = null;
     this.rawContentLoading = false;
-    this.rawContentOpen = false;
   }
   async loadRawTaskContent(taskPath) {
     var _a;
@@ -3820,7 +4167,6 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     this.rawContentController = controller;
     const generation = ++this.rawContentGeneration;
     this.rawContentLoading = true;
-    this.rawContentOpen = true;
     this.rawTaskContent = null;
     this.renderShell();
     const current = () => generation === this.rawContentGeneration && !controller.signal.aborted && this.shell.context.kind === "task" && "resourcePath" in this.shell.context && this.shell.context.resourcePath === taskPath;
@@ -3837,40 +4183,6 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         this.rawContentController = null;
         this.renderShell();
       }
-    }
-  }
-  renderRawTaskContent(container, model) {
-    var _a;
-    const section2 = container.createEl("details", { cls: "flowdesk-contract-item-details flowdesk-raw-content", attr: { "data-external-disclosure": "true" } });
-    section2.open = this.rawContentOpen;
-    section2.addEventListener("toggle", () => {
-      this.rawContentOpen = section2.open;
-    });
-    section2.createEl("summary", { text: "\u5B8C\u6574API\u539F\u6587 / \u672A\u6295\u5F71\u5185\u5BB9" });
-    section2.createDiv({ cls: "flowdesk-muted", text: `\u5355\u72ECAPI\u539F\u6587\u89C2\u6D4B\uFF1B\u4E0D\u4EE3\u8868\u4E0E snapshot \u540C\u8F6E\u4E00\u81F4\u3002Task\uFF1A${model.currentTask.id}\uFF1Bsnapshot \u65F6\u95F4\uFF1A${model.observation.generatedAt}` });
-    const read = section2.createEl("button", { text: this.rawContentLoading ? "\u539F\u6587\u8BFB\u53D6\u4E2D" : "\u8BFB\u53D6 / \u5237\u65B0 API \u539F\u6587", cls: "flowdesk-content-read" });
-    read.disabled = this.rawContentLoading;
-    read.addEventListener("click", () => {
-      void this.loadRawTaskContent(model.currentTask.id);
-    });
-    const original = section2.createEl("button", { text: "\u6253\u5F00\u4EFB\u52A1\u539F\u6587", cls: "flowdesk-content-source" });
-    original.addEventListener("click", () => {
-      void this.openSnapshotSource(model.currentTask.id, { line_start: 1, line_end: 1, excerpt: observationFirstLine(this.rawTaskContent) }, "\u5B8C\u6574\u539F\u6587");
-    });
-    const observation = this.rawTaskContent;
-    if (!observation || observation.taskId !== model.currentTask.id) return;
-    if (observation.error) {
-      section2.createDiv({ cls: "flowdesk-error", text: `API\u539F\u6587\u8BFB\u53D6\u5931\u8D25\uFF1A${observation.error}` });
-      return;
-    }
-    section2.createDiv({ cls: "flowdesk-muted", text: `tasknotes-api \xB7 ${observation.taskId} \xB7 \u6210\u529F\u8BFB\u53D6\u65F6\u95F4\uFF1A${observation.readAt}` });
-    if (rawContentDiffers(model.content, observation, (_a = this.taskRenderState.snapshot) != null ? _a : void 0)) section2.createDiv({ cls: "flowdesk-error", text: "API\u539F\u6587\u4E0E snapshot \u6295\u5F71\u7247\u6BB5\u5B58\u5728\u5DEE\u5F02\uFF1Bsnapshot \u5DF2\u6807\u8BB0 stale\uFF0C\u8BF7\u5237\u65B0\u6838\u5BF9\u3002" });
-    if (observation.details === "") section2.createDiv({ cls: "flowdesk-muted", text: "API\u539F\u6587\u4E3A\u7A7A\uFF1B\u53EF\u6253\u5F00\u6574\u5F20\u4EFB\u52A1\u539F\u6587\u3002" });
-    else {
-      const markdown = section2.createDiv({ cls: "flowdesk-contract-scope-markdown" });
-      void this.renderSourceMarkdown(observation.details, markdown, observation.taskId).catch(() => {
-        markdown.setText(observation.details);
-      });
     }
   }
   getViewType() {
@@ -3892,7 +4204,9 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   }
   async onClose() {
     var _a, _b, _c;
+    this.closeResourceModal();
     this.renderGeneration++;
+    this.clearRenderLifetime();
     for (const name of ["pointerdown", "keydown", "wheel"]) (_b = (_a = this.contentEl).removeEventListener) == null ? void 0 : _b.call(_a, name, this.onReadingInteraction);
     this.readingState.clear();
     this.clearRawTaskContent();
@@ -3900,6 +4214,8 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     this.cancelInitialSync = null;
     this.shell.close();
     this.taskAdapter.close();
+    this.pendingMarkdown = [];
+    this.contentEl.empty();
   }
   async syncToActiveFile(file = this.app.workspace.getActiveFile()) {
     var _a;
@@ -3961,15 +4277,25 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   get disclosureState() {
     return this.taskRenderState.disclosureState;
   }
+  clearRenderLifetime() {
+    this.renderController.abort();
+    if (this.markdownScope) this.removeChild(this.markdownScope);
+    this.markdownScope = null;
+  }
   renderShell() {
     const container = this.contentEl;
     const generation = ++this.renderGeneration, interaction = this.readingInteraction;
     this.pendingMarkdown = [];
     this.rendering = true;
     this.readingState.capture(this.renderedResource, container, { position: this.positionRestored || interaction !== this.lastRenderInteraction });
+    this.clearRenderLifetime();
+    this.renderController = new AbortController();
+    this.markdownScope = this.addChild(new import_obsidian2.Component());
     this.positionRestored = false;
     this.lastRenderInteraction = interaction;
-    this.renderedResource = "resourcePath" in this.shell.context ? `${this.shell.context.kind}:${this.shell.context.resourcePath}` : "";
+    const nextResource = "resourcePath" in this.shell.context ? `${this.shell.context.kind}:${this.shell.context.resourcePath}` : "";
+    if (nextResource !== this.renderedResource) this.closeResourceModal();
+    this.renderedResource = nextResource;
     container.empty();
     this.caseRenderer.reset(container);
     container.addClass("flowdesk-dashboard");
@@ -3997,9 +4323,10 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         });
       }
     } finally {
-      this.rendering = false;
-      const resource = this.renderedResource, pending = [...this.pendingMarkdown];
+      const resource = this.renderedResource;
       this.readingState.restore(resource, container, { position: false });
+      this.rendering = false;
+      const pending = [...this.pendingMarkdown];
       const restore = () => {
         if (generation !== this.renderGeneration || resource !== this.renderedResource) return;
         if (interaction === this.readingInteraction) this.readingState.restore(resource, container, { disclosures: false });
@@ -4072,11 +4399,6 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       const target = this.contentEl.querySelector(".flowdesk-contract-summary");
       (_a = target == null ? void 0 : target.scrollIntoView) == null ? void 0 : _a.call(target, { block: "start", behavior: "smooth" });
     });
-    const api = navigation.createEl("button", { text: "\u8BFB\u53D6 API \u539F\u6587", attr: { "data-focus-key": "read-api" } });
-    api.disabled = this.rawContentLoading;
-    api.addEventListener("click", () => {
-      void this.loadRawTaskContent(model.currentTask.id);
-    });
     if (presentation.children.length) {
       this.renderChildren(container, model, presentation.children);
     }
@@ -4135,6 +4457,14 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     }
     const actions = topRow.createDiv({ cls: "flowdesk-task-meta-actions" });
     this.renderToolbar(actions, model.currentTask.id, model);
+    const more = actions.createEl("button", { cls: "flowdesk-more-actions", text: "\u22EF", attr: { "aria-label": "\u66F4\u591A\u64CD\u4F5C", "data-focus-key": "task-more" } });
+    more.addEventListener("click", () => this.displayResourceModal(new DashboardActionsModal(this.app, "\u66F4\u591A\u64CD\u4F5C", [
+      { label: "\u590D\u5236\u4EA4\u63A5\u4E0A\u4E0B\u6587", run: () => navigator.clipboard.writeText(this.taskHandoffText(model)) },
+      { label: "\u67E5\u770B\u4EA4\u63A5\u4E0A\u4E0B\u6587", run: () => {
+        this.displayResourceModal(createReadOnlyTextModal(this.app, "\u4EA4\u63A5\u4E0A\u4E0B\u6587", this.taskHandoffText(model)));
+      } },
+      { label: "\u67E5\u770B\u539F\u6587\u4EF6", run: () => this.openTask(model.currentTask.id) }
+    ])));
     const heading = header.createDiv({ cls: "flowdesk-task-heading" });
     const title = heading.createDiv({
       cls: "flowdesk-task-title flowdesk-current-task-link",
@@ -4166,13 +4496,13 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       cls: "flowdesk-toolbar-button",
       attr: { "aria-label": "\u590D\u5236 CLI", title: "\u590D\u5236 CLI" }
     });
-    (0, import_obsidian.setIcon)(copy, "copy");
+    (0, import_obsidian2.setIcon)(copy, "copy");
     copy.addEventListener("click", async () => {
       try {
         await this.plugin.copyDashboardCommand(taskPath);
-        new import_obsidian.Notice("CLI \u547D\u4EE4\u5DF2\u590D\u5236");
+        new import_obsidian2.Notice("CLI \u547D\u4EE4\u5DF2\u590D\u5236");
       } catch (error) {
-        new import_obsidian.Notice(`\u65E0\u6CD5\u590D\u5236 CLI \u547D\u4EE4\uFF1A${String(error)}`);
+        new import_obsidian2.Notice(`\u65E0\u6CD5\u590D\u5236 CLI \u547D\u4EE4\uFF1A${String(error)}`);
       }
     });
     const refresh = toolbar.createEl("button", {
@@ -4182,7 +4512,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         title: this.loading ? "\u5237\u65B0\u4E2D" : "\u5237\u65B0"
       }
     });
-    (0, import_obsidian.setIcon)(refresh, "refresh-cw");
+    (0, import_obsidian2.setIcon)(refresh, "refresh-cw");
     refresh.disabled = this.loading;
     refresh.addEventListener("click", () => void this.refreshCurrentTask());
   }
@@ -4196,8 +4526,8 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     card.createDiv({ cls: "flowdesk-subline", text: `\u5F53\u524D\u6587\u4EF6\uFF1A${context.activePath}` });
     if (context.previousTaskPath) {
       const file = this.app.vault.getAbstractFileByPath(context.previousTaskPath);
-      const available = file instanceof import_obsidian.TFile && (this.plugin.isTaskFile(file) || ["work-case", "session"].includes(this.plugin.workCaseType(file)));
-      const back = card.createEl("button", { cls: "flowdesk-return-resource", text: "\u8FD4\u56DE\u521A\u624D\u7684 Task / Case" });
+      const available = file instanceof import_obsidian2.TFile && (this.plugin.isTaskFile(file) || ["work-case", "session"].includes(this.plugin.workCaseType(file)));
+      const back = card.createEl("button", { cls: "flowdesk-return-resource", text: "\u2190 \u8FD4\u56DE\u5DE5\u4F5C\u770B\u677F", attr: { title: "\u56DE\u5230\u521A\u624D\u67E5\u770B\u7684\u4EFB\u52A1\u6216Case" } });
       back.disabled = !available;
       back.addEventListener("click", () => {
         void this.openTask(context.previousTaskPath);
@@ -4268,9 +4598,9 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   async copyDiagnostic(input) {
     try {
       await navigator.clipboard.writeText(formatDiagnosticClipboard(input));
-      new import_obsidian.Notice("\u95EE\u9898\u5DF2\u590D\u5236");
+      new import_obsidian2.Notice("\u95EE\u9898\u5DF2\u590D\u5236");
     } catch (error) {
-      new import_obsidian.Notice(`\u65E0\u6CD5\u590D\u5236\u95EE\u9898\uFF1A${String(error)}`);
+      new import_obsidian2.Notice(`\u65E0\u6CD5\u590D\u5236\u95EE\u9898\uFF1A${String(error)}`);
     }
   }
   async openDiagnosticLocation(diagnostic) {
@@ -4290,7 +4620,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       await this.app.workspace.getLeaf(false).openFile(file);
       return true;
     } catch (error) {
-      if (!signal.aborted) new import_obsidian.Notice(`\u65E0\u6CD5\u6253\u5F00\u51C6\u786E\u539F\u6587\uFF1A${error instanceof Error ? error.message : String(error)}`);
+      if (!signal.aborted) new import_obsidian2.Notice(`\u65E0\u6CD5\u6253\u5F00\u51C6\u786E\u539F\u6587\uFF1A${error instanceof Error ? error.message : String(error)}`);
       return false;
     } finally {
       if (this.navigationOpening === opening) this.navigationOpening = null;
@@ -4299,7 +4629,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   async openSnapshotSource(taskPath, source, sourceKind = "\u6765\u6E90", text2 = "") {
     var _a, _b;
     if (!taskPath) {
-      new import_obsidian.Notice("producer\u672A\u63D0\u4F9B\u51C6\u786ETask ID");
+      new import_obsidian2.Notice("producer\u672A\u63D0\u4F9B\u51C6\u786ETask ID");
       return;
     }
     if (!source) {
@@ -4308,8 +4638,8 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     }
     const request = this.beginNavigation();
     const file = this.app.vault.getAbstractFileByPath(taskPath);
-    if (!(file instanceof import_obsidian.TFile) || file.path !== taskPath) {
-      new import_obsidian.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${taskPath}`);
+    if (!(file instanceof import_obsidian2.TFile) || file.path !== taskPath) {
+      new import_obsidian2.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${taskPath}`);
       return;
     }
     let apiDetails = null;
@@ -4325,21 +4655,21 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     if (!await this.openNavigationFile(file, request.signal)) return;
     if (request.signal.aborted) return;
     if (location.kind === "note") {
-      new import_obsidian.Notice(location.reason);
+      new import_obsidian2.Notice(location.reason);
       return;
     }
-    const view = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian2.MarkdownView);
     if (!view || ((_a = view.file) == null ? void 0 : _a.path) !== taskPath || ((_b = view.getMode) == null ? void 0 : _b.call(view)) === "preview" || location.editorLine >= view.editor.lineCount()) {
-      new import_obsidian.Notice("\u4EFB\u52A1\u5DF2\u6253\u5F00\uFF1B\u5F53\u524D\u89C6\u56FE\u4E0D\u80FD\u786E\u8BA4\u7CBE\u786E\u4F4D\u7F6E\uFF0C\u8BF7\u67E5\u770B\u539F\u6587\u3002");
+      new import_obsidian2.Notice("\u4EFB\u52A1\u5DF2\u6253\u5F00\uFF1B\u5F53\u524D\u89C6\u56FE\u4E0D\u80FD\u786E\u8BA4\u7CBE\u786E\u4F4D\u7F6E\uFF0C\u8BF7\u67E5\u770B\u539F\u6587\u3002");
       return;
     }
     if (apiDetails === null || typeof view.editor.getValue !== "function") {
-      new import_obsidian.Notice("\u5F53\u524D\u7F16\u8F91\u5668\u4E0D\u80FD\u6838\u5BF9\u539F\u6587\uFF1B\u5DF2\u6253\u5F00\u6574\u5F20\u4EFB\u52A1\u3002");
+      new import_obsidian2.Notice("\u5F53\u524D\u7F16\u8F91\u5668\u4E0D\u80FD\u6838\u5BF9\u539F\u6587\uFF1B\u5DF2\u6253\u5F00\u6574\u5F20\u4EFB\u52A1\u3002");
       return;
     }
     location = locateTaskSource(view.editor.getValue(), apiDetails, { heading: sourceKind, level: 2, text: text2, source });
     if (location.kind === "note") {
-      new import_obsidian.Notice(location.reason);
+      new import_obsidian2.Notice(location.reason);
       return;
     }
     const position = { line: location.editorLine, ch: 0 };
@@ -4353,30 +4683,34 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       const candidates = [linkText, path6.posix.normalize(path6.posix.join(path6.posix.dirname(sourcePath), linkText))];
       for (const candidate of candidates) {
         const file = this.app.vault.getAbstractFileByPath(candidate);
-        if (file instanceof import_obsidian.TFile && file.path === candidate) return file.path;
+        if (file instanceof import_obsidian2.TFile && file.path === candidate) return file.path;
       }
-      const { path: linkpath } = (0, import_obsidian.parseLinktext)(linkText);
+      const { path: linkpath } = (0, import_obsidian2.parseLinktext)(linkText);
       return (_d = (_c = (_b = (_a = this.app.metadataCache).getFirstLinkpathDest) == null ? void 0 : _b.call(_a, linkpath, sourcePath)) == null ? void 0 : _c.path) != null ? _d : null;
     };
   }
   async renderSourceMarkdown(text2, element, sourcePath) {
+    var _a, _b, _c, _d;
+    const modal = ((_a = this.resourceModal) == null ? void 0 : _a.contentEl.contains(element)) ? this.resourceModal : null;
+    const signal = (_b = modal == null ? void 0 : modal.renderSignal) != null ? _b : this.renderController.signal;
+    const component = (_d = (_c = modal == null ? void 0 : modal.markdownScope) != null ? _c : this.markdownScope) != null ? _d : this;
     const sources = collectMarkdownLinkSources(text2);
     let complete = false;
     element.addEventListener("click", (event) => {
-      var _a, _b, _c;
-      const anchor = (_b = (_a = event.target) == null ? void 0 : _a.closest) == null ? void 0 : _b.call(_a, "a");
+      var _a2, _b2, _c2;
+      const anchor = (_b2 = (_a2 = event.target) == null ? void 0 : _a2.closest) == null ? void 0 : _b2.call(_a2, "a");
       if (!anchor || !element.contains(anchor)) return;
       const href = anchor.getAttribute("data-href") || anchor.getAttribute("href");
       if (!href) return;
       const anchors = Array.from(element.querySelectorAll("a"));
       const origin = renderedLinkSource(sources, anchors.map((link) => {
-        var _a2;
-        return { href: link.getAttribute("data-href") || link.getAttribute("href") || "", label: (_a2 = link.textContent) != null ? _a2 : "" };
+        var _a3;
+        return { href: link.getAttribute("data-href") || link.getAttribute("href") || "", label: (_a3 = link.textContent) != null ? _a3 : "" };
       }), anchors.indexOf(anchor), complete);
       if (origin === "wiki") return;
       const target = resolveRelatedTarget(href, { casePath: sourcePath, cwd: null, vaultRoot: this.plugin.vaultRoot(), resolveVaultLink: this.vaultLinkResolver(sourcePath) });
       const explicitFile = /^file:/i.test(href) || path6.isAbsolute(href);
-      const literalHashFile = target.kind === "vault" && target.exactFile === true && ((_c = target.resolvedPath) == null ? void 0 : _c.includes("#"));
+      const literalHashFile = target.kind === "vault" && target.exactFile === true && ((_c2 = target.resolvedPath) == null ? void 0 : _c2.includes("#"));
       if (target.kind === "vault" && !explicitFile && !literalHashFile || target.kind === "url") return;
       event.preventDefault();
       event.stopPropagation();
@@ -4384,7 +4718,8 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       void this.openRelated(href, sourcePath, origin === "markdown" ? void 0 : "\u94FE\u63A5\u8BED\u6CD5\u6765\u6E90\u65E0\u6CD5\u552F\u4E00\u6838\u5BF9\uFF1B\u8BF7\u67E5\u770B\u539F\u6587\u6216\u590D\u5236\u5F15\u7528\u3002");
     }, true);
     const rendered = (async () => {
-      await import_obsidian.MarkdownRenderer.render(this.app, text2, element, sourcePath, this);
+      await import_obsidian2.MarkdownRenderer.render(this.app, text2, element, sourcePath, component);
+      if (signal.aborted) return;
       for (const checkbox of Array.from(element.querySelectorAll('input[type="checkbox"]'))) {
         checkbox.disabled = true;
         checkbox.setAttribute("aria-readonly", "true");
@@ -4462,7 +4797,11 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
       0
     );
     const details = container.createDiv({ cls: "flowdesk-contract-summary" });
-    details.createDiv({ cls: "flowdesk-dashboard-section-title", text: "\u4EFB\u52A1\u5185\u5BB9" });
+    const heading = details.createDiv({ cls: "flowdesk-dashboard-section-title flowdesk-content-heading" });
+    const icon = heading.createSpan({ cls: "flowdesk-content-icon" });
+    (0, import_obsidian2.setIcon)(icon, "file-text");
+    heading.createSpan({ text: "\u4EFB\u52A1\u8BE6\u60C5" });
+    heading.createSpan({ cls: "flowdesk-content-caption", text: "\u8BF4\u660E \xB7 \u9A8C\u6536 \xB7 \u7ED3\u679C" });
     const body = details.createDiv({ cls: "flowdesk-detail-body" });
     const technical = details.createEl("details", { cls: "flowdesk-task-technical", attr: { "data-disclosure-key": "task-technical" } });
     technical.createEl("summary", { text: diagnosticCount ? `\u6280\u672F\u8BE6\u60C5 \xB7 ${diagnosticCount} \u9879\u8BCA\u65AD` : "\u6280\u672F\u8BE6\u60C5" });
@@ -4470,17 +4809,13 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     const contract = body.createDiv({ cls: "flowdesk-detail-section flowdesk-contract-reading" });
     renderedSections.set("contract", contract);
     new TaskContentRenderer({
+      signal: this.renderController.signal,
+      trackRender: (promise) => {
+        if (this.rendering) this.pendingMarkdown.push(promise);
+      },
       renderMarkdown: (text2, element, taskPath) => this.renderSourceMarkdown(text2, element, taskPath),
       openSource: (taskPath, section2) => this.openSnapshotSource(taskPath, section2.source, section2.heading, section2.text)
     }).render(contract, model.content);
-    this.renderRawTaskContent(contract, model);
-    const continuation = contract.createDiv({ cls: "flowdesk-task-resume-reference" });
-    continuation.createDiv({ cls: "flowdesk-muted", text: "Task\u53EF\u72EC\u7ACB\u7EE7\u7EED\uFF1B\u5F15\u7528\u4E0D\u521B\u5EFACase\u3001\u4E0D\u542F\u52A8\u5BBF\u4E3B\u3002\u5148\u7531\u539Fowner\u8BFB\u53D6\u6700\u65B0TaskNotes\u6B63\u6587\u3002" });
-    const copyTask = continuation.createEl("button", { cls: "flowdesk-copy-task-reference", text: "\u590D\u5236Task\u5F15\u7528\u4E0E\u7EE7\u7EED\u6B65\u9AA4" });
-    copyTask.addEventListener("click", () => {
-      void navigator.clipboard.writeText(`\u51C6\u786ETask\uFF1A${model.currentTask.id}
-\u5728\u539Fowner\u4F1A\u8BDD\u4F7F\u7528 work \u7EE7\u7EED\uFF1B\u5148\u8BFB\u6700\u65B0TaskNotes/snapshot\uFF0C\u533A\u5206\u5DF2\u505A\u7ED3\u679C\u4E0E\u672A\u5B8C\u6210Next\uFF0C\u907F\u514D\u91CD\u590D\u6267\u884C\u3002\u6362\u8F7D\u4F53\u524D\u5148\u4FDD\u5B58\u5E76\u56DE\u8BFB\u8FDB\u5C55\u5E76\u6B63\u5E38\u505C\u6B62\u65E7\u6267\u884C\u4E0E\u5DF2\u77E5\u540E\u53F0\u5DE5\u4F5C\uFF1B\u91CA\u653E\u672A\u77E5\u65F6\u53EA\u8BFB\u6216\u56DE\u539Fowner\u3002`);
-    });
     const observation = createSection2(
       body,
       "\u89C2\u5BDF\u4E0E\u6765\u6E90",
@@ -4685,8 +5020,8 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   async openTask(taskPath, origin = "current") {
     if (!taskPath) return;
     const file = this.app.vault.getAbstractFileByPath(taskPath);
-    if (!(file instanceof import_obsidian.TFile)) {
-      new import_obsidian.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${taskPath}`);
+    if (!(file instanceof import_obsidian2.TFile)) {
+      new import_obsidian2.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${taskPath}`);
       return;
     }
     await this.app.workspace.getLeaf(taskNavigationLeafType(origin)).openFile(file);
@@ -4694,8 +5029,8 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
   async openCaseSource(casePath, source) {
     var _a, _b, _c;
     const request = this.beginNavigation(), file = this.app.vault.getAbstractFileByPath(casePath);
-    if (!(file instanceof import_obsidian.TFile) || file.path !== casePath) {
-      new import_obsidian.Notice(`\u672A\u627E\u5230Work Case\u6587\u4EF6\uFF1A${casePath}`);
+    if (!(file instanceof import_obsidian2.TFile) || file.path !== casePath) {
+      new import_obsidian2.Notice(`\u672A\u627E\u5230Work Case\u6587\u4EF6\uFF1A${casePath}`);
       return;
     }
     let text2;
@@ -4704,7 +5039,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     } catch (error) {
       if (!request.current()) return;
       const opened = await this.openNavigationFile(file, request.signal);
-      if (opened && !request.signal.aborted) new import_obsidian.Notice(`Case\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF0C\u4EC5\u6253\u5F00\u6574\u5F20\u539F\u6587\uFF1A${error instanceof Error ? error.message : String(error)}`);
+      if (opened && !request.signal.aborted) new import_obsidian2.Notice(`Case\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF0C\u4EC5\u6253\u5F00\u6574\u5F20\u539F\u6587\uFF1A${error instanceof Error ? error.message : String(error)}`);
       return;
     }
     if (!request.current()) return;
@@ -4717,18 +5052,18 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     const validRange = Number.isInteger(source.lineStart) && source.lineStart >= 1 && Number.isInteger(source.lineEnd) && source.lineEnd >= source.lineStart && source.lineEnd <= lines.length;
     const span = validRange ? lines.slice(source.lineStart - 1, source.lineEnd).join("\n") : "";
     if (!validRange || !expected || !span.includes(expected.text.replace(/\r\n/g, "\n"))) {
-      new import_obsidian.Notice("Case\u6765\u6E90\u5DF2\u53D8\u5316\u6216\u8D8A\u754C\uFF1B\u5DF2\u6253\u5F00\u6574\u5F20Case\u539F\u6587\u3002");
+      new import_obsidian2.Notice("Case\u6765\u6E90\u5DF2\u53D8\u5316\u6216\u8D8A\u754C\uFF1B\u5DF2\u6253\u5F00\u6574\u5F20Case\u539F\u6587\u3002");
       return;
     }
-    const view = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian2.MarkdownView);
     if (!view || ((_b = view.file) == null ? void 0 : _b.path) !== casePath || ((_c = view.getMode) == null ? void 0 : _c.call(view)) === "preview" || source.lineStart - 1 >= view.editor.lineCount()) {
-      new import_obsidian.Notice("Case\u5DF2\u6253\u5F00\uFF1B\u5F53\u524D\u89C6\u56FE\u65E0\u6CD5\u786E\u8BA4\u7CBE\u786E\u4F4D\u7F6E\u3002");
+      new import_obsidian2.Notice("Case\u5DF2\u6253\u5F00\uFF1B\u5F53\u524D\u89C6\u56FE\u65E0\u6CD5\u786E\u8BA4\u7CBE\u786E\u4F4D\u7F6E\u3002");
       return;
     }
     const liveLines = view.editor.getValue().replace(/\r\n/g, "\n").split("\n");
     const liveSpan = liveLines.slice(source.lineStart - 1, source.lineEnd).join("\n");
     if (source.lineEnd > liveLines.length || expected && !liveSpan.includes(expected.text.replace(/\r\n/g, "\n"))) {
-      new import_obsidian.Notice("Case\u7F16\u8F91\u5668\u539F\u6587\u5DF2\u53D8\u5316\uFF1B\u4E0D\u731C\u4F4D\u7F6E\u3002");
+      new import_obsidian2.Notice("Case\u7F16\u8F91\u5668\u539F\u6587\u5DF2\u53D8\u5316\uFF1B\u4E0D\u731C\u4F4D\u7F6E\u3002");
       return;
     }
     const position = { line: source.lineStart - 1, ch: 0 };
@@ -4736,7 +5071,30 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     view.editor.scrollIntoView({ from: position, to: position }, true);
     view.editor.focus();
   }
-  async openRelated(raw, sourcePath, sourceError) {
+  taskHandoffText(model) {
+    const progress = createTaskCurrentProgress(model.content, { statusIsCompleted: model.currentTask.statusIsCompleted, observedAt: model.observation.generatedAt, observationHealthy: model.observation.isTrustworthy && !model.observation.isStale && !model.diagnostics.some((item) => /truncat|omitted|too_large/i.test(item.code)) });
+    const lines = ["\u4EA4\u63A5\u4E0A\u4E0B\u6587\uFF08\u53EA\u8BFB\u89C2\u6D4B\uFF1B\u7EE7\u7EED\u524D\u56DE\u8BFB\uFF09", `\u51C6\u786E Task\uFF1A${model.currentTask.id}`, `\u539F\u72B6\u6001\uFF1A${model.currentTask.status}`, `\u76EE\u6807\uFF1A${excerpt(model.content.goal, 450)}`, `\u89C2\u6D4B\u65F6\u95F4\uFF1A${model.observation.generatedAt}`];
+    if (model.currentTask.statusIsCompleted === true) {
+      const result = latestRecord(model.content.records.execution);
+      lines.push(`\u7ED3\u679C\u6458\u5F55\uFF1A${result ? excerpt(firstParagraph(result.text), 650) : "\u6700\u8FD1\u7ED3\u679C\u672A\u786E\u8BA4\uFF0C\u67E5\u770B\u539F\u6587\u4EF6"}`);
+    } else {
+      if (progress.progress) lines.push(`\u8FDB\u5C55\u6458\u5F55\uFF1A${excerpt(firstParagraph(progress.progress), 650)}`);
+      if (progress.next !== null) lines.push(`\u4E0B\u4E00\u6B65\u6458\u5F55\uFF1A${excerpt(progress.next, 500)}`);
+    }
+    if (progress.gaps.length) lines.push(`\u7F3A\u53E3\uFF1A${progress.gaps.join("\uFF1B")}`);
+    lines.push("\u6750\u6599\u4E0D\u542F\u52A8Task\u6216\u6388\u4E88\u63A5\u624B\u6743\u9650\u3002\u7EE7\u7EED\u524D\u56DE\u8BFB\u6700\u65B0TaskNotes\u4E0E\u539F\u6587\uFF0C\u660E\u786E\u672A\u5B8C\u6210Next\uFF0C\u5DF2\u7ED3\u675F\u9879\u4E0D\u91CD\u505A\uFF1B\u6362\u8F7D\u4F53\u5148\u4FDD\u5B58\u8FDB\u5C55\u5E76\u6B63\u5E38\u7ED3\u675F\u65E7\u6267\u884C\uFF0C\u91CA\u653E\u672A\u77E5\u65F6\u53EA\u8BFB\u6216\u56DE\u539Fowner\u3002");
+    return lines.join("\n");
+  }
+  async openCaseProperties(casePath) {
+    const file = this.app.vault.getAbstractFileByPath(casePath);
+    if (!(file instanceof import_obsidian2.TFile) || file.path !== casePath || !["work-case", "session"].includes(this.plugin.workCaseType(file))) {
+      new import_obsidian2.Notice("\u65E0\u6CD5\u786E\u8BA4\u539FCase\u6587\u4EF6\uFF0C\u8BF7\u4ECE\u6587\u4EF6\u5217\u8868\u6838\u5BF9\u3002");
+      return;
+    }
+    await this.app.workspace.getLeaf(false).openFile(file, { active: true, state: { mode: "source" } });
+    new import_obsidian2.Notice("\u5728Case\u9876\u90E8\u5C5E\u6027\u4E2D\u7EF4\u62A4project\u3001plans\u3001docs\u548Crelated\uFF1B\u4FDD\u5B58\u540E\u770B\u677F\u4F1A\u5237\u65B0\u3002Dashboard\u4E0D\u4F1A\u4EE3\u5199\u8FD9\u4E9B\u5C5E\u6027\u3002");
+  }
+  async openRelated(raw, sourcePath, sourceError, direct = false) {
     var _a, _b, _c, _d, _e;
     const request = this.beginNavigation();
     let context = { casePath: sourcePath, cwd: null, vaultRoot: this.plugin.vaultRoot(), resolveVaultLink: this.vaultLinkResolver(sourcePath) };
@@ -4757,10 +5115,10 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     if (target.kind === "vault") {
       const destination = (_a = target.resolvedPath) != null ? _a : this.vaultLinkResolver(sourcePath)(target.linkText);
       const baseFile = destination ? this.app.vault.getAbstractFileByPath(destination) : null;
-      if (!(baseFile instanceof import_obsidian.TFile) || target.exactFile && baseFile.path !== target.resolvedPath) {
+      if (!(baseFile instanceof import_obsidian2.TFile) || target.exactFile && baseFile.path !== target.resolvedPath) {
         target = { kind: "unavailable", label: target.label, reason: `\u672A\u627E\u5230\u5DF2\u786E\u8BA4\u7684vault\u539F\u6587\u4EF6\uFF1A${target.linkText}\uFF1B\u4E0D\u4F1A\u521B\u5EFA\u6216\u6539\u9009\u540C\u540D\u7B14\u8BB0\u3002` };
       } else if (baseFile.extension.toLowerCase() === "json") {
-        const fragment = (_b = target.fragment) != null ? _b : target.exactFile ? void 0 : (0, import_obsidian.parseLinktext)(target.linkText).subpath || void 0;
+        const fragment = (_b = target.fragment) != null ? _b : target.exactFile ? void 0 : (0, import_obsidian2.parseLinktext)(target.linkText).subpath || void 0;
         target = { ...target, resolvedPath: baseFile.path, ...fragment ? { fragment } : {} };
       } else {
         const directFile = target.exactFile === true && (((_c = target.resolvedPath) == null ? void 0 : _c.includes("#")) || target.resolvedPath && target.resolvedPath !== target.resolvedPath.trim() || target.fileUrl && (!target.fragment || ((_d = target.resolvedPath) == null ? void 0 : _d.includes("%"))));
@@ -4773,8 +5131,23 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
         }
       }
     }
-    (_e = this.relatedTargetPanel) == null ? void 0 : _e.remove();
-    const panel = this.contentEl.createDiv({ cls: "flowdesk-dashboard-section flowdesk-related-target" });
+    let firstOutcome = null;
+    if (direct && target.kind === "repository" && /\.md$/i.test(path6.extname(target.absolutePath))) {
+      new import_obsidian2.Notice("\u6B63\u5728\u6253\u5F00\u6587\u6863\u2026");
+      try {
+        firstOutcome = await this.plugin.openRepositoryMarkdown(target.absolutePath);
+      } catch (e) {
+        firstOutcome = { kind: "unknown", message: "\u6253\u5F00\u7ED3\u679C\u672A\u77E5\uFF1B\u8BF7\u6838\u5BF9\u539F\u6587\u4EF6\uFF0C\u4E0D\u81EA\u52A8\u91CD\u8BD5\u3002" };
+      }
+      if (!request.current()) return;
+      if (firstOutcome.kind === "accepted") {
+        new import_obsidian2.Notice(firstOutcome.message);
+        return;
+      }
+    }
+    const modal = this.displayResourceModal(new DashboardContentModal(this.app, "\u5F15\u7528\u8D44\u6599", () => {
+    }));
+    const panel = modal.contentEl.createDiv({ cls: "flowdesk-dashboard-section flowdesk-related-target" });
     this.relatedTargetPanel = panel;
     const isFileTarget = target.kind === "repository" || target.kind === "vault";
     const pathText = target.kind === "repository" ? target.absolutePath : target.kind === "vault" && target.resolvedPath ? path6.join(context.vaultRoot, target.resolvedPath) : raw;
@@ -4793,7 +5166,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     }
     if (target.kind === "repository" && /\.md$/i.test(path6.extname(target.absolutePath))) {
       const documentPath = target.absolutePath;
-      const result = panel.createDiv({ cls: "flowdesk-repository-open-feedback", attr: { role: "status" }, text: "\u70B9\u51FB\u540E\u5411 Obsidian \u63D0\u4EA4\u6253\u5F00\u6B64\u539F\u6587\u4EF6\u7684\u8BF7\u6C42\u3002" });
+      const result = panel.createDiv({ cls: "flowdesk-repository-open-feedback", attr: { role: "status" }, text: (_e = firstOutcome == null ? void 0 : firstOutcome.message) != null ? _e : "\u70B9\u51FB\u540E\u5411 Obsidian \u63D0\u4EA4\u6253\u5F00\u6B64\u539F\u6587\u4EF6\u7684\u8BF7\u6C42\u3002" });
       const openDocument = panel.createEl("button", { cls: "flowdesk-open-repository-document", text: "\u5728 Obsidian \u6253\u5F00\u6587\u6863", attr: { "aria-label": "\u660E\u786E\u5411\u6307\u5B9AObsidian\u63D0\u4EA4\u6B64Markdown\u539F\u6587\u4EF6" } });
       openDocument.addEventListener("click", async () => {
         if (openDocument.disabled) return;
@@ -4820,7 +5193,7 @@ var FlowDeskDashboardView = class extends import_obsidian.ItemView {
     }
   }
 };
-var DashboardSettingsModal = class extends import_obsidian.Modal {
+var DashboardSettingsModal = class extends import_obsidian2.Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
@@ -4837,7 +5210,7 @@ var DashboardSettingsModal = class extends import_obsidian.Modal {
     this.contentEl.empty();
   }
 };
-var FlowDeskDashboardSettingTab = class extends import_obsidian.PluginSettingTab {
+var FlowDeskDashboardSettingTab = class extends import_obsidian2.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -4846,7 +5219,7 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian.PluginSettingTab
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "FlowDesk Dashboard" });
-    new import_obsidian.Setting(containerEl).setName("Core \u6765\u6E90").setDesc("\u8DDF\u968F\u6A21\u5F0F\u4F18\u5148\u4F7F\u7528 Claude \u5B89\u88C5\u767B\u8BB0\uFF0C\u7F3A\u5931\u65F6\u68C0\u67E5 Codex \u7F13\u5B58\uFF1B\u56FA\u5B9A\u6A21\u5F0F\u4F7F\u7528\u6307\u5B9A\u8DEF\u5F84\u3002").addDropdown((dropdown) => {
+    new import_obsidian2.Setting(containerEl).setName("Core \u6765\u6E90").setDesc("\u8DDF\u968F\u6A21\u5F0F\u4F18\u5148\u4F7F\u7528 Claude \u5B89\u88C5\u767B\u8BB0\uFF0C\u7F3A\u5931\u65F6\u68C0\u67E5 Codex \u7F13\u5B58\uFF1B\u56FA\u5B9A\u6A21\u5F0F\u4F7F\u7528\u6307\u5B9A\u8DEF\u5F84\u3002").addDropdown((dropdown) => {
       var _a;
       return dropdown.addOption("installed", "\u8DDF\u968F\u5DF2\u5B89\u88C5 Core").addOption("fixed", "\u56FA\u5B9A\u8DEF\u5F84").setValue((_a = this.plugin.settings.coreMode) != null ? _a : this.plugin.settings.flowdeskRoot ? "fixed" : "installed").onChange(async (value) => {
         this.plugin.settings.coreMode = value;
@@ -4856,25 +5229,37 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian.PluginSettingTab
     });
     const status = containerEl.createDiv({ cls: "flowdesk-core-settings-status", attr: { role: "status" } });
     const inspect = () => {
+      status.empty();
+      const heading = status.createDiv({ cls: "flowdesk-core-status-head" });
       try {
         const core = this.plugin.inspectCore();
-        status.setText(`Core ${core.version} \xB7 ${core.source}
-${core.root}${core.notices.length ? "\n" + core.notices.join("\n") : ""}`);
+        heading.createSpan({ cls: "flowdesk-core-version", text: `Core ${core.version}` });
+        const recheck = heading.createEl("button", { cls: "flowdesk-core-recheck", text: "\u91CD\u65B0\u68C0\u67E5" });
+        recheck.addEventListener("click", inspect);
+        const source = status.createDiv({ cls: "flowdesk-core-row" });
+        source.createSpan({ cls: "flowdesk-core-label", text: "\u6765\u6E90" });
+        source.createSpan({ text: { fixed: "\u56FA\u5B9A\u8DEF\u5F84", "claude-installed": "Claude \u5B89\u88C5\u767B\u8BB0", "codex-cache": "Codex \u7F13\u5B58" }[core.source] });
+        const location = status.createDiv({ cls: "flowdesk-core-row" });
+        location.createSpan({ cls: "flowdesk-core-label", text: "\u8DEF\u5F84" });
+        location.createSpan({ cls: "flowdesk-core-path", text: core.root });
+        for (const note of core.notices) status.createDiv({ cls: "flowdesk-core-note", text: note });
       } catch (error2) {
-        status.setText(error2 instanceof Error ? error2.message : String(error2));
+        heading.createSpan({ cls: "flowdesk-core-version", text: "Core \u672A\u786E\u8BA4" });
+        status.createDiv({ cls: "flowdesk-error", text: error2 instanceof Error ? error2.message : String(error2) });
+        const recheck = heading.createEl("button", { cls: "flowdesk-core-recheck", text: "\u91CD\u65B0\u68C0\u67E5" });
+        recheck.addEventListener("click", inspect);
       }
     };
     inspect();
-    new import_obsidian.Setting(containerEl).setName("\u5F53\u524D Core").addButton((button) => button.setButtonText("\u91CD\u65B0\u68C0\u67E5").onClick(inspect));
-    new import_obsidian.Setting(containerEl).setName("\u56FA\u5B9A Core \u8DEF\u5F84").setDesc("\u4FDD\u7559\u539F\u8DEF\u5F84\uFF1B\u53EA\u6709\u56FA\u5B9A\u6A21\u5F0F\u4F7F\u7528\u3002\u9700\u5305\u542B Task \u4E0E Case producer\u3002").addText((text2) => text2.setPlaceholder("/Users/me/workspaces/flowdesk-plugin").setValue(this.plugin.settings.flowdeskRoot).onChange(async (value) => {
+    new import_obsidian2.Setting(containerEl).setName("\u56FA\u5B9A Core \u8DEF\u5F84").setDesc("\u4FDD\u7559\u539F\u8DEF\u5F84\uFF1B\u53EA\u6709\u56FA\u5B9A\u6A21\u5F0F\u4F7F\u7528\u3002\u9700\u5305\u542B Task \u4E0E Case producer\u3002").addText((text2) => text2.setPlaceholder("/Users/me/workspaces/flowdesk-plugin").setValue(this.plugin.settings.flowdeskRoot).onChange(async (value) => {
       this.plugin.settings.flowdeskRoot = value.trim();
       await this.plugin.saveSettings();
     }));
-    new import_obsidian.Setting(containerEl).setName("\u5DE5\u4F5C\u76EE\u5F55").setDesc("\u4F20\u7ED9 Task snapshot \u7684 --working-directory\uFF1B\u7559\u7A7A\u65F6\u4F7F\u7528\u6240\u9009 Core \u8DEF\u5F84\u3002").addText((text2) => text2.setValue(this.plugin.settings.workingDirectory).onChange(async (value) => {
+    new import_obsidian2.Setting(containerEl).setName("\u5DE5\u4F5C\u76EE\u5F55").setDesc("\u4F20\u7ED9 Task snapshot \u7684 --working-directory\uFF1B\u7559\u7A7A\u65F6\u4F7F\u7528\u6240\u9009 Core \u8DEF\u5F84\u3002").addText((text2) => text2.setValue(this.plugin.settings.workingDirectory).onChange(async (value) => {
       this.plugin.settings.workingDirectory = value.trim();
       await this.plugin.saveSettings();
     }));
-    new import_obsidian.Setting(containerEl).setName("TaskNotes API \u5730\u5740").setDesc("\u7559\u7A7A\u4F7F\u7528\u73AF\u5883\u914D\u7F6E\u6216\u672C\u673A\u9ED8\u8BA4\u5730\u5740\u3002").addText((text2) => text2.setPlaceholder("http://127.0.0.1:18090").setValue(this.plugin.settings.apiUrl).onChange(async (value) => {
+    new import_obsidian2.Setting(containerEl).setName("TaskNotes API \u5730\u5740").setDesc("\u7559\u7A7A\u4F7F\u7528\u73AF\u5883\u914D\u7F6E\u6216\u672C\u673A\u9ED8\u8BA4\u5730\u5740\u3002").addText((text2) => text2.setPlaceholder("http://127.0.0.1:18090").setValue(this.plugin.settings.apiUrl).onChange(async (value) => {
       this.plugin.settings.apiUrl = value.trim();
       await this.plugin.saveSettings();
     }));
@@ -4884,7 +5269,7 @@ ${core.root}${core.notices.length ? "\n" + core.notices.join("\n") : ""}`);
       configured = parseTaskNotesEnvironment(this.plugin.settings.tasknotesEnv);
     } catch (e) {
     }
-    const token = new import_obsidian.Setting(containerEl).setName("TaskNotes token").setDesc("\u9ED8\u8BA4\u906E\u4F4F\uFF0C\u4FDD\u5B58\u5728\u65E2\u6709\u73AF\u5883\u53D8\u91CF\u914D\u7F6E\u4E2D\u3002\u6709\u6548\u8BBE\u7F6E\u4FDD\u5B58\u540E\u4F1A\u81EA\u52A8\u5237\u65B0\u770B\u677F\u3002");
+    const token = new import_obsidian2.Setting(containerEl).setName("TaskNotes token").setDesc("\u9ED8\u8BA4\u906E\u4F4F\uFF0C\u4FDD\u5B58\u5728\u65E2\u6709\u73AF\u5883\u53D8\u91CF\u914D\u7F6E\u4E2D\u3002\u6709\u6548\u8BBE\u7F6E\u4FDD\u5B58\u540E\u4F1A\u81EA\u52A8\u5237\u65B0\u770B\u677F\u3002");
     const tokenError = token.descEl.createDiv({ attr: { role: "status" } });
     token.addText((text2) => {
       tokenInput = text2.inputEl;
@@ -4911,7 +5296,7 @@ ${core.root}${core.notices.length ? "\n" + core.notices.join("\n") : ""}`);
     }));
     const advanced = containerEl.createEl("details", { cls: "flowdesk-advanced-settings" });
     advanced.createEl("summary", { text: "\u9AD8\u7EA7\u73AF\u5883\u53D8\u91CF JSON" });
-    const environmentSetting = new import_obsidian.Setting(advanced).setName("TaskNotes \u73AF\u5883\u53D8\u91CF").setDesc("\u4FDD\u7559\u539F\u6709\u53D8\u91CF\u5408\u5E76\u89C4\u5219\uFF1B\u5C55\u5F00\u540E\u53EF\u67E5\u770B\u5E76\u7F16\u8F91\u5168\u90E8\u914D\u7F6E\u3002");
+    const environmentSetting = new import_obsidian2.Setting(advanced).setName("TaskNotes \u73AF\u5883\u53D8\u91CF").setDesc("\u4FDD\u7559\u539F\u6709\u53D8\u91CF\u5408\u5E76\u89C4\u5219\uFF1B\u5C55\u5F00\u540E\u53EF\u67E5\u770B\u5E76\u7F16\u8F91\u5168\u90E8\u914D\u7F6E\u3002");
     const error = environmentSetting.descEl.createDiv({ attr: { role: "status" } });
     environmentSetting.addTextArea((text2) => {
       jsonInput = text2.inputEl;
@@ -4984,10 +5369,6 @@ function formatWorkCaseCommandError(error) {
   const stdout = typeof failure.stdout === "string" ? failure.stdout.trim() : "";
   const message = error instanceof Error ? error.message : String(error);
   return `Work Case snapshot \u547D\u4EE4\u5931\u8D25\uFF1A${stderr || stdout || message}`;
-}
-function observationFirstLine(observation) {
-  var _a;
-  return (observation == null ? void 0 : observation.error) ? "" : (_a = observation == null ? void 0 : observation.details.split(/\r?\n/)[0]) != null ? _a : "";
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

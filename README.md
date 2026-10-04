@@ -108,12 +108,12 @@ Release 必需文件：
 发布一个版本（版本号以 `manifest.json` 为准）：
 
 ```bash
-git tag "v2.0.3"
-git push origin "v2.0.3"
+git tag "v2.0.4"
+git push origin "v2.0.4"
 ```
 
-CI 会校验 tag 必须等于 `v<manifest.version>`。例如 `manifest.json` 版本为 `2.0.3`
-时，release tag 必须是 `v2.0.3`。
+CI 会校验 tag 必须等于 `v<manifest.version>`。例如 `manifest.json` 版本为 `2.0.4`
+时，release tag 必须是 `v2.0.4`。推送标签前，先将同一份已验证提交推送到 `main`。
 
 版本要求：
 
@@ -188,7 +188,7 @@ Dashboard 已打开时，切换到 frontmatter `type: work-case` 或 legacy `typ
 2. snapshot 观察可信度、来源匹配和当前 task 合同状态；
 3. 一条首要状态或诊断，优先说明发生了什么、为什么、怎么修和短位置；
 4. Parent task 的 direct children 紧凑行，整行点击打开 child；Leaf 不显示空 children 区域；
-5. 任务规格与记录：目标、背景、范围、执行清单、领域段与全部执行/验证/交付轮次；完整 API 原文独立读取，机器诊断按需展开。
+5. 任务详情：目标、背景、范围、执行清单、静态验收与执行/验证/交付结果使用轻量章节；进度日志默认最近 3 条摘录，完整历史按需展开。机器诊断按需查看。
 
 打开任一 TaskNotes task 都只解释该 task。Parent 上下文只提供返回入口，children 只展示
 direct summaries，不从 parent 拼接当前 task 合同。Parent 自己仍持有并展示自己的合同；Leaf
@@ -204,22 +204,34 @@ Dashboard 不自行推断 task 状态、证据有效性或完成顺序。`rollup
 ## 完整正文与只读边界
 
 snapshot 的普通 Requirements/Scenarios 可能未结构化；投影条目为空不代表正文没有需求。
-展开“完整API原文 / 未投影内容”，点击“读取 / 刷新 API 原文”，Dashboard 会通过 TaskNotes
-GET 读取并完整渲染 `details`，不截断、不去重。成功空字符串显示“API原文为空”；缺身份、
-身份不匹配、错误 envelope 或非字符串正文会拒绝读取，失败不会显示为空任务。
+Dashboard 保留独立的 TaskNotes GET 完整 `details` 读取与来源核对，不因精简界面截断或去重原文。
+日常界面不重复展示 API 全文和逐节原文按钮；点击任务标题可打开原文件，技术信息按需查看。
+成功空字符串按空正文处理；缺身份、身份不匹配、错误 envelope 或非字符串正文会拒绝读取，
+失败不会伪装为空任务。
 
-全文入口标明准确 Task、独立 API 读取时间和 snapshot 时间。两次读取不能证明同轮一致；
+完整读取保留准确 Task、独立 API 读取时间和 snapshot 时间。两次读取不能证明同轮一致；
 可比片段变化会将展示中的 snapshot 标为 stale 并提示刷新，不改变原生 Task status、验收或
 观察健康。切换 Task、刷新、关闭面板会取消旧原文请求，晚响应不会落到另一张 Task。
 
-多轮记录保留 producer heading、时间与 API details 来源，最新一轮默认展开，较早轮可展开。
-“打开这一条原文”先核对准确Task API身份、完整details唯一匹配与当前片段，再映射frontmatter偏移；
+结果章节默认收起，展开查看最近一轮摘录；全部原记录及其他过程资料保留。进度日志的完整
+历史首次展开渲染 12 条，再点击“加载更早记录”追加下一批；阅读区最高 520px，支持平滑开合
+及减少动态效果设置。展开时显示已加载/总条数；未加载部分仍在原始数据中，不据此推断遗漏。
+刷新保留已加载批次和阅读位置。切换 Task/Case 会清空旧快照、取消后续渲染并卸载 Markdown
+组件；最多缓存 20 个资源的阅读选择，不缓存旧 DOM。已进入原生 MarkdownRenderer 的调用
+需等待返回，旧结果忽略。
+
+原文定位能力仍核对准确Task API身份、完整details唯一匹配与当前片段，再映射frontmatter偏移；
 同时检查当前编辑器正文。BOM/CRLF、重复heading、旧内容、缺来源或歧义不会产生猜测行号，
 无法确认时明确打开整张Task。Case来源行使用vault-file空间并检查当前片段；实际Obsidian定位仍需UI验收。
 
 Dashboard 已退出主动人工 review：没有复核 Modal、reviewed 标签 PATCH 或记录 append。
 已有 reviewed tags、Review Record 和历史记录继续可读。正文 checkbox 只表示“原文勾选”，
 不推出测试、质量或验收通过；已移除 REQ/SCN、证据比例仪表。
+
+“更多”提供交接上下文及完整恢复资料；“查看全部进展”和引用缺口使用 Obsidian 原生弹窗。
+精选入口逐行标明类型和打开方式；明确点击已核对的本机 Markdown 才提交一次既有 Obsidian
+打开请求，失败即时反馈。“编辑入口”打开准确 Case 原文件的编辑模式，由用户维护属性，
+不自动写回 Task/Case，也不执行交接上下文中的任务。
 
 ## 任务上下文与刷新
 

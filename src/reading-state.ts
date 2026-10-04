@@ -1,4 +1,4 @@
-interface ReadingState { open: Map<string,boolean>; scroll: number; focus: string | null }
+interface ReadingState { open: Map<string,boolean>; scroll: number; nested:Map<string,{scroll:number;items:string|null}>; focus: string | null }
 const get = (el:HTMLElement,key:string) => el.getAttribute?.(key) ?? null;
 const set = (el:HTMLElement,key:string,value:string) => {
   if(el.setAttribute)el.setAttribute(key,value);else (el as any).setAttr?.(key,value);
@@ -19,6 +19,9 @@ function focusTargets(container:HTMLElement):HTMLElement[] {
   }
   return targets;
 }
+function scrollTargets(container:HTMLElement):Array<[string,HTMLElement]> {
+  return Array.from(container.querySelectorAll<HTMLElement>("div")).filter(el=>get(el,"data-reading-scroll-key")).map(el=>[get(el,"data-reading-scroll-key")!,el]);
+}
 /** UI choices only. No snapshots, task facts or request lifecycle live in this bounded cache. */
 export class ReadingStateCache {
   private readonly entries=new Map<string,ReadingState>();
@@ -26,10 +29,11 @@ export class ReadingStateCache {
   capture(key:string,container:HTMLElement,options:{position?:boolean}={}):void {
     if(!key)return;
     const list=disclosures(container);if(!list.length)return;
-    const previous=this.entries.get(key);const state:ReadingState={open:previous?.open??new Map(),scroll:options.position===false?(previous?.scroll??0):(container.scrollTop||0),focus:previous?.focus??null};
+    const previous=this.entries.get(key);const state:ReadingState={open:previous?.open??new Map(),scroll:options.position===false?(previous?.scroll??0):(container.scrollTop||0),nested:previous?.nested??new Map(),focus:previous?.focus??null};
     for(const [id,el] of list)state.open.set(id,el.open);
     focusTargets(container);const active=container.ownerDocument?.activeElement as HTMLElement|null;
     if(options.position!==false){
+      for(const [id,element] of scrollTargets(container))state.nested.set(id,{scroll:element.scrollTop||0,items:get(element,"data-reading-items")});
       if(active&&container.contains(active))state.focus=get(active,"data-reading-focus");
       else if(active&&active!==container.ownerDocument?.body)state.focus=null;
     }
@@ -38,10 +42,14 @@ export class ReadingStateCache {
   }
   restore(key:string,container:HTMLElement,options:{disclosures?:boolean;position?:boolean}={}):void {
     const state=this.entries.get(key);
-    if(options.disclosures!==false)for(const [id,el] of disclosures(container))if(state?.open.has(id))el.open=state.open.get(id)!;
+    if(options.disclosures!==false){
+      for(const [id,el] of scrollTargets(container)){const items=state?.nested.get(id)?.items;if(items)set(el,"data-reading-items",items);}
+      for(const [id,el] of disclosures(container))if(state?.open.has(id)){el.open=state.open.get(id)!;el.dispatchEvent?.(new Event("flowdesk-reading-restore"));}
+    }
     const targets=focusTargets(container);
     if(options.position===false)return;
     container.scrollTop=state?.scroll??0;
+    for(const [id,element] of scrollTargets(container))element.scrollTop=state?.nested.get(id)?.scroll??0;
     const active=container.ownerDocument?.activeElement;
     if(state?.focus&&(!active||active===container.ownerDocument?.body||container.contains(active))) {
       const target=targets.find(el=>get(el,"data-reading-focus")===state.focus);

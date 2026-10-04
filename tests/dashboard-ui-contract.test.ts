@@ -153,10 +153,8 @@ test("合同摘要在扁平布局中仍保留明确展开指示", () => {
 test("完整投影和原文 renderer 接入 main，保留来源与观察布局", () => {
   assert.match(source, /new TaskContentRenderer/);
   assert.match(source, /\.render\(contract, model\.content\)/);
-  assert.match(source, /this\.renderRawTaskContent\(contract, model\)/);
   assert.match(source, /MarkdownRenderer\.render/);
   assert.match(source, /flowdesk-observation-summary/);
-  assert.match(source, /完整API原文 \/ 未投影内容/);
   assert.doesNotMatch(source, /flowdesk-records-link|flowdesk-contract-metrics/);
 });
 

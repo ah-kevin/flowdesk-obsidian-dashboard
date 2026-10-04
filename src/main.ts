@@ -1,5 +1,6 @@
 import {
   App,
+  Component,
   ItemView,
   MarkdownRenderer,
   MarkdownView,
@@ -100,6 +101,10 @@ import { resolveCore, type CoreMode, type CoreResolution } from "./core-resoluti
 import { ReadingStateCache } from "./reading-state";
 import { formatDisplayTime } from "./reading-presentation";
 import { renderTaskOverview } from "./task-overview";
+import { latestRecord } from "./task-overview";
+import { createTaskCurrentProgress } from "./task-current-progress";
+import { excerpt, firstParagraph } from "./reading-presentation";
+import { DashboardActionsModal, DashboardContentModal, createReadOnlyTextModal } from "./dashboard-dialogs";
 
 export const FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
 
@@ -419,6 +424,8 @@ class FlowDeskDashboardView extends ItemView {
   private readonly readingState = new ReadingStateCache();
   private renderedResource = "";
   private renderGeneration = 0;
+  private renderController=new AbortController();
+  private markdownScope:Component|null=null;
   private pendingMarkdown: Promise<unknown>[] = [];
   private rendering = false;
   private readingInteraction = 0;
@@ -435,10 +442,20 @@ class FlowDeskDashboardView extends ItemView {
   private rawContentController: AbortController | null = null;
   private rawContentGeneration = 0;
   private rawContentLoading = false;
-  private rawContentOpen = false;
   private navigationController: AbortController | null = null;
   private navigationOpening: {path:string;signal:AbortSignal} | null = null;
   private relatedTargetPanel: HTMLElement | null = null;
+  private resourceModal:DashboardContentModal|null=null;
+
+  private closeResourceModal():void {
+    const modal=this.resourceModal;this.resourceModal=null;this.relatedTargetPanel=null;modal?.close();
+  }
+
+  private displayResourceModal<T extends DashboardContentModal>(modal:T):T {
+    this.closeResourceModal();
+    const close=modal.onClose.bind(modal);modal.onClose=()=>{close();if(this.resourceModal===modal){this.resourceModal=null;this.relatedTargetPanel=null;}};
+    this.resourceModal=modal;modal.open();return modal;
+  }
 
   private cancelNavigation(): void {
     this.navigationController?.abort();
@@ -452,7 +469,6 @@ class FlowDeskDashboardView extends ItemView {
     this.rawContentController = null;
     this.rawTaskContent = null;
     this.rawContentLoading = false;
-    this.rawContentOpen = false;
   }
 
   private async loadRawTaskContent(taskPath: string): Promise<void> {
@@ -462,7 +478,6 @@ class FlowDeskDashboardView extends ItemView {
     this.rawContentController = controller;
     const generation = ++this.rawContentGeneration;
     this.rawContentLoading = true;
-    this.rawContentOpen = true;
     this.rawTaskContent = null;
     this.renderShell();
     const current = () => generation === this.rawContentGeneration && !controller.signal.aborted && this.shell.context.kind === "task" && "resourcePath" in this.shell.context && this.shell.context.resourcePath === taskPath;
@@ -482,31 +497,6 @@ class FlowDeskDashboardView extends ItemView {
     }
   }
 
-  private renderRawTaskContent(container: HTMLElement, model: DashboardViewModel): void {
-    const section = container.createEl("details", { cls: "flowdesk-contract-item-details flowdesk-raw-content",attr:{"data-external-disclosure":"true"} });
-    section.open = this.rawContentOpen;
-    section.addEventListener("toggle", () => { this.rawContentOpen = section.open; });
-    section.createEl("summary", { text: "完整API原文 / 未投影内容" });
-    section.createDiv({ cls: "flowdesk-muted", text: `单独API原文观测；不代表与 snapshot 同轮一致。Task：${model.currentTask.id}；snapshot 时间：${model.observation.generatedAt}` });
-    const read = section.createEl("button", { text: this.rawContentLoading ? "原文读取中" : "读取 / 刷新 API 原文", cls: "flowdesk-content-read" });
-    read.disabled = this.rawContentLoading;
-    read.addEventListener("click", () => { void this.loadRawTaskContent(model.currentTask.id); });
-    const original = section.createEl("button", { text: "打开任务原文", cls: "flowdesk-content-source" });
-    original.addEventListener("click", () => { void this.openSnapshotSource(model.currentTask.id, {line_start:1,line_end:1,excerpt:observationFirstLine(this.rawTaskContent)}, "完整原文"); });
-    const observation = this.rawTaskContent;
-    if (!observation || observation.taskId !== model.currentTask.id) return;
-    if (observation.error) {
-      section.createDiv({ cls: "flowdesk-error", text: `API原文读取失败：${observation.error}` });
-      return;
-    }
-    section.createDiv({ cls: "flowdesk-muted", text: `tasknotes-api · ${observation.taskId} · 成功读取时间：${observation.readAt}` });
-    if (rawContentDiffers(model.content, observation, this.taskRenderState.snapshot ?? undefined)) section.createDiv({ cls: "flowdesk-error", text: "API原文与 snapshot 投影片段存在差异；snapshot 已标记 stale，请刷新核对。" });
-    if (observation.details === "") section.createDiv({ cls: "flowdesk-muted", text: "API原文为空；可打开整张任务原文。" });
-    else {
-      const markdown = section.createDiv({ cls: "flowdesk-contract-scope-markdown" });
-      void this.renderSourceMarkdown(observation.details, markdown, observation.taskId).catch(() => { markdown.setText(observation.details); });
-    }
-  }
 
   constructor(leaf: WorkspaceLeaf, private plugin: FlowDeskDashboardPlugin) {
     super(leaf);
@@ -533,11 +523,15 @@ class FlowDeskDashboardView extends ItemView {
       openTask: (taskPath, origin) => this.openTask(taskPath, origin),
       openCaseSource: (casePath, source) =>
         this.openCaseSource(casePath, source),
-      openRelated: (target, casePath) => this.openRelated(target, casePath),
+      openRelated: (target, casePath) => this.openRelated(target, casePath, undefined, true),
       copyText: (text) => navigator.clipboard.writeText(text),
       openTaskSource: (taskPath, source) => this.openSnapshotSource(taskPath, source, "恢复引用"),
       renderMarkdown: (text, element, sourcePath) => this.renderSourceMarkdown(text, element, sourcePath),
       openSettings: () => this.plugin.openDashboardSettings(),
+      openActions: (title,actions)=>{this.displayResourceModal(new DashboardActionsModal(this.app,title,actions));},
+      openContent: (title,render)=>{this.displayResourceModal(new DashboardContentModal(this.app,title,render));},
+      editCase: casePath=>this.openCaseProperties(casePath),
+      icon: setIcon,
     });
     this.shell = new ViewShellController([this.taskAdapter, this.caseAdapter]);
     for(const name of ["pointerdown","keydown","wheel"])this.contentEl.addEventListener(name,this.onReadingInteraction);
@@ -565,7 +559,9 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   async onClose() {
+    this.closeResourceModal();
     this.renderGeneration++;
+    this.clearRenderLifetime();
     for(const name of ["pointerdown","keydown","wheel"])this.contentEl.removeEventListener?.(name,this.onReadingInteraction);
     this.readingState.clear();
     this.clearRawTaskContent();
@@ -573,6 +569,8 @@ class FlowDeskDashboardView extends ItemView {
     this.cancelInitialSync = null;
     this.shell.close();
     this.taskAdapter.close();
+    this.pendingMarkdown=[];
+    this.contentEl.empty();
   }
 
   async syncToActiveFile(file: TFile | null = this.app.workspace.getActiveFile()) {
@@ -646,13 +644,24 @@ class FlowDeskDashboardView extends ItemView {
     return this.taskRenderState.disclosureState;
   }
 
+  private clearRenderLifetime():void {
+    this.renderController.abort();
+    if(this.markdownScope)this.removeChild(this.markdownScope);
+    this.markdownScope=null;
+  }
+
   private renderShell() {
     const container = this.contentEl;
     const generation=++this.renderGeneration,interaction=this.readingInteraction;
     this.pendingMarkdown=[];this.rendering=true;
     this.readingState.capture(this.renderedResource, container, {position:this.positionRestored||interaction!==this.lastRenderInteraction});
+    this.clearRenderLifetime();
+    this.renderController=new AbortController();
+    this.markdownScope=this.addChild(new Component());
     this.positionRestored=false;this.lastRenderInteraction=interaction;
-    this.renderedResource = "resourcePath" in this.shell.context ? `${this.shell.context.kind}:${this.shell.context.resourcePath}` : "";
+    const nextResource="resourcePath" in this.shell.context ? `${this.shell.context.kind}:${this.shell.context.resourcePath}` : "";
+    if(nextResource!==this.renderedResource)this.closeResourceModal();
+    this.renderedResource=nextResource;
     container.empty();
     this.caseRenderer.reset(container);
     container.addClass("flowdesk-dashboard");
@@ -680,9 +689,10 @@ class FlowDeskDashboardView extends ItemView {
       });
     }
     } finally {
-      this.rendering=false;
-      const resource=this.renderedResource,pending=[...this.pendingMarkdown];
+      const resource=this.renderedResource;
       this.readingState.restore(resource,container,{position:false});
+      this.rendering=false;
+      const pending=[...this.pendingMarkdown];
       const restore=()=>{
         if(generation!==this.renderGeneration||resource!==this.renderedResource)return;
         if(interaction===this.readingInteraction)this.readingState.restore(resource,container,{disclosures:false});
@@ -754,9 +764,6 @@ class FlowDeskDashboardView extends ItemView {
     const navigation = container.createDiv({cls:"flowdesk-reading-navigation"});
     const read = navigation.createEl("button",{text:"阅读正文",attr:{"data-focus-key":"read-body"}});
     read.addEventListener("click",()=>{const target=this.contentEl.querySelector<HTMLElement>(".flowdesk-contract-summary");target?.scrollIntoView?.({block:"start",behavior:"smooth"});});
-    const api = navigation.createEl("button",{text:"读取 API 原文",attr:{"data-focus-key":"read-api"}});
-    api.disabled=this.rawContentLoading;
-    api.addEventListener("click",()=>{void this.loadRawTaskContent(model.currentTask.id);});
     if (presentation.children.length) {
       this.renderChildren(container, model, presentation.children);
     }
@@ -822,6 +829,12 @@ class FlowDeskDashboardView extends ItemView {
     }
     const actions = topRow.createDiv({ cls: "flowdesk-task-meta-actions" });
     this.renderToolbar(actions, model.currentTask.id, model);
+    const more=actions.createEl("button",{cls:"flowdesk-more-actions",text:"⋯",attr:{"aria-label":"更多操作","data-focus-key":"task-more"}});
+    more.addEventListener("click",()=>this.displayResourceModal(new DashboardActionsModal(this.app,"更多操作",[
+      {label:"复制交接上下文",run:()=>navigator.clipboard.writeText(this.taskHandoffText(model))},
+      {label:"查看交接上下文",run:()=>{this.displayResourceModal(createReadOnlyTextModal(this.app,"交接上下文",this.taskHandoffText(model)));}},
+      {label:"查看原文件",run:()=>this.openTask(model.currentTask.id)},
+    ])));
     const heading = header.createDiv({ cls: "flowdesk-task-heading" });
     const title = heading.createDiv({
       cls: "flowdesk-task-title flowdesk-current-task-link",
@@ -893,7 +906,7 @@ class FlowDeskDashboardView extends ItemView {
     if(context.previousTaskPath){
       const file=this.app.vault.getAbstractFileByPath(context.previousTaskPath);
       const available=file instanceof TFile && (this.plugin.isTaskFile(file)||["work-case","session"].includes(this.plugin.workCaseType(file)));
-      const back=card.createEl("button",{cls:"flowdesk-return-resource",text:"返回刚才的 Task / Case"});back.disabled=!available;
+      const back=card.createEl("button",{cls:"flowdesk-return-resource",text:"← 返回工作看板",attr:{title:"回到刚才查看的任务或Case"}});back.disabled=!available;
       back.addEventListener("click",()=>{void this.openTask(context.previousTaskPath);});
       if(!available)card.createDiv({cls:"flowdesk-muted",text:"原 Task/Case 已不可定位，请从文件列表重新选择。"});
     }
@@ -1037,6 +1050,9 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   private async renderSourceMarkdown(text: string, element: HTMLElement, sourcePath: string): Promise<void> {
+    const modal=this.resourceModal?.contentEl.contains(element)?this.resourceModal:null;
+    const signal=modal?.renderSignal??this.renderController.signal;
+    const component=modal?.markdownScope??this.markdownScope??this;
     const sources = collectMarkdownLinkSources(text);
     let complete = false;
     // Capture remains installed before async render; source is checked for this occurrence.
@@ -1055,7 +1071,8 @@ class FlowDeskDashboardView extends ItemView {
       void this.openRelated(href, sourcePath, origin === "markdown" ? undefined : "链接语法来源无法唯一核对；请查看原文或复制引用。");
     }, true);
     const rendered=(async()=>{
-      await MarkdownRenderer.render(this.app, text, element, sourcePath, this);
+      await MarkdownRenderer.render(this.app, text, element, sourcePath, component);
+      if(signal.aborted)return;
       for(const checkbox of Array.from(element.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))){checkbox.disabled=true;checkbox.setAttribute("aria-readonly","true");}
       complete=true;
     })();
@@ -1140,7 +1157,7 @@ class FlowDeskDashboardView extends ItemView {
       0
     );
     const details = container.createDiv({cls:"flowdesk-contract-summary"});
-    details.createDiv({cls:"flowdesk-dashboard-section-title",text:"任务内容"});
+    const heading=details.createDiv({cls:"flowdesk-dashboard-section-title flowdesk-content-heading"});const icon=heading.createSpan({cls:"flowdesk-content-icon"});setIcon(icon,"file-text");heading.createSpan({text:"任务详情"});heading.createSpan({cls:"flowdesk-content-caption",text:"说明 · 验收 · 结果"});
     const body = details.createDiv({ cls: "flowdesk-detail-body" });
     const technical=details.createEl("details",{cls:"flowdesk-task-technical",attr:{"data-disclosure-key":"task-technical"}});
     technical.createEl("summary",{text:diagnosticCount?`技术详情 · ${diagnosticCount} 项诊断`:"技术详情"});
@@ -1148,14 +1165,11 @@ class FlowDeskDashboardView extends ItemView {
     const contract = body.createDiv({cls:"flowdesk-detail-section flowdesk-contract-reading"});
     renderedSections.set("contract", contract);
     new TaskContentRenderer({
+      signal:this.renderController.signal,
+      trackRender:promise=>{if(this.rendering)this.pendingMarkdown.push(promise);},
       renderMarkdown: (text, element, taskPath) => this.renderSourceMarkdown(text, element, taskPath),
       openSource: (taskPath, section) => this.openSnapshotSource(taskPath, section.source, section.heading, section.text),
     }).render(contract, model.content);
-    this.renderRawTaskContent(contract, model);
-    const continuation = contract.createDiv({cls:"flowdesk-task-resume-reference"});
-    continuation.createDiv({cls:"flowdesk-muted",text:"Task可独立继续；引用不创建Case、不启动宿主。先由原owner读取最新TaskNotes正文。"});
-    const copyTask = continuation.createEl("button",{cls:"flowdesk-copy-task-reference",text:"复制Task引用与继续步骤"});
-    copyTask.addEventListener("click",()=>{void navigator.clipboard.writeText(`准确Task：${model.currentTask.id}\n在原owner会话使用 work 继续；先读最新TaskNotes/snapshot，区分已做结果与未完成Next，避免重复执行。换载体前先保存并回读进展并正常停止旧执行与已知后台工作；释放未知时只读或回原owner。`);});
 
     const observation = createSection(
       body,
@@ -1417,7 +1431,23 @@ class FlowDeskDashboardView extends ItemView {
     const position = {line:source.lineStart - 1,ch:0};view.editor.setCursor(position);view.editor.scrollIntoView({from:position,to:position},true);view.editor.focus();
   }
 
-  private async openRelated(raw: string, sourcePath: string, sourceError?: string): Promise<void> {
+  private taskHandoffText(model:DashboardViewModel):string {
+    const progress=createTaskCurrentProgress(model.content,{statusIsCompleted:model.currentTask.statusIsCompleted,observedAt:model.observation.generatedAt,observationHealthy:model.observation.isTrustworthy&&!model.observation.isStale&&!model.diagnostics.some(item=>/truncat|omitted|too_large/i.test(item.code))});
+    const lines=["交接上下文（只读观测；继续前回读）",`准确 Task：${model.currentTask.id}`,`原状态：${model.currentTask.status}`,`目标：${excerpt(model.content.goal,450)}`,`观测时间：${model.observation.generatedAt}`];
+    if(model.currentTask.statusIsCompleted===true){const result=latestRecord(model.content.records.execution);lines.push(`结果摘录：${result?excerpt(firstParagraph(result.text),650):"最近结果未确认，查看原文件"}`);}
+    else {if(progress.progress)lines.push(`进展摘录：${excerpt(firstParagraph(progress.progress),650)}`);if(progress.next!==null)lines.push(`下一步摘录：${excerpt(progress.next,500)}`);}
+    if(progress.gaps.length)lines.push(`缺口：${progress.gaps.join("；")}`);
+    lines.push("材料不启动Task或授予接手权限。继续前回读最新TaskNotes与原文，明确未完成Next，已结束项不重做；换载体先保存进展并正常结束旧执行，释放未知时只读或回原owner。");return lines.join("\n");
+  }
+
+  private async openCaseProperties(casePath:string):Promise<void> {
+    const file=this.app.vault.getAbstractFileByPath(casePath);
+    if(!(file instanceof TFile)||file.path!==casePath||!["work-case","session"].includes(this.plugin.workCaseType(file))){new Notice("无法确认原Case文件，请从文件列表核对。");return;}
+    await this.app.workspace.getLeaf(false).openFile(file,{active:true,state:{mode:"source"}});
+    new Notice("在Case顶部属性中维护project、plans、docs和related；保存后看板会刷新。Dashboard不会代写这些属性。");
+  }
+
+  private async openRelated(raw: string, sourcePath: string, sourceError?: string, direct=false): Promise<void> {
     const request = this.beginNavigation();
     let context: RelatedContext = {casePath:sourcePath,cwd:null,vaultRoot:this.plugin.vaultRoot(),resolveVaultLink:this.vaultLinkResolver(sourcePath)};
     let target = sourceError ? {kind:"unavailable" as const,label:raw,reason:sourceError} : resolveRelatedTarget(raw, context);
@@ -1447,8 +1477,15 @@ class FlowDeskDashboardView extends ItemView {
         }
       }
     }
-    this.relatedTargetPanel?.remove();
-    const panel = this.contentEl.createDiv({cls:"flowdesk-dashboard-section flowdesk-related-target"});this.relatedTargetPanel = panel;
+    let firstOutcome:RepositoryOpenResult|null=null;
+    if(direct&&target.kind==="repository"&&/\.md$/i.test(path.extname(target.absolutePath))){
+      new Notice("正在打开文档…");
+      try{firstOutcome=await this.plugin.openRepositoryMarkdown(target.absolutePath);}catch{firstOutcome={kind:"unknown",message:"打开结果未知；请核对原文件，不自动重试。"};}
+      if(!request.current())return;
+      if(firstOutcome.kind==="accepted"){new Notice(firstOutcome.message);return;}
+    }
+    const modal=this.displayResourceModal(new DashboardContentModal(this.app,"引用资料",()=>{}));
+    const panel = modal.contentEl.createDiv({cls:"flowdesk-dashboard-section flowdesk-related-target"});this.relatedTargetPanel = panel;
     const isFileTarget = target.kind === "repository" || target.kind === "vault";
     const pathText = target.kind === "repository" ? target.absolutePath : target.kind === "vault" && target.resolvedPath ? path.join(context.vaultRoot,target.resolvedPath) : raw;
     panel.createDiv({cls:"flowdesk-dashboard-section-title",text:isFileTarget ? "引用资料" : "引用定位缺口"});
@@ -1462,7 +1499,7 @@ class FlowDeskDashboardView extends ItemView {
     }
     if (target.kind === "repository" && /\.md$/i.test(path.extname(target.absolutePath))) {
       const documentPath = target.absolutePath;
-      const result = panel.createDiv({cls:"flowdesk-repository-open-feedback",attr:{role:"status"},text:"点击后向 Obsidian 提交打开此原文件的请求。"});
+      const result = panel.createDiv({cls:"flowdesk-repository-open-feedback",attr:{role:"status"},text:firstOutcome?.message??"点击后向 Obsidian 提交打开此原文件的请求。"});
       const openDocument = panel.createEl("button",{cls:"flowdesk-open-repository-document",text:"在 Obsidian 打开文档",attr:{"aria-label":"明确向指定Obsidian提交此Markdown原文件"}});
       openDocument.addEventListener("click",async()=>{
         if(openDocument.disabled)return;
@@ -1497,8 +1534,18 @@ class FlowDeskDashboardSettingTab extends PluginSettingTab {
       .setValue(this.plugin.settings.coreMode??(this.plugin.settings.flowdeskRoot?"fixed":"installed"))
       .onChange(async value=>{this.plugin.settings.coreMode=value as CoreMode;await this.plugin.saveSettings();this.display();}));
     const status=containerEl.createDiv({cls:"flowdesk-core-settings-status",attr:{role:"status"}});
-    const inspect=()=>{try{const core=this.plugin.inspectCore();status.setText(`Core ${core.version} · ${core.source}\n${core.root}${core.notices.length?"\n"+core.notices.join("\n"):""}`);}catch(error){status.setText(error instanceof Error?error.message:String(error));}};
-    inspect();new Setting(containerEl).setName("当前 Core").addButton(button=>button.setButtonText("重新检查").onClick(inspect));
+    const inspect=()=>{
+      status.empty();
+      const heading=status.createDiv({cls:"flowdesk-core-status-head"});
+      try {
+        const core=this.plugin.inspectCore();heading.createSpan({cls:"flowdesk-core-version",text:`Core ${core.version}`});
+        const recheck=heading.createEl("button",{cls:"flowdesk-core-recheck",text:"重新检查"});recheck.addEventListener("click",inspect);
+        const source=status.createDiv({cls:"flowdesk-core-row"});source.createSpan({cls:"flowdesk-core-label",text:"来源"});source.createSpan({text:({fixed:"固定路径","claude-installed":"Claude 安装登记","codex-cache":"Codex 缓存"})[core.source]});
+        const location=status.createDiv({cls:"flowdesk-core-row"});location.createSpan({cls:"flowdesk-core-label",text:"路径"});location.createSpan({cls:"flowdesk-core-path",text:core.root});
+        for(const note of core.notices)status.createDiv({cls:"flowdesk-core-note",text:note});
+      }catch(error){heading.createSpan({cls:"flowdesk-core-version",text:"Core 未确认"});status.createDiv({cls:"flowdesk-error",text:error instanceof Error?error.message:String(error)});const recheck=heading.createEl("button",{cls:"flowdesk-core-recheck",text:"重新检查"});recheck.addEventListener("click",inspect);}
+    };
+    inspect();
     new Setting(containerEl).setName("固定 Core 路径").setDesc("保留原路径；只有固定模式使用。需包含 Task 与 Case producer。").addText(text=>text
       .setPlaceholder("/Users/me/workspaces/flowdesk-plugin").setValue(this.plugin.settings.flowdeskRoot)
       .onChange(async value=>{this.plugin.settings.flowdeskRoot=value.trim();await this.plugin.saveSettings();}));

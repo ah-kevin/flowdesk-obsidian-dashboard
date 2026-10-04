@@ -54,7 +54,7 @@ function parseEvent(event:Event):{progress:string;next:string|null;time:Instant|
 export function createTaskCurrentProgress(content:TaskContent,context:{statusIsCompleted:boolean|null;observationHealthy:boolean;observedAt:string}):TaskCurrentProgress {
   if(!context.observationHealthy)return unknown("snapshot 观测有缺口或已过期；当前进展 unknown。");
   const sections=content.domainSections.filter(section=>section.level===2&&section.heading==="Progress");
-  if(sections.length!==1)return unknown(sections.length?"Progress 段不唯一；当前进展 unknown。":"snapshot 未提供完整 canonical Progress；可主动读取 API 原文。");
+  if(sections.length!==1)return unknown(sections.length?"Progress 段不唯一；当前进展 unknown。":"snapshot 未提供完整 canonical Progress；可查看任务原文件。");
   const section=sections[0],source=section.source,start=source?.line_start,end=source?.line_end;
   if(typeof start!=="number"||typeof end!=="number"||!Number.isInteger(start)||!Number.isInteger(end)||start<1||end<start||source?.truncated===true||source?.omitted===true)return unknown("Progress 来源范围缺失或明确不完整；当前进展 unknown。");
   const lines=section.text.replace(/\r\n/g,"\n").split("\n");

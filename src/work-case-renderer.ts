@@ -7,6 +7,9 @@ import {formatEntityStatus, formatReferenceLabel} from "./entity-presentation";
 import type { WorkCaseRenderState } from "./work-case-adapter";
 import type { WorkCaseSourceRange } from "./work-case-model";
 import type { TaskNavigationOrigin } from "./task-navigation";
+import type { DashboardAction } from "./dashboard-dialogs";
+import { parseQuotedProgress, renderProgressEvents } from "./progress-history";
+import { parseReferenceText } from "./reference-text";
 import {
   createWorkCasePresentation,
   type WorkCasePresentation,
@@ -28,6 +31,10 @@ export interface WorkCaseRendererDependencies {
   renderMarkdown?(text:string, element:HTMLElement, sourcePath:string):Promise<void>;
   coreInfo?():CoreResolution|null;
   openSettings?():void;
+  openActions?(title:string,actions:DashboardAction[]):void;
+  openContent?(title:string,render:(container:HTMLElement)=>void):void;
+  editCase?(casePath:string):Promise<void>|void;
+  icon?(element:HTMLElement,name:string):void;
 }
 
 export class WorkCaseDashboardRenderer {
@@ -63,7 +70,6 @@ export class WorkCaseDashboardRenderer {
     this.renderTasks(container, presentation);
     this.renderRelated(container, state, presentation);
     this.renderProgress(container, state, presentation);
-    this.renderResume(container, state);
     this.renderSections(container, state, presentation);
     this.renderTechnicalContext(container, presentation);
     this.renderDiagnostics(container, presentation);
@@ -95,14 +101,23 @@ export class WorkCaseDashboardRenderer {
     const header = container.createDiv({ cls: "flowdesk-case-header" });
     const top = header.createDiv({ cls: "flowdesk-case-header-top" });
     top.createDiv({ cls: "flowdesk-case-kicker", text: "工作案卷" });
-    const refresh = top.createEl("button", {
+    const actions=top.createDiv({cls:"flowdesk-header-actions"});
+    const refresh = actions.createEl("button", {
       cls: "flowdesk-case-refresh",
       text: state.loading ? "读取中" : "刷新",
       attr: { "aria-label": state.loading ? "Work Case 读取中" : "刷新 Work Case" },
     });
     refresh.disabled = state.loading;
     refresh.addEventListener("click", () => void this.dependencies.refresh());
-    header.createDiv({ cls: "flowdesk-case-title", text: presentation.header.title });
+    const more=actions.createEl("button",{cls:"flowdesk-more-actions",text:"⋯",attr:{"aria-label":"更多操作","data-focus-key":"case-more"}});
+    more.addEventListener("click",()=>this.dependencies.openActions?.("更多操作",[
+      {label:"复制交接上下文",run:()=>this.dependencies.copyText?.(createContinuationCard(state.model!,{staleReason:state.staleReason,selectedTaskIds:[...this.selectedTasks(state)]}).text)},
+      {label:"查看交接上下文",run:()=>this.dependencies.openContent?.("交接上下文",container=>this.renderResume(container,state))},
+      {label:"复制完整恢复资料",run:()=>this.dependencies.copyText?.(this.fullResumeText(state))},
+      {label:"查看原文件",run:()=>this.dependencies.openRelated(state.casePath,state.casePath)},
+    ]));
+    const title=header.createEl("button", { cls: "flowdesk-case-title flowdesk-case-title-link", text: presentation.header.title });
+    title.addEventListener("click",()=>{void this.dependencies.openRelated(state.casePath,state.casePath);});
     const metadata = header.createDiv({ cls: "flowdesk-case-metadata" });
     metadata.createSpan({ cls: "flowdesk-case-status", text: presentation.header.status, attr: {title: state.model?.workCase.status || "未记录"} });
     if (presentation.header.project !== "未关联 Project") {
@@ -154,9 +169,6 @@ export class WorkCaseDashboardRenderer {
         const full=card.createEl("details",{cls:"flowdesk-case-current-full",attr:{"data-disclosure-key":`current:${item.key}`}});
         full.createEl("summary",{text:"展开全文"});this.markdown(full,item.value,state.casePath,"flowdesk-case-current-original");
       }
-      const original=card.createEl("button",{cls:"flowdesk-case-source-action",text:"在原文查看",attr:{"aria-label":`打开 Current：${item.label}`}});
-      original.disabled=!item.source;
-      original.addEventListener("click",()=>{if(item.source)void this.dependencies.openCaseSource(state.casePath,item.source);});
     }
   }
 
@@ -259,11 +271,14 @@ export class WorkCaseDashboardRenderer {
       if(item.timestamp)meta.createSpan({cls:"flowdesk-case-progress-time",text:formatDisplayTime(item.timestamp),attr:{title:item.timestamp}});
       if(index===0)meta.createSpan({cls:"flowdesk-case-progress-latest",text:"最新"});
       this.markdown(row,item.text,state.casePath,"flowdesk-case-progress-text");
-      const original=row.createEl("button",{cls:"flowdesk-case-source-action",text:"在原文查看",attr:{"aria-label":`查看进展原文：${item.timestamp??"时间未记录"}`}});
-      original.addEventListener("click",()=>{void this.dependencies.openCaseSource(state.casePath,item.source);});
     }
-    const history=section.createEl("button",{cls:"flowdesk-case-progress-history",text:"查看完整历史"});
-    history.addEventListener("click",()=>{void this.dependencies.openRelated(state.casePath,state.casePath);});
+    const history=section.createEl("button",{cls:"flowdesk-case-progress-history",text:"查看全部进展 →"});
+    history.addEventListener("click",()=>this.dependencies.openContent?.("全部进展",container=>{
+      const progress=state.caseContent?.sections.filter(item=>item.heading==="Progress")??[];
+      const events=progress.length===1?parseQuotedProgress(progress[0].text):null;
+      if(events)renderProgressEvents(container,events,(text,element)=>this.markdown(element,text,state.casePath,""),true);
+      else {container.createDiv({cls:"flowdesk-muted",text:"完整进展未能整理；以下保留可读取的原文，不代表完整历史。"});for(const item of progress)this.markdown(container,item.text,state.casePath,"flowdesk-log-body");if(!progress.length)for(const item of state.model!.recentProgress)this.markdown(container,item.text,state.casePath,"flowdesk-log-body");}
+    }));
   }
 
   private renderSections(
@@ -327,8 +342,6 @@ export class WorkCaseDashboardRenderer {
     const item=group.items[0];if(!item)return;
     details.createDiv({cls:"flowdesk-case-record-heading",text:"原文摘录"});
     this.markdown(details,excerpt(firstParagraph(item.text),480),state.casePath,"flowdesk-case-record-text");
-    const original=details.createEl("button",{cls:"flowdesk-case-record-entry flowdesk-case-source-action",text:"在原文查看"});
-    original.addEventListener("click",()=>{void this.dependencies.openCaseSource(state.casePath,item.source);});
   }
 
   private renderRelated(
@@ -338,6 +351,7 @@ export class WorkCaseDashboardRenderer {
   ): void {
     if (!presentation.related.length) return;
     const section = createSection(container, "精选入口", "flowdesk-case-related");
+    const edit=section.createEl("button",{cls:"flowdesk-edit-entries",text:"编辑入口",attr:{"aria-label":"编辑精选入口"}});edit.addEventListener("click",()=>{void this.dependencies.editCase?.(state.casePath);});
     for (const group of presentation.related) {
       const row = section.createDiv({ cls: "flowdesk-case-related-row" });
       row.createSpan({ cls: "flowdesk-case-label", text: ({Project:"项目",Plans:"计划",Docs:"文档",Sessions:"原会话",Related:"资料"} as Record<string,string>)[group.label]??group.label });
@@ -345,9 +359,11 @@ export class WorkCaseDashboardRenderer {
       for (const target of group.targets) {
         const link = links.createEl("button", {
           cls: "flowdesk-case-related-link",
-          text: formatReferenceLabel(target),
           attr: {title: target},
         });
+        const web=/^https?:\/\//i.test(parseReferenceText(target).target);
+        const icon=link.createSpan({cls:"flowdesk-reference-icon",attr:{"aria-hidden":"true"}});this.dependencies.icon?.(icon,web?"globe":"file-text");
+        const copy=link.createSpan({cls:"flowdesk-reference-copy"});copy.createSpan({cls:"flowdesk-reference-title",text:formatReferenceLabel(target)});copy.createSpan({cls:"flowdesk-reference-type",text:web?"网页 · 浏览器":group.label==="Project"?"项目 · Obsidian 笔记":"文档 · 原文件"});link.createSpan({cls:"flowdesk-reference-arrow",text:web?"↗":"→",attr:{"aria-hidden":"true"}});
         link.addEventListener("click", () =>
           void this.dependencies.openRelated(target, state.casePath)
         );
@@ -355,20 +371,29 @@ export class WorkCaseDashboardRenderer {
     }
   }
 
-  private renderResume(container: HTMLElement, state: WorkCaseRenderState): void {
-    if (!state.model) return;
-    const presentation = createResumePresentation(state.model.resumeBundle, state.model);
-    const section=createSection(container,"继续工作","flowdesk-case-resume");
-    const independent=state.caseContent;
-    const caseLines=independent?.error?[`Case独立原文读取失败：${independent.error}`]:independent?[`Case独立原文读取时间：${independent.readAt}`,...independent.sections.map(s=>`${s.heading}（vault-file ${s.source.lineStart}–${s.source.lineEnd}）：\n${s.text}`)]:["Case独立原文未读取；Context/Summary需查看整张Case。"];
-    const summary=[presentation.summary,`本地snapshot读取时间：${state.loadedAt}`,state.staleReason?`旧观测：${state.staleReason}`:"",...caseLines].filter(Boolean).join("\n\n");
-    const active=state.model.tasks.items.filter(t=>t.statusIsCompleted!==true);
-    const previous=this.taskChoices.get(state.casePath),ids=new Set(active.map(t=>t.id));
+  private selectedTasks(state:WorkCaseRenderState):Set<string> {
+    const ids=new Set(state.model!.tasks.items.filter(task=>task.statusIsCompleted!==true).map(task=>task.id)),previous=this.taskChoices.get(state.casePath);
     const selected=new Set(previous?[...previous.selected].filter(id=>ids.has(id)):ids);
     for(const id of ids)if(!previous?.known.has(id))selected.add(id);
-    this.taskChoices.set(state.casePath,{selected,known:ids});while(this.taskChoices.size>20)this.taskChoices.delete(this.taskChoices.keys().next().value!);
+    this.taskChoices.set(state.casePath,{selected,known:ids});while(this.taskChoices.size>20)this.taskChoices.delete(this.taskChoices.keys().next().value!);return selected;
+  }
+
+  private fullResumeText(state:WorkCaseRenderState):string {
+    const presentation=createResumePresentation(state.model!.resumeBundle,state.model!),independent=state.caseContent;
+    const caseLines=independent?.error?[`Case独立原文读取失败：${independent.error}`]:independent?[`Case独立原文读取时间：${independent.readAt}`,...independent.sections.filter(section=>section.heading!=="Progress").map(section=>`${section.heading}（vault-file ${section.source.lineStart}–${section.source.lineEnd}）：\n${section.text}`)]:["Case独立原文未读取；Context/Summary需查看整张Case。"];
+    return [presentation.summary,`本地snapshot读取时间：${state.loadedAt}`,state.staleReason?`旧观测：${state.staleReason}`:"",...caseLines].filter(Boolean).join("\n\n");
+  }
+
+  private renderResume(container: HTMLElement, state: WorkCaseRenderState): void {
+    if (!state.model) return;
+    container.addClass("flowdesk-case-dashboard");
+    const presentation = createResumePresentation(state.model.resumeBundle, state.model);
+    const section=createSection(container,"交接上下文","flowdesk-case-resume");
+    const summary=this.fullResumeText(state);
+    const active=state.model.tasks.items.filter(t=>t.statusIsCompleted!==true);
+    const selected=this.selectedTasks(state);
     const short=section.createEl("details",{cls:"flowdesk-continuation-preview",attr:{"data-disclosure-key":"continuation-preview"}});
-    short.createEl("summary",{text:"查看继续工作卡"});
+    short.createEl("summary",{text:"查看交接上下文"});
     const content=short.createEl("pre",{cls:"flowdesk-continuation-text"});
     const size=section.createDiv({cls:"flowdesk-muted"});
     const update=()=>{
