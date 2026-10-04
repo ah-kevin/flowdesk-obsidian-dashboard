@@ -1156,20 +1156,23 @@ class FlowDeskDashboardView extends ItemView {
       (total, group) => total + group.diagnostics.length,
       0
     );
-    const details = container.createDiv({cls:"flowdesk-contract-summary"});
+    const details = container.createDiv({cls:"flowdesk-contract-summary flowdesk-reading-card"});
     const heading=details.createDiv({cls:"flowdesk-dashboard-section-title flowdesk-content-heading"});const icon=heading.createSpan({cls:"flowdesk-content-icon"});setIcon(icon,"file-text");heading.createSpan({text:"任务详情"});heading.createSpan({cls:"flowdesk-content-caption",text:"说明 · 验收 · 结果"});
     const body = details.createDiv({ cls: "flowdesk-detail-body" });
-    const technical=details.createEl("details",{cls:"flowdesk-task-technical",attr:{"data-disclosure-key":"task-technical"}});
+    const process=container.createDiv({cls:"flowdesk-task-process flowdesk-reading-card"});
+    const technical=container.createEl("details",{cls:"flowdesk-task-technical flowdesk-reading-card",attr:{"data-disclosure-key":"task-technical"}});
     technical.createEl("summary",{text:diagnosticCount?`技术详情 · ${diagnosticCount} 项诊断`:"技术详情"});
     const renderedSections = new Map<DetailSection, HTMLElement>();
     const contract = body.createDiv({cls:"flowdesk-detail-section flowdesk-contract-reading"});
     renderedSections.set("contract", contract);
     new TaskContentRenderer({
+      historyContainer:process,
       signal:this.renderController.signal,
       trackRender:promise=>{if(this.rendering)this.pendingMarkdown.push(promise);},
       renderMarkdown: (text, element, taskPath) => this.renderSourceMarkdown(text, element, taskPath),
       openSource: (taskPath, section) => this.openSnapshotSource(taskPath, section.source, section.heading, section.text),
     }).render(contract, model.content);
+    if(!process.children.length)process.remove();
 
     const observation = createSection(
       body,
@@ -1528,7 +1531,7 @@ class DashboardSettingsModal extends Modal {
 class FlowDeskDashboardSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: FlowDeskDashboardPlugin) {super(app, plugin);}
   display() {
-    const {containerEl}=this;containerEl.empty();containerEl.createEl("h2",{text:"FlowDesk Dashboard"});
+    const {containerEl}=this;containerEl.empty();containerEl.addClass("flowdesk-dashboard-settings");containerEl.createEl("h2",{text:"FlowDesk Dashboard"});
     new Setting(containerEl).setName("Core 来源").setDesc("跟随模式优先使用 Claude 安装登记，缺失时检查 Codex 缓存；固定模式使用指定路径。").addDropdown(dropdown=>dropdown
       .addOption("installed","跟随已安装 Core").addOption("fixed","固定路径")
       .setValue(this.plugin.settings.coreMode??(this.plugin.settings.flowdeskRoot?"fixed":"installed"))

@@ -15,6 +15,7 @@ export class TaskContentRenderer {
     renderMarkdown(text: string, element: HTMLElement, taskPath: string): Promise<void>;
     openSource(taskPath: string, section: SnapshotBodySection): Promise<void>;
     showSourceActions?: boolean;
+    historyContainer?:HTMLElement;
     signal?:AbortSignal;
     trackRender?(promise:Promise<void>):void;
   }) {}
@@ -78,8 +79,9 @@ export class TaskContentRenderer {
       } else result.createDiv({cls:"flowdesk-muted",text:"无法确认最近一轮；完整结果保留在过程记录。"});
     }
     const progress=readProgressSection(content.domainSections);
+    const historyContainer=this.dependencies.historyContainer??container;
     if(progress){
-      const section=container.createEl("section",{cls:"flowdesk-progress-log"});
+      const section=historyContainer.createEl("section",{cls:"flowdesk-progress-log"});
       const heading=section.createDiv({cls:"flowdesk-log-heading"});heading.createEl("h3",{text:"进度日志"});const count=heading.createSpan({cls:"flowdesk-muted",text:`最近 ${Math.min(3,progress.events.length)} 条 · 摘录`});
       const markdown=(text:string,element:HTMLElement)=>{void this.dependencies.renderMarkdown(text,element,content.taskId).catch(()=>element.setText(text));};
       const all=disclosure(section,`查看全部进度记录（${progress.events.length} 条）`,"all-progress","flowdesk-log-all");
@@ -113,7 +115,7 @@ export class TaskContentRenderer {
     }
     const remaining=reading.sections.filter(item=>item.section!==progress?.section);
     if(!remaining.length)return;
-    const history=disclosure(container,`其他过程资料（${remaining.length} 段）`,"process-records","flowdesk-contract-item-details flowdesk-process-records");
+    const history=disclosure(historyContainer,`其他过程资料（${remaining.length} 段）`,"process-records","flowdesk-contract-item-details flowdesk-process-records");
     history.createDiv({cls:"flowdesk-muted",text:"按原文顺序连续保留正文、历史进度与历轮结果。"});
     for(const {kind,section:original} of remaining) {
       const entry=history.createDiv({cls:"flowdesk-process-entry",attr:{"data-record-kind":kind}});

@@ -108,12 +108,12 @@ Release 必需文件：
 发布一个版本（版本号以 `manifest.json` 为准）：
 
 ```bash
-git tag "v2.0.4"
-git push origin "v2.0.4"
+git tag "v2.0.5"
+git push origin "v2.0.5"
 ```
 
-CI 会校验 tag 必须等于 `v<manifest.version>`。例如 `manifest.json` 版本为 `2.0.4`
-时，release tag 必须是 `v2.0.4`。推送标签前，先将同一份已验证提交推送到 `main`。
+CI 会校验 tag 必须等于 `v<manifest.version>`。例如 `manifest.json` 版本为 `2.0.5`
+时，release tag 必须是 `v2.0.5`。推送标签前，先将同一份已验证提交推送到 `main`。
 
 版本要求：
 
@@ -205,6 +205,8 @@ Dashboard 不自行推断 task 状态、证据有效性或完成顺序。`rollup
 
 snapshot 的普通 Requirements/Scenarios 可能未结构化；投影条目为空不代表正文没有需求。
 Dashboard 保留独立的 TaskNotes GET 完整 `details` 读取与来源核对，不因精简界面截断或去重原文。
+Task 的概览、任务详情、进度历史和技术信息按大分组组织；卡内章节保持轻量行，正文列表只保留标记所需缩进。
+设置页采用平面分隔行；Case 主体保持，标题左对齐、技术详情有独立容器。
 日常界面不重复展示 API 全文和逐节原文按钮；点击任务标题可打开原文件，技术信息按需查看。
 成功空字符串按空正文处理；缺身份、身份不匹配、错误 envelope 或非字符串正文会拒绝读取，
 失败不会伪装为空任务。

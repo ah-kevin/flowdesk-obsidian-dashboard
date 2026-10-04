@@ -1541,7 +1541,7 @@ var TaskContentRenderer = class {
     this.dependencies = dependencies;
   }
   render(container, content) {
-    var _a, _b;
+    var _a, _b, _c;
     const body = (parent, text2) => {
       const element = parent.createDiv({ cls: "flowdesk-contract-scope-markdown markdown-rendered" });
       void this.dependencies.renderMarkdown(text2, element, content.taskId).catch(() => element.setText(text2));
@@ -1613,8 +1613,9 @@ var TaskContentRenderer = class {
       } else result.createDiv({ cls: "flowdesk-muted", text: "\u65E0\u6CD5\u786E\u8BA4\u6700\u8FD1\u4E00\u8F6E\uFF1B\u5B8C\u6574\u7ED3\u679C\u4FDD\u7559\u5728\u8FC7\u7A0B\u8BB0\u5F55\u3002" });
     }
     const progress = readProgressSection(content.domainSections);
+    const historyContainer = (_c = this.dependencies.historyContainer) != null ? _c : container;
     if (progress) {
-      const section2 = container.createEl("section", { cls: "flowdesk-progress-log" });
+      const section2 = historyContainer.createEl("section", { cls: "flowdesk-progress-log" });
       const heading = section2.createDiv({ cls: "flowdesk-log-heading" });
       heading.createEl("h3", { text: "\u8FDB\u5EA6\u65E5\u5FD7" });
       const count = heading.createSpan({ cls: "flowdesk-muted", text: `\u6700\u8FD1 ${Math.min(3, progress.events.length)} \u6761 \xB7 \u6458\u5F55` });
@@ -1628,7 +1629,7 @@ var TaskContentRenderer = class {
       let shown = 0, busy = false, loading;
       const caption = (expanded) => count.setText(expanded ? `\u5DF2\u663E\u793A ${shown}/${progress.events.length} \u6761 \xB7 \u539F\u6587` : `\u6700\u8FD1 ${Math.min(3, progress.events.length)} \u6761 \xB7 \u6458\u5F55`);
       const load = (desired = Math.max(12, Number(full.getAttribute("data-reading-items")) || 0)) => {
-        var _a2, _b2, _c;
+        var _a2, _b2, _c2;
         if ((_a2 = this.dependencies.signal) == null ? void 0 : _a2.aborted) return;
         if (busy) return loading;
         if (shown >= progress.events.length) return;
@@ -1643,7 +1644,7 @@ var TaskContentRenderer = class {
         more.setText(`\u52A0\u8F7D\u66F4\u65E9\u8BB0\u5F55\uFF08\u5269\u4F59 ${progress.events.length - shown} \u6761\uFF09`);
         more.hidden = shown === progress.events.length;
         const render = (async () => {
-          var _a3, _b3, _c2;
+          var _a3, _b3, _c3;
           try {
             for (const job of jobs) {
               if ((_a3 = this.dependencies.signal) == null ? void 0 : _a3.aborted) return;
@@ -1655,11 +1656,11 @@ var TaskContentRenderer = class {
             }
           } finally {
             busy = false;
-            more.disabled = Boolean((_c2 = this.dependencies.signal) == null ? void 0 : _c2.aborted);
+            more.disabled = Boolean((_c3 = this.dependencies.signal) == null ? void 0 : _c3.aborted);
           }
         })();
         loading = render;
-        (_c = (_b2 = this.dependencies).trackRender) == null ? void 0 : _c.call(_b2, render);
+        (_c2 = (_b2 = this.dependencies).trackRender) == null ? void 0 : _c2.call(_b2, render);
         return render;
       };
       more.addEventListener("click", () => load(shown + 12));
@@ -1669,7 +1670,7 @@ var TaskContentRenderer = class {
     }
     const remaining = reading.sections.filter((item) => item.section !== (progress == null ? void 0 : progress.section));
     if (!remaining.length) return;
-    const history = disclosure(container, `\u5176\u4ED6\u8FC7\u7A0B\u8D44\u6599\uFF08${remaining.length} \u6BB5\uFF09`, "process-records", "flowdesk-contract-item-details flowdesk-process-records");
+    const history = disclosure(historyContainer, `\u5176\u4ED6\u8FC7\u7A0B\u8D44\u6599\uFF08${remaining.length} \u6BB5\uFF09`, "process-records", "flowdesk-contract-item-details flowdesk-process-records");
     history.createDiv({ cls: "flowdesk-muted", text: "\u6309\u539F\u6587\u987A\u5E8F\u8FDE\u7EED\u4FDD\u7559\u6B63\u6587\u3001\u5386\u53F2\u8FDB\u5EA6\u4E0E\u5386\u8F6E\u7ED3\u679C\u3002" });
     for (const { kind, section: original } of remaining) {
       const entry = history.createDiv({ cls: "flowdesk-process-entry", attr: { "data-record-kind": kind } });
@@ -4796,19 +4797,21 @@ var FlowDeskDashboardView = class extends import_obsidian2.ItemView {
       (total, group) => total + group.diagnostics.length,
       0
     );
-    const details = container.createDiv({ cls: "flowdesk-contract-summary" });
+    const details = container.createDiv({ cls: "flowdesk-contract-summary flowdesk-reading-card" });
     const heading = details.createDiv({ cls: "flowdesk-dashboard-section-title flowdesk-content-heading" });
     const icon = heading.createSpan({ cls: "flowdesk-content-icon" });
     (0, import_obsidian2.setIcon)(icon, "file-text");
     heading.createSpan({ text: "\u4EFB\u52A1\u8BE6\u60C5" });
     heading.createSpan({ cls: "flowdesk-content-caption", text: "\u8BF4\u660E \xB7 \u9A8C\u6536 \xB7 \u7ED3\u679C" });
     const body = details.createDiv({ cls: "flowdesk-detail-body" });
-    const technical = details.createEl("details", { cls: "flowdesk-task-technical", attr: { "data-disclosure-key": "task-technical" } });
+    const process2 = container.createDiv({ cls: "flowdesk-task-process flowdesk-reading-card" });
+    const technical = container.createEl("details", { cls: "flowdesk-task-technical flowdesk-reading-card", attr: { "data-disclosure-key": "task-technical" } });
     technical.createEl("summary", { text: diagnosticCount ? `\u6280\u672F\u8BE6\u60C5 \xB7 ${diagnosticCount} \u9879\u8BCA\u65AD` : "\u6280\u672F\u8BE6\u60C5" });
     const renderedSections = /* @__PURE__ */ new Map();
     const contract = body.createDiv({ cls: "flowdesk-detail-section flowdesk-contract-reading" });
     renderedSections.set("contract", contract);
     new TaskContentRenderer({
+      historyContainer: process2,
       signal: this.renderController.signal,
       trackRender: (promise) => {
         if (this.rendering) this.pendingMarkdown.push(promise);
@@ -4816,6 +4819,7 @@ var FlowDeskDashboardView = class extends import_obsidian2.ItemView {
       renderMarkdown: (text2, element, taskPath) => this.renderSourceMarkdown(text2, element, taskPath),
       openSource: (taskPath, section2) => this.openSnapshotSource(taskPath, section2.source, section2.heading, section2.text)
     }).render(contract, model.content);
+    if (!process2.children.length) process2.remove();
     const observation = createSection2(
       body,
       "\u89C2\u5BDF\u4E0E\u6765\u6E90",
@@ -5218,6 +5222,7 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian2.PluginSettingTa
   display() {
     const { containerEl } = this;
     containerEl.empty();
+    containerEl.addClass("flowdesk-dashboard-settings");
     containerEl.createEl("h2", { text: "FlowDesk Dashboard" });
     new import_obsidian2.Setting(containerEl).setName("Core \u6765\u6E90").setDesc("\u8DDF\u968F\u6A21\u5F0F\u4F18\u5148\u4F7F\u7528 Claude \u5B89\u88C5\u767B\u8BB0\uFF0C\u7F3A\u5931\u65F6\u68C0\u67E5 Codex \u7F13\u5B58\uFF1B\u56FA\u5B9A\u6A21\u5F0F\u4F7F\u7528\u6307\u5B9A\u8DEF\u5F84\u3002").addDropdown((dropdown) => {
       var _a;

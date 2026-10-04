@@ -72,6 +72,30 @@ test("compiled Task records/diagnostics/full API source map real frontmatter and
 });
 const opsAreVaultOnly=(opens:string[])=>opens.every(p=>p.startsWith("Tasks/")||p.startsWith("Notes/"));
 
+test("approved native groups keep lazy full history readable and its position through refresh",async t=>{
+  const {fixture,view,root}=await setup(t,true);const task=fixture.tasks[0];
+  await view.loadTask(task.id);
+  const details=root.findByClass("flowdesk-contract-summary")[0],process=root.findByClass("flowdesk-task-process")[0];
+  assert.ok(process);assert.equal(process.parentElement,root);
+  assert.equal(root.findByClass("flowdesk-task-technical")[0].parentElement,root);
+  assert.equal(details.findByClass("flowdesk-progress-log").length,0);
+  assert.equal(process.findByClass("flowdesk-process-records").length,1);
+  assert.match(process.allText().join("\n"),/早期执行原文|普通H3原文|人工说明原文/);
+  const all=process.findByClass("flowdesk-log-all")[0];assert.equal(all.findByClass("flowdesk-log-entry").length,0);
+  await all.querySelectorAll("summary")[0].click();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(all.findByClass("flowdesk-log-entry").length,4);
+  (process.findByClass("flowdesk-log-full")[0] as any).scrollTop=840;
+  await view.refreshCurrentTask();await new Promise(resolve=>setImmediate(resolve));
+  const refreshed=root.findByClass("flowdesk-task-process")[0];
+  assert.equal(refreshed.findByClass("flowdesk-log-all")[0].open,true);
+  assert.equal(refreshed.findByClass("flowdesk-log-entry").length,7); // three excerpts and four full records
+  assert.equal((refreshed.findByClass("flowdesk-log-full")[0] as any).scrollTop,840);
+  assert.match(refreshed.allText().join("\n"),/早期执行原文|普通H3原文|人工说明原文/);
+  await view.syncToActiveFile({path:fixture.casePath,extension:"md"});
+  assert.equal(root.findByClass("flowdesk-task-process").length,0);
+  assert.ok(fixture.requests.every(x=>x.method==="GET"||(x.method==="POST"&&x.url==="/api/tasks/query")));
+});
+
 test("switching Task to Case unloads old Markdown components and drops the task snapshot",async t=>{
   const {fixture,plugin,view,root}=await setup(t,true);
   const seen=new Set<any>(),unloaded=new Set<any>();
