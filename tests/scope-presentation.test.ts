@@ -155,8 +155,9 @@ test("Task content renderer 将文本 Scope 默认折叠并交给 MarkdownRender
   const model = createDashboardViewModel(createV4Snapshot({ scope_text: "原 Scope\n" }));
   new TaskContentRenderer({ renderMarkdown: async (text) => { rendered.push(text); }, openSource: async () => {} }).render(root as any, model.content);
   assert.ok(rendered.includes("原 Scope\n"));
-  const scope = root.children.find(element => element.children.some(child => child.text === "范围"));
-  assert.equal(scope?.open, false);
+  const specification = root.findByClass("flowdesk-task-specification")[0];
+  assert.equal(specification.open, false);
+  assert.ok(specification.allText().includes("范围"));
 });
 
 test("空文本 Scope 不回退旧数组，legacy 保持 included/excluded 内容", () => {

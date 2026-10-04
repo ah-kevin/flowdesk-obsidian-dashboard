@@ -31,7 +31,7 @@ test("Case renderer 只提供只读恢复驾驶舱与 Obsidian 导航", () => {
     "当前风险/阻塞",
     "未提交/待处理",
     "关联任务",
-    "最近 Progress",
+    "最近进展",
     "案卷内容",
   ]) {
     assert.match(caseUiSource, new RegExp(visible));
@@ -209,7 +209,7 @@ test("父子徽标以紫色和青绿色区分但不复用状态色", () => {
 
 test("Progress 时间线与案卷重点层级均保持 Case scoped", () => {
   assert.match(renderer, /flowdesk-case-progress-list/);
-  assert.match(renderer, /flowdesk-case-progress-item\$\{index === 0 \? " is-latest" : ""\}/);
+  // Timeline ordering and the actual latest marker are exercised by work-case-renderer.test.ts.
   assert.match(renderer, /flowdesk-case-progress-latest/);
   assert.match(renderer, /const primaryKeys = \["goal", "blockers", "outcome"\]/);
   assert.match(renderer, /const secondaryKeys = \["decisions", "discoveries"\]/);

@@ -67,6 +67,93 @@ test("compiled Task records/diagnostics/full API source map real frontmatter and
 });
 const opsAreVaultOnly=(opens:string[])=>opens.every(p=>p.startsWith("Tasks/")||p.startsWith("Notes/"));
 
+test("UX: one ended Task overview shows result and verification instead of an actionable Next",async t=>{
+  const {fixture,view,root}=await setup(t,true);await view.loadTask(fixture.tasks[1].id);
+  assert.equal(root.findByClass("flowdesk-task-overview").length,1);
+  assert.match(root.findByClass("flowdesk-overview-result")[0]?.allText().join("\n")??"",/实现结果/);
+  assert.match(root.findByClass("flowdesk-overview-verification")[0]?.allText().join("\n")??"",/验证|检查/);
+  assert.equal(root.findByClass("flowdesk-overview-next").length,0);
+  assert.equal(root.findByClass("flowdesk-primary-status").length,0);
+});
+
+test("UX: inner reading choices and scroll survive same Task refresh and API read, but another Task is isolated",async t=>{
+  const {fixture,view,root}=await setup(t,true);await view.loadTask(fixture.tasks[0].id);
+  root.findByClass("flowdesk-task-specification")[0].open=true;
+  root.findByClass("flowdesk-process-records")[0].open=true;
+  (root as any).scrollTop=431;
+  await view.refreshCurrentTask();
+  assert.equal(root.findByClass("flowdesk-task-specification")[0].open,true);
+  assert.equal(root.findByClass("flowdesk-process-records")[0].open,true);
+  assert.equal((root as any).scrollTop,431);
+  await view.loadRawTaskContent(fixture.tasks[0].id);
+  assert.equal(root.findByClass("flowdesk-process-records")[0].open,true);
+  await view.loadTask(fixture.tasks[1].id);
+  assert.equal(root.findByClass("flowdesk-task-specification")[0].open,false);
+  assert.equal((root as any).scrollTop,0);
+  assert.ok(fixture.requests.every(x=>x.method==="GET"||(x.method==="POST"&&x.url==="/api/tasks/query")));
+});
+
+test("UX: short continuation copy avoids duplicated Case history while full copy remains available",async t=>{
+  const {fixture,view,root,copied}=await setup(t,true);await view.syncToActiveFile({path:fixture.casePath,extension:"md"});
+  const button=root.findByClass("flowdesk-case-copy-continuation")[0];assert.ok(button);await button.click();
+  const short=copied[0];assert.ok(Buffer.byteLength(short,"utf8")<=4096);
+  for(const value of [fixture.casePath,fixture.cwd,"codex/2.0",fixture.tasks[0].id,fixture.tasks[1].id,"in-progress","done","明确选择","缺口"])assert.ok(short.includes(value),value);
+  assert.ok(!short.includes(fixture.caseText));
+  assert.equal(root.findByClass("flowdesk-case-recent-progress")[0].querySelectorAll("button").length<=4,true);
+  await root.findByClass("flowdesk-case-copy-resume")[0].click();assert.match(copied[1],/上下文原文|摘要原文/);
+  assert.equal(fixture.originalCase(),fixture.caseText);
+});
+
+test("UX: same Case refresh replaces an ended selected Task with a newly unfinished Task",async t=>{
+  const {fixture,view,root,copied}=await setup(t,true);await view.syncToActiveFile({path:fixture.casePath,extension:"md"});
+  fixture.tasks[0].status="done";fixture.tasks[1].status="in-progress";
+  await view.caseAdapter.refresh();
+  await root.findByClass("flowdesk-case-copy-continuation")[0].click();
+  const unfinished=copied[0].split("已结束任务摘录")[0];
+  assert.ok(unfinished.includes(fixture.tasks[1].id));
+  assert.ok(!unfinished.includes(fixture.tasks[0].id));
+  assert.equal(root.findByClass("flowdesk-continuation-choice").length,1);
+});
+
+test("UX: a Markdown link restores focus after delayed rendering only for the same resource",async t=>{
+  const {fixture,plugin,view,root}=await setup(t,true);(root as any).ownerDocument={activeElement:null};
+  await view.loadTask(fixture.tasks[0].id);await new Promise(resolve=>setImmediate(resolve));
+  root.findByClass("flowdesk-overview-history")[0].open=true;
+  const previous=root.findByClass("flowdesk-task-current-progress")[0].querySelectorAll("a")[0];assert.ok(previous);previous.focus();
+  let release:()=>void=()=>{};const waiting=new Promise<void>(resolve=>{release=resolve;});plugin.app.markdownDelayBefore=()=>waiting;
+  const refresh=view.refreshCurrentTask();await refresh;
+  assert.equal(root.querySelectorAll("a").length,0);(root as any).ownerDocument.activeElement=null;
+  release();await new Promise(resolve=>setImmediate(resolve));
+  const restored=(root as any).ownerDocument.activeElement;
+  assert.ok(restored&&restored!==previous&&root.contains(restored));assert.equal(restored.textContent,previous.textContent);
+  delete plugin.app.markdownDelayBefore;
+});
+
+test("UX: a delayed loading skeleton cannot replace the saved scroll position before the successful render",async t=>{
+  const {fixture,plugin,view,root}=await setup(t,true);await view.loadTask(fixture.tasks[0].id);await new Promise(resolve=>setImmediate(resolve));
+  (root as any).scrollTop=431;
+  const empty=root.empty.bind(root);root.empty=()=>{empty();(root as any).scrollTop=0;};
+  let release:()=>void=()=>{};const waiting=new Promise<void>(resolve=>{release=resolve;});plugin.app.markdownDelayBefore=()=>waiting;
+  await view.refreshCurrentTask();assert.equal((root as any).scrollTop,0);
+  release();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal((root as any).scrollTop,431);delete plugin.app.markdownDelayBefore;
+});
+
+test("UX: saving valid settings coalesces refresh and the new request uses the latest configured token",async t=>{
+  const {fixture,plugin,view}=await setup(t,true);await view.loadTask(fixture.tasks[0].id);
+  const {writeFileSync}=await import("node:fs");const config=fixture.path("preview-settings.json");
+  plugin.saveData=async(data:any)=>writeFileSync(config,JSON.stringify(data));
+  const start=fixture.requests.length;
+  plugin.settings.tasknotesEnv='{"TASKNOTES_API_TOKEN":"owned-first-token"}';await plugin.saveSettings();
+  plugin.settings.tasknotesEnv='{"TASKNOTES_API_TOKEN":"owned-latest-token"}';await plugin.saveSettings();
+  const deadline=Date.now()+2500;
+  while((fixture.requests.length===start||view.loading)&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,20));
+  assert.ok(fixture.requests.length>start);
+  assert.ok(fixture.requests.slice(start).every(request=>request.authorization==="Bearer owned-latest-token"));
+  assert.ok(fixture.requests.slice(start).every(request=>request.method==="GET"||(request.method==="POST"&&request.url==="/api/tasks/query")));
+  assert.equal(JSON.parse(readFileSync(config,"utf8")).tasknotesEnv,'{"TASKNOTES_API_TOKEN":"owned-latest-token"}');
+});
+
 test("independent cachedRead late result cannot replace another selection; partial API gaps remain visible",async(t)=>{
   const {fixture,view,root,setDeferredRead}=await setup(t);let release:(text:string)=>void=()=>{};
   setDeferredRead(()=>new Promise(resolve=>{release=resolve;}));
@@ -243,10 +330,10 @@ test("snapshot_progress_displays_latest_event_without_api_read via real writer H
   const start=fixture.requests.length;await fixture.taskSnapshot(task.id);const baseline=fixture.requests.slice(start).map(({method,url})=>({method,url}));
   const viewStart=fixture.requests.length;await view.loadTask(task.id);assert.deepEqual(fixture.requests.slice(viewStart).map(({method,url})=>({method,url})),baseline,"top must add no direct GET to snapshot baseline");
   const top=root.findByClass("flowdesk-task-current-progress")[0];assert.ok(top,"current Progress is visible above collapsed task details");
-  assert.ok(top.allText().includes(fixture.largeProgress));assert.ok(top.allText().includes(fixture.currentNext));assert.match(top.allText().join("\n"),/2026-10-03T13:00:00\+09:00/);assert.doesNotMatch(top.allText().join("\n"),/不可冒充最新/);
-  assert.ok(root.children.indexOf(top)<root.children.findIndex(x=>x.classes.has("flowdesk-contract-summary")));
+  assert.ok(top.allText().includes(fixture.largeProgress));assert.ok(top.allText().includes(fixture.currentNext));assert.ok(top.findByClass("flowdesk-muted").some(x=>x.attrs.title?.includes("2026-10-03T13:00:00+09:00")));assert.doesNotMatch(top.allText().join("\n"),/不可冒充最新/);
+  assert.ok(root.children.findIndex(x=>x.classes.has("flowdesk-task-overview"))<root.children.findIndex(x=>x.classes.has("flowdesk-contract-summary")));
   const currentContent=view.taskAdapter.getRenderState().snapshot.contract.task_contract.domain_sections.find((section:any)=>section.heading==="Progress");assert.ok(Buffer.byteLength(currentContent.text,"utf8")>1024);assert.ok(currentContent.text.includes(fixture.largeProgress.split("\n")[1]));
-  const body=root.findByClass("flowdesk-detail-body")[0].allText().join("\n");const markers=["早期执行原文。","普通H3原文。","早期验证原文。","人工说明原文。","早期未实施（历史原文）。"];assert.ok(markers.every((text,index)=>body.indexOf(text)>=0&&(index===0||body.indexOf(text)>body.indexOf(markers[index-1]))));
+  const body=root.findByClass("flowdesk-process-records")[0].allText().join("\n");const markers=["早期执行原文。","普通H3原文。","早期验证原文。","人工说明原文。","早期未实施（历史原文）。"];assert.ok(markers.every((text,index)=>body.indexOf(text)>=0&&(index===0||body.indexOf(text)>body.indexOf(markers[index-1]))));
   const noReadStart=fixture.requests.length;view.renderShell();const details=root.findByClass("flowdesk-contract-summary")[0];details.open=true;for(const callback of details.listeners.get("toggle")??[])await callback();assert.equal(fixture.requests.length,noReadStart);
   const refreshStart=fixture.requests.length;await view.refreshCurrentTask();assert.deepEqual(fixture.requests.slice(refreshStart).map(({method,url})=>({method,url})),baseline);
   const rawStart=fixture.requests.length;await view.loadRawTaskContent(task.id);assert.deepEqual(fixture.requests.slice(rawStart).map(({method,url})=>({method,url})),[{method:"GET",url:"/api/tasks/"+encodeURIComponent(task.id)}]);assert.ok(root.allText().some(text=>text.includes("原始普通需求。")));assert.ok(root.findByClass("flowdesk-task-current-progress")[0].allText().includes(fixture.largeProgress));

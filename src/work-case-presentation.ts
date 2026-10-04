@@ -63,7 +63,7 @@ export function createWorkCasePresentation(
       : "";
   const currentSource = model.current.raw?.source ?? null;
   const timestamp = formatWorkCaseTimestamp(
-    model.workCase.summaryLastUpdated || model.workCase.date || "时间未记录"
+    (model.workCase.summaryLastUpdated && !/^(null|none|undefined)$/i.test(model.workCase.summaryLastUpdated) ? model.workCase.summaryLastUpdated : null) || model.workCase.date || "时间未记录"
   );
 
   return {
@@ -145,6 +145,7 @@ export function createWorkCasePresentation(
 }
 
 function progressDisplayText(text: string, timestamp: string | null): string {
+  if(timestamp&&text.startsWith(`[x] \`${timestamp}\``))text=text.slice(`[x] \`${timestamp}\``.length).trimStart();
   if (!timestamp || !text.startsWith(timestamp)) return text;
   const remainder = text
     .slice(timestamp.length)

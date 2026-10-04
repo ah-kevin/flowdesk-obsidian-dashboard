@@ -13,6 +13,7 @@ function visibleLabel(value){return value.replace(/&#x([0-9a-f]+);|&#([0-9]+);|&
 });}
 // Small independent host rendering subset; original text remains available for fidelity assertions.
 async function renderMarkdown(app,text,element){
+  if(app?.markdownDelayBefore)await app.markdownDelayBefore();
   element.setText(text);
   const visible=text.replace(/^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[^\n]*$/gm,"").replace(/`+[^`\n]*`+/g,"").replace(/<!--[\s\S]*?-->/g,"");
   for(const match of visible.matchAll(/(?<![\\!])\[\[([^\]]+)\]\]|(?<![\\!])\[([^\]]+)\]\(([^)]+)\)/g)){

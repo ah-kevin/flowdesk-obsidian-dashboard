@@ -42,6 +42,8 @@ class FakeElement {
     this.classes.delete(name);
   }
 
+  setText(text: string): void { this.text = text; }
+
   createDiv(options: { cls?: string; text?: string } = {}): FakeElement {
     return this.append(new FakeElement("div", options));
   }
@@ -128,11 +130,11 @@ test("renderer 用 canonical model 渲染三层驾驶舱并接通只读导航", 
   });
 
   assert.equal(root.classes.has("flowdesk-case-dashboard"), true);
-  for (const text of ["WORK CASE", "当前进展", "关联任务", "最近 Progress", "案卷内容", "关联导航"]) {
+  for (const text of ["工作案卷", "当前进展", "关联任务", "最近进展", "案卷内容", "精选入口"]) {
     assert.ok(root.allText().includes(text), text);
   }
   root.findByClass("flowdesk-case-task-row")[0].click();
-  root.findByClass("flowdesk-case-current-card")[0].click();
+  root.findByClass("flowdesk-case-source-action")[0].click();
   root.findByClass("flowdesk-case-related-link")[0].click();
   assert.deepEqual(openedTasks, [
     { taskPath: "Tasks/Long.md", origin: "work-case" },
@@ -145,7 +147,7 @@ test("renderer 用 canonical model 渲染三层驾驶舱并接通只读导航", 
     },
   ]);
   const date = root.findByClass("flowdesk-case-date")[0];
-  assert.equal(date.text, "2026年8月10日 12:00");
+  assert.equal(date.text, "2026/08/10 12:00");
   assert.equal(date.attrs.title, "2026-08-10T12:00:00+08:00");
 
   renderer.reset(root as unknown as HTMLElement);
@@ -262,7 +264,7 @@ test("最近 Progress 使用新到旧时间线并只标记第一条为最新", (
     [["最新"], [], []]
   );
 
-  for (const row of rows) row.click();
+  for (const row of rows) row.findByClass("flowdesk-case-source-action")[0].click();
   assert.deepEqual(openedSources, [75, 74, 73]);
 });
 
@@ -295,16 +297,13 @@ test("案卷内容优先展开 Goal Blockers Outcome 并隐藏空分组", () => 
   const groups = root.findByClass("flowdesk-case-record-group");
   assert.deepEqual(
     groups.map((group) => group.children[0].text),
-    ["Goal · 1", "Blockers · 1", "Outcome · 1", "Decisions · 1", "Candidate Patterns · 1"]
+    ["目标 · 1", "风险与阻塞记录 · 1", "结果 · 1", "关键决定 · 1", "经验候选 · 1"]
   );
-  assert.deepEqual(groups.map((group) => group.open), [true, true, true, false, false]);
-  assert.deepEqual(
-    groups.slice(0, 3).map((group) => [
-      group.classes.has("is-primary"),
-      group.classes.has(`is-${group.children[0].text.split(" · ")[0].toLowerCase()}`),
-    ]),
-    [[true, true], [true, true], [true, true]]
-  );
+  assert.deepEqual(groups.map((group) => group.open), [false, false, false, false, false]);
+  assert.ok(groups.slice(0,3).every(group=>group.classes.has("is-primary")));
+  assert.ok(groups[0].classes.has("is-goal"));
+  assert.ok(groups[1].classes.has("is-blockers"));
+  assert.ok(groups[2].classes.has("is-outcome"));
   assert.equal(root.allText().includes("Discoveries · 0"), false);
   assert.equal(root.allText().includes("Definition of Done · 0"), false);
   assert.ok(root.allText().includes("更多案卷内容 · 1"));

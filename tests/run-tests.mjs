@@ -55,6 +55,8 @@ const data = {version:1, fixture_root:temporaryDirectory, original_home:original
   protected_roots:[originalHome,"/tmp/flowdesk-mcp.log","/private/tmp/flowdesk-mcp.log","/tmp/flowdesk-session-registry.json","/tmp/flowdesk-session-registry.lock", ...(originalVault ? [originalVault] : [])],
   readable_roots:[path.join(repositoryRoot,"src"), path.join(repositoryRoot,"tests"), path.join(repositoryRoot,"styles.css"), path.join(repositoryRoot,"node_modules"),
     path.join(core,"lib"),path.join(core,"bin"),
+    // Actual Core version shown by the fixed-path consumer; these two metadata files are read-only.
+    path.join(core,".claude-plugin/plugin.json"),path.join(core,".codex-plugin/plugin.json"),
     // Read-only compiled consumer and its installed runtime dependencies, never arbitrary HOME/state.
     path.join(core,"mcp/dist"),path.join(core,"mcp/package.json"),path.join(core,"mcp/node_modules"),support,path.dirname(preload),path.join(core,"tests/fixtures/execution_snapshot/sdd_v3_real_root_snapshot.json"),node,...pythonRuntime.paths], violation_file:violationFile};
 for (const name of ["home", "vault", "state", "tmp", "bin"]) mkdirSync(path.join(temporaryDirectory, name));

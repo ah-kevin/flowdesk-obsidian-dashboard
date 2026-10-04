@@ -2,11 +2,19 @@
 
 FlowDesk Dashboard 是一个 desktop-only 的 Obsidian 第三方插件，用来查看当前
 TaskNotes 任务或 Work Case 的 FlowDesk snapshot。插件分别调用本机 FlowDesk-Plugin
-仓库中的 `bin/flowdesk-execution-snapshot` 与 `bin/flowdesk-work-case-snapshot`，
+安装目录或指定仓库中的 `bin/flowdesk-execution-snapshot` 与 `bin/flowdesk-work-case-snapshot`，
 在同一 Obsidian 侧栏内渲染隔离的 Task Dashboard 或只读 Case 恢复驾驶舱。
 
 本项目走 GitHub Release、BRAT 或手动安装，不以提交 Obsidian 官方 Community
 Directory 作为发布路径。
+
+## 2.0.3 更新
+
+- Core 来源可选择“跟随已安装 Core”或固定路径。新配置默认跟随 Claude 安装登记，登记不可用时检查有效 Codex 缓存；已有固定配置保留。界面显示生成当前观测所用的版本和来源，路径无效时提供设置入口。
+- Task 使用一张概览卡，任务说明连贯、验收标准合成只读清单；执行、验证、交付各一个结果入口，历史正文合成默认收起的过程记录，完整原文及顺序保留。
+- Case 优先显示当前进展、进行中的任务、精选入口与最近三条进展；主按钮复制短继续工作卡，完整恢复数据保留。
+- Task/Case 统一窄栏样式与时间格式，同一资源刷新保持折叠、滚动和焦点；资料页支持返回原 Task/Case。
+- 有效设置保存后自动刷新，token 输入默认遮住。Dashboard 保持只读，不增加任务勾选写回。
 
 ## 2.0.2 更新
 
@@ -24,7 +32,7 @@ Directory 作为发布路径。
 ## 运行依赖与安全边界
 
 - 仅支持 Obsidian desktop，`manifest.json` 中 `isDesktopOnly` 固定为 `true`。
-- 需要本机已存在 FlowDesk-Plugin 仓库，并包含 Task 与 Work Case 两个独立 snapshot CLI。
+- 需要本机已安装 FlowDesk Core，或指定已有 FlowDesk-Plugin 仓库；所选目录须包含 Task 与 Work Case 两个独立 snapshot CLI。
 - Task Dashboard 需要 TaskNotes HTTP API 可用；Case Dashboard 在 API 不可用时仍显示
   Work Case 主体，并把关联任务区明确标记为 unavailable。
 - Task consumer 继续接受既有 task-centric schema 3/4；Case consumer 只接受
@@ -32,13 +40,13 @@ Directory 作为发布路径。
   两条路径都对 source identity fail-closed。
 - Dashboard 是只读视图；只执行 snapshot 命令，不修改 TaskNotes、Work Case 或
   FlowDesk runtime 状态。
-- 首次使用时，在插件设置里配置 FlowDesk repo path，例如
-  `/Users/bjke/workspaces/flowdesk-plugin`。如果 `workingDirectory` 留空，插件默认使用
-  FlowDesk repo path 作为 snapshot 命令工作目录。
+- 首次使用时，“Core 来源”默认跟随已安装 Core，优先读取 `~/.claude/plugins/installed_plugins.json` 中的适用安装登记，无法使用时检查 `~/.codex/plugins/cache/flowdesk-marketplace/flow-desk/` 中完整的稳定版本。缓存来源不证明其他宿主已经加载该版本。
+- 已配置的固定路径不会自动切换；需要自动跟随后，在设置中选择“跟随已安装 Core”。固定模式继续使用指定目录。
+- `workingDirectory` 是任务 snapshot 的工程目录；已有设置保留，留空时使用所选 Core 路径。Case snapshot 的工作目录仍为 vault，工程位置以 Case 中的准确 cwd 为准。
 
 ## TaskNotes 鉴权配置
 
-在插件设置的 **TaskNotes 环境变量（JSON）** 中直接填写：
+在插件设置的 **TaskNotes token** 输入框中填写凭证，默认遮住。其他环境变量可在高级设置的 **TaskNotes 环境变量（JSON）** 中配置，例如：
 
 ```json
 {
@@ -52,7 +60,7 @@ Directory 作为发布路径。
 - token 同时供 Task snapshot、Work Case snapshot 和完整 Task 原文 GET 使用，兼容 `TASKNOTES_AUTH_TOKEN`。
   三个入口都从合并后的环境读取凭证：先读取非空的 `TASKNOTES_API_TOKEN`，再读取
   `TASKNOTES_AUTH_TOKEN`。填写空字符串只清空对应变量。
-- 留空或填写 `{}` 时使用进程环境；不读取 env 文件。修改配置后，下一次刷新或原文读取立即生效。
+- 留空或填写 `{}` 时使用进程环境；不读取 env 文件。有效设置保存后会自动刷新当前面板，原文读取也使用新配置。
 - 可在 JSON 中配置 `TASKNOTES_API_URL`；单独填写的“TaskNotes API 地址”优先级更高。
 - 设置保存在插件本地 `data.json` 中。token 不进入 CLI 参数、复制命令或鉴权错误内容。
 
@@ -100,12 +108,12 @@ Release 必需文件：
 发布一个版本（版本号以 `manifest.json` 为准）：
 
 ```bash
-git tag "v2.0.2"
-git push origin "v2.0.2"
+git tag "v2.0.3"
+git push origin "v2.0.3"
 ```
 
-CI 会校验 tag 必须等于 `v<manifest.version>`。例如 `manifest.json` 版本为 `2.0.2`
-时，release tag 必须是 `v2.0.2`。
+CI 会校验 tag 必须等于 `v<manifest.version>`。例如 `manifest.json` 版本为 `2.0.3`
+时，release tag 必须是 `v2.0.3`。
 
 版本要求：
 

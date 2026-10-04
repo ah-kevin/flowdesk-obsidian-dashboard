@@ -1,4 +1,5 @@
 import type { CaseContentObservation } from "./case-content";
+import type { CoreResolution } from "./core-resolution";
 import { isTaskPath, TrailingRefreshScheduler } from "./dashboard-state";
 import {
   createWorkCaseViewModel,
@@ -14,6 +15,7 @@ import type {
 export interface WorkCaseRenderState {
   casePath: string;
   caseContent?: CaseContentObservation | null;
+  coreInfo?: CoreResolution | null;
   model: WorkCaseViewModel | null;
   loadedAt: string;
   staleReason: string;
@@ -25,12 +27,14 @@ export interface WorkCaseAdapterDependencies {
   shell(): ViewShellController;
   loadSnapshot(casePath: string, signal: AbortSignal): Promise<unknown>;
   loadCaseContent?(casePath: string, signal: AbortSignal): Promise<CaseContentObservation>;
+  coreForSnapshot?(snapshot: unknown): CoreResolution | null;
   render(container: HTMLElement, state: WorkCaseRenderState): void;
   requestRender(): void;
   nowLabel(): string;
 }
 
 interface WorkCaseDisplayState {
+  coreInfo: CoreResolution | null;
   casePath: string;
   model: WorkCaseViewModel;
   loadedAt: string;
@@ -87,6 +91,7 @@ export class WorkCaseAdapter implements ViewAdapter {
       const model = createWorkCaseViewModel(snapshot, selection.resourcePath);
       this.dirtyReason = "";
       this.displayState = {
+        coreInfo: this.dependencies.coreForSnapshot?.(snapshot) ?? null,
         casePath: selection.resourcePath,
         model,
         loadedAt: this.dependencies.nowLabel(),
@@ -172,6 +177,7 @@ export class WorkCaseAdapter implements ViewAdapter {
     return {
       casePath,
       caseContent: this.caseContent,
+      coreInfo: display?.coreInfo ?? null,
       model: display?.model ?? null,
       loadedAt: display?.loadedAt ?? "",
       staleReason: display?.staleReason || this.dirtyReason,
