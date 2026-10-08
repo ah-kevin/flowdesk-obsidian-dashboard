@@ -1,6 +1,7 @@
 import type {DashboardViewModel,SnapshotBodySection,SnapshotSource} from "./snapshot-model";
 import {createTaskCurrentProgress} from "./task-current-progress";
 import {excerpt,firstParagraph,formatDisplayTime} from "./reading-presentation";
+import type {NavigationModifiers} from "./task-navigation";
 
 export function latestRecord(records:SnapshotBodySection[]):SnapshotBodySection|null {
   if(!records.length)return null;
@@ -12,7 +13,7 @@ export function latestRecord(records:SnapshotBodySection[]):SnapshotBodySection|
 }
 export function renderTaskOverview(container:HTMLElement,model:DashboardViewModel,dependencies:{
   renderMarkdown(text:string,el:HTMLElement,taskId:string):Promise<void>;
-  openSource(taskId:string,source:SnapshotSource,heading:string,text:string):Promise<void>;
+  openSource(taskId:string,source:SnapshotSource,heading:string,text:string,event?:NavigationModifiers):Promise<void>;
   showSourceActions?:boolean;
 }):HTMLElement {
   const healthy=model.observation.isTrustworthy&&!model.observation.isStale;
@@ -46,6 +47,6 @@ export function renderTaskOverview(container:HTMLElement,model:DashboardViewMode
   // Full original text remains in the expandable reading view. Only the top excerpt is bounded.
   for(const [field,text] of [["progress",current.progress],["next",current.next]] as const)if(text!==null)markdown(record,text,"flowdesk-contract-scope-markdown",field);
   for(const gap of current.gaps){record.createDiv({cls:"flowdesk-muted",text:gap});if(current.status==="unknown")card.createDiv({cls:"flowdesk-overview-gap",text:gap});}
-  if(current.source&&dependencies.showSourceActions){const source=record.createEl("button",{cls:"flowdesk-content-source",text:"打开 Progress 原文"});const original=model.content.domainSections.find(s=>s.level===2&&s.heading==="Progress");source.addEventListener("click",()=>{void dependencies.openSource(model.currentTask.id,current.source!,"Progress",original?.text??"");});}
+  if(current.source&&dependencies.showSourceActions){const source=record.createEl("button",{cls:"flowdesk-content-source",text:"打开 Progress 原文"});const original=model.content.domainSections.find(s=>s.level===2&&s.heading==="Progress");source.addEventListener("click",event=>{void dependencies.openSource(model.currentTask.id,current.source!,"Progress",original?.text??"",event);});}
   return card;
 }

@@ -2319,3 +2319,27 @@ body .flowdesk-dashboard-settings .setting-item-control input:not([type="checkbo
 .flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered li:has(> input[type="checkbox"]) { position:relative; list-style:none; padding-inline-start:20px; }
 .flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered li > input[type="checkbox"] { position:absolute; inset-inline-start:0; left:0; top:4px; margin:0; width:13px; height:13px; }
 .flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered :is(ul,ol) :is(ul,ol) { margin-block-start:4px; margin-block-end:4px; }
+
+/* Case reference choices are display state; raw targets and source ordering stay intact. */
+.flowdesk-case-dashboard .flowdesk-case-reference-count { color:var(--text-muted);font-size:10px;margin:8px 0; }
+.flowdesk-case-dashboard .flowdesk-case-reference-search { box-sizing:border-box;display:block;width:100%;max-width:100%;height:32px;margin:0 0 10px;padding:5px 8px;font-size:12px; }
+.flowdesk-case-dashboard .flowdesk-case-reference-group { min-width:0;border-top:1px solid var(--fd-border); }
+.flowdesk-case-dashboard .flowdesk-case-reference-group > summary { cursor:pointer;min-height:38px;padding:9px 0;line-height:20px;font-size:12px;font-weight:600; }
+.flowdesk-case-dashboard .flowdesk-case-reference-group-count { float:right;color:var(--text-muted);font-size:10px;font-weight:400;margin-inline-start:8px; }
+.flowdesk-case-dashboard .flowdesk-case-reference-group .flowdesk-case-related-link { border-top:1px solid var(--fd-border);text-align:left; }
+.flowdesk-case-dashboard .flowdesk-case-reference-group .flowdesk-case-related-link:first-child { border-top:0; }
+.flowdesk-case-dashboard .flowdesk-case-reference-more { display:block;width:100%;height:auto;min-height:28px;margin:3px 0 8px;padding:3px 0;border:0;background:transparent;box-shadow:none;text-align:left;color:var(--text-accent);font-size:11px; }
+.flowdesk-case-dashboard .flowdesk-case-reference-match-count,
+.flowdesk-case-dashboard .flowdesk-case-reference-empty { color:var(--text-muted);font-size:11px;padding:6px 0; }
+.flowdesk-case-dashboard .flowdesk-reference-type { overflow-wrap:anywhere;white-space:normal; }
+.flowdesk-dashboard .flowdesk-parent-link { white-space:normal;text-overflow:clip;overflow:visible;overflow-wrap:anywhere;line-height:1.5; }
+.flowdesk-dashboard .flowdesk-task-top-row:has(> .flowdesk-parent-link) { flex-wrap:wrap; }
+.flowdesk-dashboard .flowdesk-task-top-row > .flowdesk-parent-link { flex:1 0 100%; }
+.flowdesk-dashboard .flowdesk-task-top-row:has(> .flowdesk-parent-link) > .flowdesk-task-meta-actions { margin-left:auto; }
+
+/* Keep the native marker and its mask on the same scale within Task explanation only. */
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered input[type="checkbox"] { --checkbox-size:14px;width:14px;height:14px;opacity:1; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered li > input[type="checkbox"] { --checkbox-size:14px;width:14px;height:14px;top:4px;margin:0; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered .task-list-item.is-checked,
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered .task-list-item.is-checked :is(p,span) { text-decoration:none;color:var(--text-muted); }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered li:has(> input[type="checkbox"]:checked) { text-decoration:none;color:var(--text-muted); }

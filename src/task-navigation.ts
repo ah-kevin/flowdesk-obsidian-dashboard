@@ -4,8 +4,14 @@ export type TaskNavigationOrigin =
   | "child"
   | "work-case";
 
+export interface NavigationModifiers {
+  metaKey?: boolean;
+  ctrlKey?: boolean;
+}
+
 export function taskNavigationLeafType(
-  origin: TaskNavigationOrigin
+  origin: TaskNavigationOrigin,
+  modifiers?: NavigationModifiers
 ): false | "tab" {
-  return origin === "current" ? false : "tab";
+  return modifiers?.metaKey || modifiers?.ctrlKey ? "tab" : false;
 }

@@ -17,7 +17,7 @@ test("任务标题独占一行，元信息与工具栏使用独立容器", () =>
   assert.match(source, /flowdesk-task-read-meta/);
   assert.match(source, /flowdesk-task-meta-row/);
   assert.match(source, /flowdesk-task-meta-actions/);
-  assert.match(source, /this\.openTask\(child\.id, "child"\)/);
+  assert.match(source, /this\.openTask\(child\.id, "child", event\)/);
   assert.match(
     styles,
     /\.flowdesk-task-title\s*\{[^}]*width:\s*100%;/s
@@ -42,7 +42,7 @@ test("任务标题独占一行，元信息与工具栏使用独立容器", () =>
   assert.match(styles, /\.flowdesk-task-context-label\s*\{/);
   assert.match(source, /const title = heading\.createDiv\(\{/);
   assert.match(source, /this\.makeNavigable\(title,/);
-  assert.match(source, /text: "↑ 父任务"/);
+  assert.match(source, /text: `↑ 父任务：\$\{presentation\.header\.parent\.title\}`/);
   assert.match(source, /"当前任务"/);
   assert.match(source, /const parent = topRow\.createDiv\(\{/);
   assert.match(source, /this\.makeNavigable\(parent,/);
@@ -177,7 +177,7 @@ test("技术诊断按当前任务和直接子任务分组并折叠机器字段",
   assert.match(source, /flowdesk-diagnostic-issue-summary/);
   assert.match(source, /flowdesk-diagnostic-action/);
   assert.match(source, /flowdesk-diagnostic-supporting-details/);
-  assert.match(source, /this\.openTask\(group\.taskId, "child"\)/);
+  assert.match(source, /this\.openTask\(group\.taskId, "child", event\)/);
   assert.match(
     source,
     /resolveDiagnosticDisclosureOpen\([\s\S]*?this\.disclosureState,[\s\S]*?disclosureKey/

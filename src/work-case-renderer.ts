@@ -6,7 +6,8 @@ import type { SnapshotSource } from "./snapshot-model";
 import {formatEntityStatus, formatReferenceLabel} from "./entity-presentation";
 import type { WorkCaseRenderState } from "./work-case-adapter";
 import type { WorkCaseSourceRange } from "./work-case-model";
-import type { TaskNavigationOrigin } from "./task-navigation";
+import type { TaskNavigationOrigin, NavigationModifiers } from "./task-navigation";
+import {CaseReferenceList} from "./case-reference-list";
 import type { DashboardAction } from "./dashboard-dialogs";
 import { parseQuotedProgress, renderProgressEvents } from "./progress-history";
 import { parseReferenceText } from "./reference-text";
@@ -22,30 +23,34 @@ export interface WorkCaseRendererDependencies {
   refresh(): Promise<void> | void;
   openTask(
     taskPath: string,
-    origin: TaskNavigationOrigin
+    origin: TaskNavigationOrigin,
+    event?: NavigationModifiers
   ): Promise<void> | void;
-  openCaseSource(casePath: string, source: WorkCaseSourceRange): Promise<void> | void;
-  openRelated(target: string, casePath: string): Promise<void> | void;
+  openCaseSource(casePath: string, source: WorkCaseSourceRange, event?:NavigationModifiers): Promise<void> | void;
+  openRelated(target: string, casePath: string, event?:NavigationModifiers): Promise<void> | void;
   copyText?(text: string): Promise<void>;
-  openTaskSource?(taskPath: string, source: SnapshotSource): Promise<void>;
+  openTaskSource?(taskPath: string, source: SnapshotSource, event?:NavigationModifiers): Promise<void>;
   renderMarkdown?(text:string, element:HTMLElement, sourcePath:string):Promise<void>;
   coreInfo?():CoreResolution|null;
   openSettings?():void;
   openActions?(title:string,actions:DashboardAction[]):void;
   openContent?(title:string,render:(container:HTMLElement)=>void):void;
-  editCase?(casePath:string):Promise<void>|void;
+  editCase?(casePath:string,event?:NavigationModifiers):Promise<void>|void;
   icon?(element:HTMLElement,name:string):void;
 }
 
 export class WorkCaseDashboardRenderer {
   private readonly taskChoices = new Map<string,{selected:Set<string>;known:Set<string>}>();
+  private readonly referenceList=new CaseReferenceList();
   constructor(private readonly dependencies: WorkCaseRendererDependencies) {}
 
   reset(container: HTMLElement): void {
+    this.referenceList.deactivate();
     container.removeClass("flowdesk-case-dashboard");
   }
 
   render(container: HTMLElement, state: WorkCaseRenderState): void {
+    this.referenceList.deactivate();
     container.addClass("flowdesk-case-dashboard");
     if (!state.model) {
       this.renderShell(container, state);
@@ -114,10 +119,10 @@ export class WorkCaseDashboardRenderer {
       {label:"复制交接上下文",run:()=>this.dependencies.copyText?.(createContinuationCard(state.model!,{staleReason:state.staleReason,selectedTaskIds:[...this.selectedTasks(state)]}).text)},
       {label:"查看交接上下文",run:()=>this.dependencies.openContent?.("交接上下文",container=>this.renderResume(container,state))},
       {label:"复制完整恢复资料",run:()=>this.dependencies.copyText?.(this.fullResumeText(state))},
-      {label:"查看原文件",run:()=>this.dependencies.openRelated(state.casePath,state.casePath)},
+      {label:"查看原文件",run:event=>this.dependencies.openRelated(state.casePath,state.casePath,event)},
     ]));
     const title=header.createEl("button", { cls: "flowdesk-case-title flowdesk-case-title-link", text: presentation.header.title });
-    title.addEventListener("click",()=>{void this.dependencies.openRelated(state.casePath,state.casePath);});
+    title.addEventListener("click",event=>{void this.dependencies.openRelated(state.casePath,state.casePath,event);});
     const metadata = header.createDiv({ cls: "flowdesk-case-metadata" });
     metadata.createSpan({ cls: "flowdesk-case-status", text: presentation.header.status, attr: {title: state.model?.workCase.status || "未记录"} });
     if (presentation.header.project !== "未关联 Project") {
@@ -126,8 +131,8 @@ export class WorkCaseDashboardRenderer {
         text: formatReferenceLabel(presentation.header.project),
         attr: {title: presentation.header.project},
       });
-      project.addEventListener("click", () =>
-        void this.dependencies.openRelated(presentation.header.project, state.casePath)
+      project.addEventListener("click", event =>
+        void this.dependencies.openRelated(presentation.header.project, state.casePath,event)
       );
     } else {
       metadata.createSpan({ cls: "flowdesk-case-muted", text: presentation.header.project });
@@ -249,8 +254,8 @@ export class WorkCaseDashboardRenderer {
       text: `${task.associationSource}${task.archived ? " · archived" : ""}`,
     });
     row.createSpan({ cls: "flowdesk-case-task-status", text: formatEntityStatus("task", task.status).label, attr: {title: task.status} });
-    row.addEventListener("click", () =>
-      void this.dependencies.openTask(task.id, "work-case")
+    row.addEventListener("click", event =>
+      void this.dependencies.openTask(task.id, "work-case",event)
     );
   }
 
@@ -351,24 +356,11 @@ export class WorkCaseDashboardRenderer {
   ): void {
     if (!presentation.related.length) return;
     const section = createSection(container, "精选入口", "flowdesk-case-related");
-    const edit=section.createEl("button",{cls:"flowdesk-edit-entries",text:"编辑入口",attr:{"aria-label":"编辑精选入口"}});edit.addEventListener("click",()=>{void this.dependencies.editCase?.(state.casePath);});
-    for (const group of presentation.related) {
-      const row = section.createDiv({ cls: "flowdesk-case-related-row" });
-      row.createSpan({ cls: "flowdesk-case-label", text: ({Project:"项目",Plans:"计划",Docs:"文档",Sessions:"原会话",Related:"资料"} as Record<string,string>)[group.label]??group.label });
-      const links = row.createDiv({ cls: "flowdesk-case-related-links" });
-      for (const target of group.targets) {
-        const link = links.createEl("button", {
-          cls: "flowdesk-case-related-link",
-          attr: {title: target},
-        });
-        const web=/^https?:\/\//i.test(parseReferenceText(target).target);
-        const icon=link.createSpan({cls:"flowdesk-reference-icon",attr:{"aria-hidden":"true"}});this.dependencies.icon?.(icon,web?"globe":"file-text");
-        const copy=link.createSpan({cls:"flowdesk-reference-copy"});copy.createSpan({cls:"flowdesk-reference-title",text:formatReferenceLabel(target)});copy.createSpan({cls:"flowdesk-reference-type",text:web?"网页 · 浏览器":group.label==="Project"?"项目 · Obsidian 笔记":"文档 · 原文件"});link.createSpan({cls:"flowdesk-reference-arrow",text:web?"↗":"→",attr:{"aria-hidden":"true"}});
-        link.addEventListener("click", () =>
-          void this.dependencies.openRelated(target, state.casePath)
-        );
-      }
-    }
+    const edit=section.createEl("button",{cls:"flowdesk-edit-entries",text:"编辑入口",attr:{"aria-label":"编辑精选入口"}});edit.addEventListener("click",event=>{void this.dependencies.editCase?.(state.casePath,event);});
+    this.referenceList.render(section,state.casePath,presentation.related,{
+      open:(target,event)=>this.dependencies.openRelated(target,state.casePath,event),
+      icon:this.dependencies.icon,
+    });
   }
 
   private selectedTasks(state:WorkCaseRenderState):Set<string> {
@@ -417,10 +409,10 @@ export class WorkCaseDashboardRenderer {
     for (const task of presentation.tasks) {
       const sources = full.createEl("details", {cls:"flowdesk-case-recovery"});
       sources.createEl("summary", {text:`Task来源与完整原文：${task.title} · ${task.status}`});
-      const taskOriginal = sources.createEl("button", {text:"打开完整Task原文"});taskOriginal.addEventListener("click",()=>{void this.dependencies.openTask(task.id,"child");});
+      const taskOriginal = sources.createEl("button", {text:"打开完整Task原文"});taskOriginal.addEventListener("click",event=>{void this.dependencies.openTask(task.id,"child",event);});
       for (const source of task.sources) {
         const button = sources.createEl("button", {text:`查看来源任务：${source.field} · API details ${source.line_start}–${source.line_end}`});
-        button.addEventListener("click",()=>{void this.dependencies.openTaskSource?.(task.id,{...source});});
+        button.addEventListener("click",event=>{void this.dependencies.openTaskSource?.(task.id,{...source},event);});
       }
     }
     const copy = actions.createEl("button", {cls:"flowdesk-case-copy-resume",text:"复制完整恢复资料"});

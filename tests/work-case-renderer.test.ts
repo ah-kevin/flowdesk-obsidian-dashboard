@@ -43,6 +43,7 @@ class FakeElement {
   }
 
   setText(text: string): void { this.text = text; }
+  empty(): void { this.children=[];this.text=""; }
 
   createDiv(options: { cls?: string; text?: string } = {}): FakeElement {
     return this.append(new FakeElement("div", options));

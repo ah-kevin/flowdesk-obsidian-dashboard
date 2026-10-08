@@ -14,12 +14,12 @@ async function until(predicate:()=>boolean) {
  while(!predicate() && Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,10));
  assert.equal(predicate(),true,"bounded consumer refresh did not settle");
 }
-async function setup(t:any) {
+async function setup(t:any, rootTitle="Root") {
  const fixture=await ownedEnvironment(t); const casePath="Notes/Sessions/Owned Case.md"; const context="@Owned Case";
  mkdirSync(path.join(fixture.env.OBSIDIAN_VAULT!,"Notes/Sessions"),{recursive:true});
  writeFileSync(path.join(fixture.env.OBSIDIAN_VAULT!,casePath),`---\ntype: work-case\ntitle: Owned Case\nstatus: completed\nagent: codex-app\nproject: "[[Notes/Projects/Owned|项目]]"\n---\n## Current\n> **做到哪了**: 保留正文\n> **下一步**: 检查关联任务\n`);
  let tasks:any[]=[];let mode="normal";let queries=0; const requests:Array<[string,string,string|undefined]>=[];
- const taskRoot={id:"Tasks/Root.md",path:"Tasks/Root.md",title:"Root",status:"in-progress",projects:[],details:"## 目标\n保留原文"};
+ const taskRoot={id:"Tasks/Root.md",path:"Tasks/Root.md",title:rootTitle,status:"in-progress",projects:[],details:"## 目标\n保留原文"};
  const {url}=await fixture.server(async(req,res)=>{
   requests.push([req.method!,req.url!,req.headers.authorization]);res.setHeader("Content-Type","application/json");
   if(mode==="401"){res.writeHead(401).end(JSON.stringify({error:"unauthorized"}));return;}
@@ -29,17 +29,17 @@ async function setup(t:any) {
   if(!task){res.writeHead(404).end(JSON.stringify({error:"absent"}));return;}res.end(JSON.stringify({success:true,data:task}));
  });
  const bundle=fixture.path("plugin.cjs");compilePlugin(bundle);const Plugin=createRequire(import.meta.url)(bundle).default;
- const plugin=new Plugin();const root=new TestElement();const callbacks=new Map<string,Function>();let active:any=null;let view:any;
- plugin.app={vault:{adapter:{getBasePath:()=>fixture.env.OBSIDIAN_VAULT},on(event:string,callback:Function){callbacks.set(`vault:${event}`,callback);},getAbstractFileByPath:(p:string)=>({path:p,extension:"md"}),cachedRead:async(file:any)=>readFileSync(path.join(fixture.env.OBSIDIAN_VAULT!,file.path),"utf8")},metadataCache:{on(event:string,callback:Function){callbacks.set(`metadata:${event}`,callback);},getFileCache(file:any){return {frontmatter:{type:file.path===casePath?"work-case":"note"}};}},workspace:{on(){},onLayoutReady(){},getActiveFile:()=>active,getLeavesOfType:()=>view?[{view}]:[],getLeaf:()=>({async openFile(){}}),async openLinkText(){}}};
+ const plugin=new Plugin();const root=new TestElement();const callbacks=new Map<string,Function>();const opens:Array<{path:string;leaf:false|"tab"}>=[];let active:any=null;let view:any;
+ plugin.app={vault:{adapter:{getBasePath:()=>fixture.env.OBSIDIAN_VAULT},on(event:string,callback:Function){callbacks.set(`vault:${event}`,callback);},getAbstractFileByPath:(p:string)=>({path:p,extension:"md"}),cachedRead:async(file:any)=>readFileSync(path.join(fixture.env.OBSIDIAN_VAULT!,file.path),"utf8")},metadataCache:{on(event:string,callback:Function){callbacks.set(`metadata:${event}`,callback);},getFileCache(file:any){return {frontmatter:{type:file.path===casePath?"work-case":"note"}};}},workspace:{on(){},onLayoutReady(){},getActiveFile:()=>active,getLeavesOfType:()=>view?[{view}]:[],getLeaf:(leaf:false|"tab")=>({async openFile(file:any){opens.push({path:file.path,leaf});}}),async openLinkText(){}}};
  await plugin.onload();
  plugin.settings={flowdeskRoot:CORE_ROOT,workingDirectory:fixture.root,apiUrl:url,tasknotesEnv:JSON.stringify({TASKNOTES_API_TOKEN:"owned-token",OBSIDIAN_VAULT:fixture.env.OBSIDIAN_VAULT})};
  const invocation=buildWorkCaseSnapshotInvocation({flowdeskRoot:CORE_ROOT,casePath,workingDirectory:fixture.env.OBSIDIAN_VAULT!,apiUrl:url,includeResumeBundle:true});
  fixture.allowParentProducer([invocation.executable,...invocation.args],invocation.cwd);
- const taskInvocation=buildSnapshotInvocation({flowdeskRoot:CORE_ROOT,taskPath:taskRoot.id,workingDirectory:fixture.root,apiUrl:url},"json");
- fixture.allowParentProducer([taskInvocation.executable,...taskInvocation.args],taskInvocation.cwd);
+ const allowTask=(taskPath:string)=>{const taskInvocation=buildSnapshotInvocation({flowdeskRoot:CORE_ROOT,taskPath,workingDirectory:fixture.root,apiUrl:url},"json");fixture.allowParentProducer([taskInvocation.executable,...taskInvocation.args],taskInvocation.cwd);};
+ allowTask(taskRoot.id);
  view=plugin.views.get("flowdesk-dashboard-view")({app:plugin.app,contentEl:root});t.after(()=>view.onClose());
  const file=(p:string)=>({path:p,extension:"md"});
- return {view,root,casePath,context,requests,file,setActive:(p:string)=>{active=file(p);},setTasks:(value:any[])=>{tasks=value;},setMode:(value:string)=>{mode=value;},queries:()=>queries,
+ return {view,root,casePath,context,requests,file,opens,allowTask,setActive:(p:string)=>{active=file(p);},setTasks:(value:any[])=>{tasks=value;},setMode:(value:string)=>{mode=value;},queries:()=>queries,
   event:(event:string,p:string,old?:string)=>{const callback=callbacks.get(event);assert.ok(callback,`event registered: ${event}`);return callback(file(p),old);}};
 }
 function task(id:string,status:string,context:string,extra:any={}){return {id,path:id,title:id,status,contexts:[context],projects:["Root"],details:"## 目标\n逐字内容",...extra};}
@@ -103,4 +103,24 @@ test("compiled Task keeps done and cancel ended subtrees separate from successfu
  assert.match(h.root.allText().join(" "),/来源读取完整/);
  const classes=h.root.children.map(x=>[...x.classes].join(" ")).join("|");
  assert.match(classes,/flowdesk-task-header.*flowdesk-trust-summary.*flowdesk-task-overview.*flowdesk-child-section.*flowdesk-contract-summary/);
+});
+
+test("compiled nested Task shows its complete parent context and makes entering descendants explicit",async t=>{
+ const parentTitle="完整父任务名称：Dashboard使用体验修复与导航层级说明";
+ const h=await setup(t,parentTitle);
+ h.setTasks([task("Tasks/Child.md","in-progress",h.context,{title:"Child"}),task("Tasks/Grandchild.md","open",h.context,{title:"Grandchild",projects:["Child"]})]);
+ h.allowTask("Tasks/Child.md");
+ await h.view.loadTask("Tasks/Child.md");
+ assert.ok(h.root.findByClass("flowdesk-parent-link")[0].text.includes(parentTitle),"parent name is visible without hovering");
+ assert.ok(h.root.findByClass("flowdesk-task-context-label")[0].text.includes("当前任务"));
+ assert.equal(h.root.findByClass("flowdesk-current-task-link")[0].text,"Child");
+ await h.root.findByClass("flowdesk-parent-link")[0].click();
+ assert.deepEqual(h.opens.pop(),{path:"Tasks/Root.md",leaf:false});
+ await h.view.loadTask("Tasks/Root.md");
+ const row=h.root.findByClass("flowdesk-child-row")[0];
+ assert.match(row.allText().join(" "),/含后代.*进入子任务页/);
+ assert.deepEqual(h.root.findByClass("flowdesk-child-title").map(x=>x.text),["Child"],"only direct children are expanded here");
+ await row.click();assert.deepEqual(h.opens.pop(),{path:"Tasks/Child.md",leaf:false});
+ for(const handler of row.listeners.get("click")??[])await handler({metaKey:true,preventDefault(){}});
+ assert.deepEqual(h.opens.pop(),{path:"Tasks/Child.md",leaf:"tab"});
 });

@@ -79,6 +79,7 @@ import {
 } from "./snapshot-model";
 import {
   taskNavigationLeafType,
+  type NavigationModifiers,
   type TaskNavigationOrigin,
 } from "./task-navigation";
 import { formatDiagnosticClipboard } from "./diagnostic-clipboard";
@@ -520,17 +521,17 @@ class FlowDeskDashboardView extends ItemView {
     });
     this.caseRenderer = new WorkCaseDashboardRenderer({
       refresh: () => { this.cancelNavigation(); return this.caseAdapter.refresh(); },
-      openTask: (taskPath, origin) => this.openTask(taskPath, origin),
-      openCaseSource: (casePath, source) =>
-        this.openCaseSource(casePath, source),
-      openRelated: (target, casePath) => this.openRelated(target, casePath, undefined, true),
+      openTask: (taskPath, origin, event) => this.openTask(taskPath, origin, event),
+      openCaseSource: (casePath, source, event) =>
+        this.openCaseSource(casePath, source, event),
+      openRelated: (target, casePath, event) => this.openRelated(target, casePath, undefined, true, event),
       copyText: (text) => navigator.clipboard.writeText(text),
-      openTaskSource: (taskPath, source) => this.openSnapshotSource(taskPath, source, "恢复引用"),
+      openTaskSource: (taskPath, source, event) => this.openSnapshotSource(taskPath, source, "恢复引用", "", event),
       renderMarkdown: (text, element, sourcePath) => this.renderSourceMarkdown(text, element, sourcePath),
       openSettings: () => this.plugin.openDashboardSettings(),
       openActions: (title,actions)=>{this.displayResourceModal(new DashboardActionsModal(this.app,title,actions));},
       openContent: (title,render)=>{this.displayResourceModal(new DashboardContentModal(this.app,title,render));},
-      editCase: casePath=>this.openCaseProperties(casePath),
+      editCase: (casePath,event)=>this.openCaseProperties(casePath,event),
       icon: setIcon,
     });
     this.shell = new ViewShellController([this.taskAdapter, this.caseAdapter]);
@@ -758,7 +759,7 @@ class FlowDeskDashboardView extends ItemView {
     this.renderTrustStrip(container, presentation.trust, this.plugin.snapshotCoreInfo(snapshot));
     const overview = renderTaskOverview(container, model, {
       renderMarkdown: (text, element, taskId) => this.renderSourceMarkdown(text, element, taskId),
-      openSource: (taskId, source, heading, text) => this.openSnapshotSource(taskId, source, heading, text),
+      openSource: (taskId, source, heading, text, event) => this.openSnapshotSource(taskId, source, heading, text, event),
     });
     if (presentation.primaryStatus.diagnostic) this.renderPrimaryDiagnostic(overview, presentation.primaryStatus, model.currentTask.title, model.currentTask.id);
     const navigation = container.createDiv({cls:"flowdesk-reading-navigation"});
@@ -790,7 +791,7 @@ class FlowDeskDashboardView extends ItemView {
       text: taskTitleFromPath(taskPath),
       attr: { role: "link", tabindex: "0" },
     });
-    this.makeNavigable(title, () => this.openTask(taskPath));
+    this.makeNavigable(title, event => this.openTask(taskPath, "current", event));
     const metaRow = header.createDiv({ cls: "flowdesk-task-meta-row" });
     metaRow.createDiv({ cls: "flowdesk-task-read-meta", text: status });
   }
@@ -810,7 +811,7 @@ class FlowDeskDashboardView extends ItemView {
     if (presentation.header.parent) {
       const parent = topRow.createDiv({
         cls: "flowdesk-parent-link",
-        text: "↑ 父任务",
+        text: `↑ 父任务：${presentation.header.parent.title}`,
         attr: {
           role: "link",
           tabindex: "0",
@@ -818,9 +819,10 @@ class FlowDeskDashboardView extends ItemView {
           "aria-label": `打开父任务：${presentation.header.parent.title}`,
         },
       });
-      this.makeNavigable(parent, () =>
-        this.openTask(presentation.header.parent?.id ?? "", "parent")
+      this.makeNavigable(parent, event =>
+        this.openTask(presentation.header.parent?.id ?? "", "parent", event)
       );
+      topRow.createDiv({cls:"flowdesk-task-context-label",text:"当前任务"});
     } else {
       topRow.createDiv({
         cls: "flowdesk-task-context-label",
@@ -833,7 +835,7 @@ class FlowDeskDashboardView extends ItemView {
     more.addEventListener("click",()=>this.displayResourceModal(new DashboardActionsModal(this.app,"更多操作",[
       {label:"复制交接上下文",run:()=>navigator.clipboard.writeText(this.taskHandoffText(model))},
       {label:"查看交接上下文",run:()=>{this.displayResourceModal(createReadOnlyTextModal(this.app,"交接上下文",this.taskHandoffText(model)));}},
-      {label:"查看原文件",run:()=>this.openTask(model.currentTask.id)},
+      {label:"查看原文件",run:event=>this.openTask(model.currentTask.id,"current",event)},
     ])));
     const heading = header.createDiv({ cls: "flowdesk-task-heading" });
     const title = heading.createDiv({
@@ -841,7 +843,7 @@ class FlowDeskDashboardView extends ItemView {
       text: presentation.header.title,
       attr: { role: "link", tabindex: "0" },
     });
-    this.makeNavigable(title, () => this.openTask(model.currentTask.id));
+    this.makeNavigable(title, event => this.openTask(model.currentTask.id, "current", event));
     const metaRow = header.createDiv({ cls: "flowdesk-task-meta-row" });
     const badges = metaRow.createDiv({ cls: "flowdesk-task-badges" });
     badges.createSpan({
@@ -907,7 +909,7 @@ class FlowDeskDashboardView extends ItemView {
       const file=this.app.vault.getAbstractFileByPath(context.previousTaskPath);
       const available=file instanceof TFile && (this.plugin.isTaskFile(file)||["work-case","session"].includes(this.plugin.workCaseType(file)));
       const back=card.createEl("button",{cls:"flowdesk-return-resource",text:"← 返回工作看板",attr:{title:"回到刚才查看的任务或Case"}});back.disabled=!available;
-      back.addEventListener("click",()=>{void this.openTask(context.previousTaskPath);});
+      back.addEventListener("click",event=>{void this.openTask(context.previousTaskPath,"current",event);});
       if(!available)card.createDiv({cls:"flowdesk-muted",text:"原 Task/Case 已不可定位，请从文件列表重新选择。"});
     }
   }
@@ -952,8 +954,8 @@ class FlowDeskDashboardView extends ItemView {
         cls: "flowdesk-primary-title flowdesk-diagnostic-link",
         text: status.title,
       });
-      title.addEventListener("click", () => {
-        void this.openDiagnosticLocation(status.diagnostic as SnapshotDiagnostic);
+      title.addEventListener("click", event => {
+        void this.openDiagnosticLocation(status.diagnostic as SnapshotDiagnostic, event);
       });
     } else {
       card.createDiv({ cls: "flowdesk-primary-title", text: status.title });
@@ -991,8 +993,8 @@ class FlowDeskDashboardView extends ItemView {
     }
   }
 
-  private async openDiagnosticLocation(diagnostic: SnapshotDiagnostic) {
-    await this.openSnapshotSource(diagnostic.taskId, diagnostic.source, "诊断");
+  private async openDiagnosticLocation(diagnostic: SnapshotDiagnostic, event?: NavigationModifiers) {
+    await this.openSnapshotSource(diagnostic.taskId, diagnostic.source, "诊断", "", event);
   }
 
   private beginNavigation() {
@@ -1003,16 +1005,16 @@ class FlowDeskDashboardView extends ItemView {
     return { signal: controller.signal, current: () => !controller.signal.aborted && this.shell.context === context };
   }
 
-  private async openNavigationFile(file: TFile, signal: AbortSignal): Promise<boolean> {
+  private async openNavigationFile(file: TFile, signal: AbortSignal, event?: NavigationModifiers): Promise<boolean> {
     const opening = {path:file.path,signal};this.navigationOpening = opening;
-    try { await this.app.workspace.getLeaf(false).openFile(file); return true; }
+    try { await this.app.workspace.getLeaf(taskNavigationLeafType("current", event)).openFile(file); return true; }
     catch (error) { if (!signal.aborted) new Notice(`无法打开准确原文：${error instanceof Error ? error.message : String(error)}`); return false; }
     finally { if (this.navigationOpening === opening) this.navigationOpening = null; }
   }
 
-  private async openSnapshotSource(taskPath: string, source?: SnapshotSource, sourceKind = "来源", text = ""): Promise<void> {
+  private async openSnapshotSource(taskPath: string, source?: SnapshotSource, sourceKind = "来源", text = "", event?: NavigationModifiers): Promise<void> {
     if (!taskPath) { new Notice("producer未提供准确Task ID"); return; }
-    if (!source) { await this.openTask(taskPath); return; }
+    if (!source) { await this.openTask(taskPath, "current", event); return; }
     const request = this.beginNavigation();
     const file = this.app.vault.getAbstractFileByPath(taskPath);
     if (!(file instanceof TFile) || file.path !== taskPath) { new Notice(`未找到任务文件：${taskPath}`); return; }
@@ -1024,7 +1026,7 @@ class FlowDeskDashboardView extends ItemView {
       location = locateTaskSource(fileText, api.details, {heading:sourceKind,level:2,text,source});
     } catch (error) { location = {kind:"note",reason:`来源核对失败：${error instanceof Error ? error.message : String(error)}；打开整张任务原文。`}; }
     if (!request.current()) return;
-    if (!(await this.openNavigationFile(file, request.signal))) return;
+    if (!(await this.openNavigationFile(file, request.signal, event))) return;
     if (request.signal.aborted) return;
     if (location.kind === "note") { new Notice(location.reason); return; }
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -1068,7 +1070,7 @@ class FlowDeskDashboardView extends ItemView {
       const literalHashFile = target.kind === "vault" && target.exactFile === true && target.resolvedPath?.includes("#");
       if ((target.kind === "vault" && !explicitFile && !literalHashFile) || target.kind === "url") return;
       event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();
-      void this.openRelated(href, sourcePath, origin === "markdown" ? undefined : "链接语法来源无法唯一核对；请查看原文或复制引用。");
+      void this.openRelated(href, sourcePath, origin === "markdown" ? undefined : "链接语法来源无法唯一核对；请查看原文或复制引用。", false, event);
     }, true);
     const rendered=(async()=>{
       await MarkdownRenderer.render(this.app, text, element, sourcePath, component);
@@ -1142,7 +1144,7 @@ class FlowDeskDashboardView extends ItemView {
         text: child.status,
         attr: {title: model.children.find(item => item.id === child.id)?.status || "未记录"},
       });
-      this.makeNavigable(row, () => this.openTask(child.id, "child"));
+      this.makeNavigable(row, event => this.openTask(child.id, "child", event));
     }
   }
 
@@ -1170,7 +1172,7 @@ class FlowDeskDashboardView extends ItemView {
       signal:this.renderController.signal,
       trackRender:promise=>{if(this.rendering)this.pendingMarkdown.push(promise);},
       renderMarkdown: (text, element, taskPath) => this.renderSourceMarkdown(text, element, taskPath),
-      openSource: (taskPath, section) => this.openSnapshotSource(taskPath, section.source, section.heading, section.text),
+      openSource: (taskPath, section, event) => this.openSnapshotSource(taskPath, section.source, section.heading, section.text, event),
     }).render(contract, model.content);
     if(!process.children.length)process.remove();
 
@@ -1278,10 +1280,10 @@ class FlowDeskDashboardView extends ItemView {
           const taskLink = groupHeader.createEl("button", {
             cls: "flowdesk-diagnostic-task-link",
             text: group.taskTitle,
-            attr: { title: `在新标签打开：${group.taskTitle}` },
+            attr: { title: `打开任务：${group.taskTitle}` },
           });
-          taskLink.addEventListener("click", () => {
-            void this.openTask(group.taskId, "child");
+          taskLink.addEventListener("click", event => {
+            void this.openTask(group.taskId, "child", event);
           });
         } else {
           groupHeader.createSpan({
@@ -1329,7 +1331,7 @@ class FlowDeskDashboardView extends ItemView {
           });
           diagnosticLink.addEventListener("click", (event) => {
             event.stopPropagation();
-            void this.openDiagnosticLocation(diagnostic.diagnostic);
+            void this.openDiagnosticLocation(diagnostic.diagnostic, event);
           });
           const copyProblem = itemHead.createEl("button", {
             cls: "flowdesk-copy-problem",
@@ -1378,21 +1380,22 @@ class FlowDeskDashboardView extends ItemView {
     }
   }
 
-  private makeNavigable(element: HTMLElement, action: () => Promise<void>) {
+  private makeNavigable(element: HTMLElement, action: (event: NavigationModifiers) => Promise<void>) {
     element.addClass("is-clickable");
-    element.addEventListener("click", () => {
-      void action();
+    element.addEventListener("click", event => {
+      void action(event);
     });
     element.addEventListener("keydown", (event) => {
       if (!isActivationKey(event.key)) return;
       event.preventDefault();
-      void action();
+      void action(event);
     });
   }
 
   private async openTask(
     taskPath: string,
-    origin: TaskNavigationOrigin = "current"
+    origin: TaskNavigationOrigin = "current",
+    event?: NavigationModifiers
   ) {
     if (!taskPath) return;
     const file = this.app.vault.getAbstractFileByPath(taskPath);
@@ -1401,23 +1404,23 @@ class FlowDeskDashboardView extends ItemView {
       return;
     }
     await this.app.workspace
-      .getLeaf(taskNavigationLeafType(origin))
+      .getLeaf(taskNavigationLeafType(origin, event))
       .openFile(file);
   }
 
-  private async openCaseSource(casePath: string, source: WorkCaseSourceRange): Promise<void> {
+  private async openCaseSource(casePath: string, source: WorkCaseSourceRange, event?: NavigationModifiers): Promise<void> {
     const request = this.beginNavigation(), file = this.app.vault.getAbstractFileByPath(casePath);
     if (!(file instanceof TFile) || file.path !== casePath) { new Notice(`未找到Work Case文件：${casePath}`); return; }
     let text: string;
     try { text = await this.app.vault.cachedRead(file); }
     catch (error) {
       if (!request.current()) return;
-      const opened = await this.openNavigationFile(file, request.signal);
+      const opened = await this.openNavigationFile(file, request.signal, event);
       if (opened && !request.signal.aborted) new Notice(`Case来源读取失败，仅打开整张原文：${error instanceof Error ? error.message : String(error)}`);
       return;
     }
     if (!request.current()) return;
-    if (!(await this.openNavigationFile(file, request.signal))) return;
+    if (!(await this.openNavigationFile(file, request.signal, event))) return;
     if (request.signal.aborted) return;
     const lines = text.replace(/\r\n/g,"\n").split("\n");
     const model = this.caseAdapter.getRenderState()?.model;
@@ -1443,14 +1446,14 @@ class FlowDeskDashboardView extends ItemView {
     lines.push("材料不启动Task或授予接手权限。继续前回读最新TaskNotes与原文，明确未完成Next，已结束项不重做；换载体先保存进展并正常结束旧执行，释放未知时只读或回原owner。");return lines.join("\n");
   }
 
-  private async openCaseProperties(casePath:string):Promise<void> {
+  private async openCaseProperties(casePath:string,event?:NavigationModifiers):Promise<void> {
     const file=this.app.vault.getAbstractFileByPath(casePath);
     if(!(file instanceof TFile)||file.path!==casePath||!["work-case","session"].includes(this.plugin.workCaseType(file))){new Notice("无法确认原Case文件，请从文件列表核对。");return;}
-    await this.app.workspace.getLeaf(false).openFile(file,{active:true,state:{mode:"source"}});
+    await this.app.workspace.getLeaf(taskNavigationLeafType("current",event)).openFile(file,{active:true,state:{mode:"source"}});
     new Notice("在Case顶部属性中维护project、plans、docs和related；保存后看板会刷新。Dashboard不会代写这些属性。");
   }
 
-  private async openRelated(raw: string, sourcePath: string, sourceError?: string, direct=false): Promise<void> {
+  private async openRelated(raw: string, sourcePath: string, sourceError?: string, direct=false, event?: NavigationModifiers): Promise<void> {
     const request = this.beginNavigation();
     let context: RelatedContext = {casePath:sourcePath,cwd:null,vaultRoot:this.plugin.vaultRoot(),resolveVaultLink:this.vaultLinkResolver(sourcePath)};
     let target = sourceError ? {kind:"unavailable" as const,label:raw,reason:sourceError} : resolveRelatedTarget(raw, context);
@@ -1472,11 +1475,11 @@ class FlowDeskDashboardView extends ItemView {
       } else {
         const directFile = target.exactFile === true && (target.resolvedPath?.includes("#") || (target.resolvedPath && target.resolvedPath!==target.resolvedPath.trim()) || (target.fileUrl && (!target.fragment || target.resolvedPath?.includes("%"))));
         if (directFile) {
-          await this.openNavigationFile(baseFile, request.signal);
+          await this.openNavigationFile(baseFile, request.signal, event);
           if (!target.fragment) return;
           // Literal #, percent or edge-whitespace filenames keep their exact TFile; fragment location remains unverified.
         } else {
-          await this.app.workspace.openLinkText(target.linkText, sourcePath, false);return;
+          await this.app.workspace.openLinkText(target.linkText, sourcePath, taskNavigationLeafType("current", event));return;
         }
       }
     }

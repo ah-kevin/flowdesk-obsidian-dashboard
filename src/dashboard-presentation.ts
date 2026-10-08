@@ -648,7 +648,7 @@ function createChildRow(child: DashboardChildViewModel, legacy = false, history 
     else if (completed && child.subtreeTerminal === false) meta.push("后代未结束");
   }
   if (child.blockedBy.length) meta.push(`${blocked ? "阻塞于" : completed ? "历史依赖" : "依赖于"} ${child.blockedBy.map(formatTaskReference).join("、")}`);
-  if (child.hasChildren) meta.push("含子任务");
+  if (child.hasChildren) meta.push("含后代 · 进入子任务页");
   return {
     id: child.id, title: child.title, history,
     status: formatTaskStatus(child.status, legacy, legacy ? undefined : child.statusIsCompleted),

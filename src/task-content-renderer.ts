@@ -4,6 +4,7 @@ import { excerpt, firstParagraph } from "./reading-presentation";
 import { latestRecord } from "./task-overview";
 import { readProgressSection, renderProgressEvents } from "./progress-history";
 import { bindProgressDisclosure } from "./progress-disclosure";
+import type { NavigationModifiers } from "./task-navigation";
 
 const recordTitle = (heading: string): string => heading
   .replace(/^Execution Result/, "执行结果")
@@ -13,7 +14,7 @@ const recordTitle = (heading: string): string => heading
 export class TaskContentRenderer {
   constructor(private readonly dependencies: {
     renderMarkdown(text: string, element: HTMLElement, taskPath: string): Promise<void>;
-    openSource(taskPath: string, section: SnapshotBodySection): Promise<void>;
+    openSource(taskPath: string, section: SnapshotBodySection, event?: NavigationModifiers): Promise<void>;
     showSourceActions?: boolean;
     historyContainer?:HTMLElement;
     signal?:AbortSignal;
@@ -29,7 +30,7 @@ export class TaskContentRenderer {
       if(!this.dependencies.showSourceActions)return;
       const row = parent.createDiv({cls:"flowdesk-source-actions"});
       const button = row.createEl("button", { cls: "flowdesk-content-source", text: "在原文查看", attr: { "aria-label": `${section.source ? "打开这一条原文" : "打开任务原文"}：${section.heading}` } });
-      button.addEventListener("click", () => { void this.dependencies.openSource(content.taskId, section); });
+      button.addEventListener("click", event => { void this.dependencies.openSource(content.taskId, section, event); });
       if (section.source) {
         const details=row.createEl("details",{cls:"flowdesk-source-details",attr:{"data-disclosure-key":`source:${section.heading}:${section.source.line_start ?? "unknown"}`}});
         details.createEl("summary",{text:"来源"});

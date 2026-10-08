@@ -155,6 +155,7 @@ test("curated Markdown entry opens the verified original once on the first expli
   const {fixture,plugin,view,root}=await setup(t,true,"valid");await view.syncToActiveFile({path:fixture.casePath,extension:"md"});
   const calls:any[]=[];plugin.repositoryOpenDependencies={platform:"darwin",inspect:(p:string)=>({isFile:()=>!p.endsWith('.app'),isDirectory:()=>p.endsWith('.app')}),execute:async(...args:any[])=>{calls.push(args);throw Error('owned open failure');}};
   const reference=fixture.referenceFixture.markdown;
+  await showAllCaseReferences(root);
   const button=root.findByClass("flowdesk-case-related-link").find(x=>x.attrs.title===reference)!;assert.ok(button);await button.click();
   const end=Date.now()+3000;while(!plugin.app.activeModal&&Date.now()<end)await new Promise(resolve=>setImmediate(resolve));
   assert.equal(calls.length,1);assert.equal(calls[0][1][2],fixture.referenceFixture.markdownPath);
@@ -481,6 +482,17 @@ async function compiledCoreContext(t:any,fixture:any,snapshot:any){
   const {rmSync}=await import("node:fs");t.after(()=>rmSync(payload.path,{force:true}));
   return {payload,text:readFileSync(payload.path,"utf8")};
 }
+async function showAllCaseReferences(root:TestElement){
+  for(const group of root.findByClass("flowdesk-case-reference-group")){
+    group.open=true;group.dispatchEvent(new Event("toggle"));
+  }
+  for(let step=0;step<10;step++){
+    const more=root.findByClass("flowdesk-case-reference-more").find(button=>button.text.startsWith("查看全部"));
+    if(!more)return;
+    await more.click();
+  }
+  assert.fail("reference groups did not finish expanding");
+}
 async function clickCaseReference(view:any,root:TestElement,raw:string){
   const button=root.findByClass("flowdesk-case-related-link").find(button=>button.attrs.title===raw);assert.ok(button,raw);
   const old=view.relatedTargetPanel;await view.openRelated(raw,view.caseAdapter.getRenderState().casePath);const deadline=Date.now()+3000;
@@ -507,6 +519,7 @@ for(const scenario of ["valid","gaps"] as const)test(`joint_case_references_${sc
   const calls:any[]=[];plugin.repositoryOpenDependencies={platform:"darwin",inspect:()=>({isFile:()=>true,isDirectory:()=>true}),execute:async(...args:any[])=>{calls.push(args);}};
   await view.syncToActiveFile({path:fixture.casePath,extension:"md"});
   const state=view.caseAdapter.getRenderState();assert.deepEqual(state.model.related.plans,refs.plans);assert.equal(state.caseContent.details,fixture.caseText);
+  await showAllCaseReferences(root);
   const buttons=root.findByClass("flowdesk-case-related-link");assert.equal(buttons.find(button=>button.attrs.title===refs.markdown)?.findByClass("flowdesk-reference-title")[0]?.text,"编码实施方案（中文）");assert.equal(buttons.find(button=>button.attrs.title===refs.wiki)?.findByClass("flowdesk-reference-title")[0]?.text,"Vault方案");assert.equal(buttons.find(button=>button.attrs.title===refs.index)?.findByClass("flowdesk-reference-title")[0]?.text,"受控证据索引");
   await clickCaseReference(view,root,refs.markdown);assert.match(view.relatedTargetPanel.allText().join("\n"),/章节未验证/);assert.ok(view.relatedTargetPanel.allText().some((text:string)=>text.includes("#Heading%20one")));
   await view.relatedTargetPanel.findByClass("flowdesk-copy-related-path")[0].click();assert.equal(copied.pop(),refs.markdownPath);await view.relatedTargetPanel.findByClass("flowdesk-copy-related-reference")[0].click();assert.equal(copied.pop(),refs.markdown);

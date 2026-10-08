@@ -108,12 +108,12 @@ Release 必需文件：
 发布一个版本（版本号以 `manifest.json` 为准）：
 
 ```bash
-git tag "v2.0.5"
-git push origin "v2.0.5"
+git tag "v2.0.6"
+git push origin "v2.0.6"
 ```
 
-CI 会校验 tag 必须等于 `v<manifest.version>`。例如 `manifest.json` 版本为 `2.0.5`
-时，release tag 必须是 `v2.0.5`。推送标签前，先将同一份已验证提交推送到 `main`。
+CI 会校验 tag 必须等于 `v<manifest.version>`。例如 `manifest.json` 版本为 `2.0.6`
+时，release tag 必须是 `v2.0.6`。推送标签前，先将同一份已验证提交推送到 `main`。
 
 版本要求：
 
