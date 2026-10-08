@@ -232,6 +232,13 @@ test("诊断来源使用无按钮底色的文本链接", () => {
   );
 });
 
+test("只读清单复选框继承正文行高以垂直对齐首行文字", () => {
+  assert.match(
+    styles,
+    /\.markdown-rendered li > input\[type="checkbox"\],\s*\n:is\([^\n]+\) \.markdown-rendered li > p > input\[type="checkbox"\]\s*\{[^}]*font-size:\s*inherit;[^}]*line-height:\s*inherit;/s
+  );
+});
+
 test("恢复 0.1.2 的可读字号、任务卡片与可信度条边界", () => {
   assert.match(
     styles,

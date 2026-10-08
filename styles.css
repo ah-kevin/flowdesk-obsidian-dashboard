@@ -2347,6 +2347,7 @@ body .flowdesk-dashboard-settings .setting-item-control input:not([type="checkbo
 :is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered li > input[type="checkbox"],
 :is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered li > p > input[type="checkbox"] {
   --checkbox-size:14px; position:absolute; inset-inline-start:0; left:0;
+  font-size:inherit; line-height:inherit;
   top:calc((1lh - 14px) / 2 + 2px); margin:0; padding:0; width:14px; height:14px; opacity:1;
 }
 :is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered li:has(> input[type="checkbox"]:checked, > p > input[type="checkbox"]:checked),
