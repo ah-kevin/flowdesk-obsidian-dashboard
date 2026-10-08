@@ -108,7 +108,7 @@ import { createTaskCurrentProgress } from "./task-current-progress";
 import { excerpt, firstParagraph } from "./reading-presentation";
 import { DashboardActionsModal, DashboardContentModal, createReadOnlyTextModal } from "./dashboard-dialogs";
 import { applyDashboardLayout } from "./dashboard-layout";
-import { placeDashboard, selectContentLeaf, type DashboardPlacement } from "./dashboard-placement";
+import { openDashboardInMain as openMainDashboard, selectContentLeaf, type DashboardPlacement } from "./dashboard-placement";
 import { FLOWDESK_REPOSITORY_VIEW_TYPE, RepositoryReaderView } from "./repository-reader-view";
 
 export const FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
@@ -144,7 +144,7 @@ export default class FlowDeskDashboardPlugin extends Plugin {
   settings!: FlowDeskDashboardSettings;
   repositoryOpenDependencies: RepositoryOpenDependencies = {};
   private openingRepository = 0;
-  private changingPlacement = 0;
+  private readonly openingMainDashboards = new Map<string,Promise<void>>();
 
   openRepositoryMarkdown(absolutePath: string): Promise<RepositoryOpenResult> {
     return new RepositoryMarkdownOpener(this.repositoryOpenDependencies).open(absolutePath);
@@ -159,11 +159,36 @@ export default class FlowDeskDashboardPlugin extends Plugin {
       if(!(leaf.view instanceof RepositoryReaderView)||!leaf.view.ready)throw new Error(leaf.view instanceof RepositoryReaderView?leaf.view.readError||"原文件尚未读取完成":"只读视图未能加载");
     } finally {this.openingRepository--;}
   }
-  async changeDashboardPlacement(view:FlowDeskDashboardView,placement:DashboardPlacement):Promise<void> {
-    const state:Record<string,unknown>={...view.getState(),placement};this.changingPlacement++;
-    try {await placeDashboard(this.app.workspace,view.leaf,FLOWDESK_DASHBOARD_VIEW_TYPE,state,placement,()=>{
-      if(view.getState().resourcePath!==state.resourcePath)throw new Error("阅读对象已切换，请在当前看板重试。");
-    });}finally{this.changingPlacement--;}
+  private dashboardFile(resourcePath:string):TFile|null {
+    const file=this.app.vault.getAbstractFileByPath(resourcePath);
+    return file instanceof TFile&&(this.isTaskFile(file)||["work-case","session"].includes(this.workCaseType(file)))?file:null;
+  }
+  private mainDashboardTarget():TFile|null {
+    const active=this.app.workspace.getActiveViewOfType(FlowDeskDashboardView);
+    const dashboardFile=active?this.dashboardFile(active.currentResourcePath()):null;
+    if(dashboardFile)return dashboardFile;
+    const file=this.app.workspace.getActiveFile();
+    if(file&&(this.isTaskFile(file)||["work-case","session"].includes(this.workCaseType(file))))return file;
+    const sidebar=this.getSidebarDashboardLeaf();
+    return sidebar?this.dashboardFile(this.dashboardLeafResourcePath(sidebar)):null;
+  }
+  async openDashboardInMain():Promise<void> {
+    const file=this.mainDashboardTarget();
+    if(!file){new Notice("请先打开一个 TaskNotes 任务或 Work Case。");return;}
+    const pending=this.openingMainDashboards.get(file.path);
+    if(pending){await pending;return;}
+    const existing=this.app.workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE).find(leaf=>!this.isSidebarDashboardLeaf(leaf)&&this.dashboardLeafResourcePath(leaf)===file.path);
+    if(existing){await this.app.workspace.revealLeaf(existing);return;}
+    const source=this.getDashboardViews().find(view=>view.currentResourcePath()===file.path);
+    const state:Record<string,unknown>={...(source?.getState()??{}),resourcePath:file.path,placement:"main"};
+    // Install the guard before getLeaf/setViewState can synchronously emit file-open(null).
+    const opening=Promise.resolve().then(()=>openMainDashboard(this.app.workspace,FLOWDESK_DASHBOARD_VIEW_TYPE,state,leaf=>{
+      if(!(leaf.view instanceof FlowDeskDashboardView)||!leaf.view.readyForResource(file.path))throw new Error(`Task/Case 读取未完成：${file.path}`);
+    })).then(()=>{},error=>{
+      new Notice(`未能打开主区域 Dashboard：${error instanceof Error?error.message:String(error)}`);
+    });
+    this.openingMainDashboards.set(file.path,opening);
+    try{await opening;}finally{this.openingMainDashboards.delete(file.path);}
   }
 
   async onload() {
@@ -179,6 +204,7 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     this.addRibbonIcon("layout-dashboard", "FlowDesk Dashboard", () => {
       void this.refreshDashboard();
     });
+    this.addCommand({id:"open-dashboard-in-main",name:"在主区域打开 Dashboard",callback:()=>this.openDashboardInMain()});
     this.addCommand({
       id: "show-current-task-dashboard",
       name: "显示当前 Task 或 Case",
@@ -196,33 +222,30 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     });
     this.registerEvent(
       this.app.workspace.on("file-open", (file) => {
-        if(!file&&(this.openingRepository||this.changingPlacement||this.app.workspace.getActiveViewOfType(FlowDeskDashboardView)||this.app.workspace.getActiveViewOfType(RepositoryReaderView)))return;
-        void this.getDashboardView()?.syncToActiveFile(file);
+        if(!file&&(this.openingRepository||this.openingMainDashboards.size||this.app.workspace.getActiveViewOfType(FlowDeskDashboardView)||this.app.workspace.getActiveViewOfType(RepositoryReaderView)))return;
+        void this.getSidebarDashboardView()?.syncToActiveFile(file);
       })
     );
     this.registerEvent(
       this.app.metadataCache.on("changed", (file) => {
-        const view = this.getDashboardView();
-        if (view?.observesFile(file.path)) view.scheduleRefresh();
+        for(const view of this.getDashboardViews())if(view.observesFile(file.path))view.scheduleRefresh();
         const activeFile = this.app.workspace.getActiveFile();
         if (
           activeFile?.path === file.path &&
           !this.isTaskFile(activeFile)
         ) {
-          void this.getDashboardView()?.syncToActiveFile(file);
+          void this.getSidebarDashboardView()?.syncToActiveFile(file);
         }
       })
     );
     const refreshOnChange = (file: TAbstractFile) => {
-      const view = this.getDashboardView();
-      if (view && file instanceof TFile && view.observesFile(file.path)) view.scheduleRefresh();
+      if(file instanceof TFile)for(const view of this.getDashboardViews())if(view.observesFile(file.path))view.scheduleRefresh();
     };
     this.registerEvent(this.app.vault.on("modify", refreshOnChange));
     this.registerEvent(this.app.vault.on("create", refreshOnChange));
     this.registerEvent(this.app.vault.on("delete", refreshOnChange));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
-      const view = this.getDashboardView();
-      if (view && file instanceof TFile && (view.observesFile(file.path) || view.observesFile(oldPath))) view.scheduleRefresh();
+      if(file instanceof TFile)for(const view of this.getDashboardViews())if(view.observesFile(file.path)||view.observesFile(oldPath))view.scheduleRefresh();
     }));
     this.addSettingTab(new FlowDeskDashboardSettingTab(this.app, this));
   }
@@ -249,34 +272,38 @@ export default class FlowDeskDashboardPlugin extends Plugin {
 
   async activateDashboard(taskPath: string) {
     const { workspace } = this.app;
-    let leaf = workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE)[0];
+    let leaf = this.getSidebarDashboardLeaf();
     if (!leaf) {
       leaf = workspace.getRightLeaf(false) ?? workspace.getLeaf(true);
       await leaf.setViewState({
         type: FLOWDESK_DASHBOARD_VIEW_TYPE,
         active: true,
+        state: {placement:"sidebar"},
       });
     }
+    await workspace.revealLeaf(leaf);
     if (leaf.view instanceof FlowDeskDashboardView) {
       await leaf.view.loadTask(taskPath);
     }
-    workspace.revealLeaf(leaf);
+    await workspace.revealLeaf(leaf);
   }
 
   async activateWorkCaseDashboard(file: TFile): Promise<void> {
     const { workspace } = this.app;
-    let leaf = workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE)[0];
+    let leaf = this.getSidebarDashboardLeaf();
     if (!leaf) {
       leaf = workspace.getRightLeaf(false) ?? workspace.getLeaf(true);
       await leaf.setViewState({
         type: FLOWDESK_DASHBOARD_VIEW_TYPE,
         active: true,
+        state: {placement:"sidebar"},
       });
     }
+    await workspace.revealLeaf(leaf);
     if (leaf.view instanceof FlowDeskDashboardView) {
       await leaf.view.syncToActiveFile(file);
     }
-    workspace.revealLeaf(leaf);
+    await workspace.revealLeaf(leaf);
   }
 
   async loadSnapshot(
@@ -394,7 +421,7 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     if (this.settingsRefresh) clearTimeout(this.settingsRefresh);
     this.settingsRefresh = setTimeout(() => {
       this.settingsRefresh = null;
-      void this.getDashboardView()?.settingsChanged();
+      for(const view of this.getDashboardViews())void view.settingsChanged();
     }, 350);
   }
 
@@ -414,9 +441,24 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     return typeof type === "string" ? type : "";
   }
 
-  private getDashboardView(): FlowDeskDashboardView | null {
-    const leaf = this.app.workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE)[0];
-    return leaf?.view instanceof FlowDeskDashboardView ? leaf.view : null;
+  private getDashboardViews():FlowDeskDashboardView[] {
+    return this.app.workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE).map(leaf=>leaf.view).filter((view):view is FlowDeskDashboardView=>view instanceof FlowDeskDashboardView);
+  }
+  private dashboardLeafResourcePath(leaf:WorkspaceLeaf):string {
+    if(leaf.view instanceof FlowDeskDashboardView)return leaf.view.currentResourcePath();
+    const state=leaf.getViewState().state;
+    return typeof state?.resourcePath==="string"?state.resourcePath:"";
+  }
+  private isSidebarDashboardLeaf(leaf:WorkspaceLeaf):boolean {
+    if(leaf.view instanceof FlowDeskDashboardView)return leaf.view.followsActiveFile();
+    return leaf.getViewState().state?.placement!=="main"&&!(this.app.workspace.rootSplit&&leaf.getRoot()===this.app.workspace.rootSplit);
+  }
+  private getSidebarDashboardLeaf():WorkspaceLeaf|undefined {
+    return this.app.workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE).find(leaf=>this.isSidebarDashboardLeaf(leaf));
+  }
+  private getSidebarDashboardView():FlowDeskDashboardView|null {
+    const view=this.getSidebarDashboardLeaf()?.view;
+    return view instanceof FlowDeskDashboardView?view:null;
   }
 
   private resolveFlowDeskRoot(): string {
@@ -477,7 +519,7 @@ class FlowDeskDashboardView extends ItemView {
   private resourceModal:DashboardContentModal|null=null;
   private readingFontSize=16;
   private placement:DashboardPlacement="sidebar";
-  private restoredInitialState=false;
+  private initialLayoutReady=false;
   private layoutCleanup:(()=>void)|null=null;
 
   private closeResourceModal():void {
@@ -581,9 +623,17 @@ class FlowDeskDashboardView extends ItemView {
   getIcon() {
     return "layout-dashboard";
   }
+  currentResourcePath():string {return "resourcePath" in this.shell.context?this.shell.context.resourcePath:"";}
+  followsActiveFile():boolean {return this.placement!=="main"&&!(this.app.workspace.rootSplit&&this.leaf.getRoot?.()===this.app.workspace.rootSplit);}
+  readyForResource(resourcePath:string):boolean {
+    if(this.currentResourcePath()!==resourcePath)return false;
+    if(this.shell.context.kind===this.taskAdapter.kind){const state=this.taskAdapter.getRenderState();return !!state?.snapshot&&state.taskPath===resourcePath&&!state.loading&&!state.error;}
+    if(this.shell.context.kind===this.caseAdapter.kind){const state=this.caseAdapter.getRenderState();return !!state?.model&&state.casePath===resourcePath&&!state.loading&&!state.error;}
+    return false;
+  }
   getState():Record<string,unknown> {
     this.readingState.capture(this.renderedResource,this.contentEl);
-    return {resourcePath:"resourcePath" in this.shell.context?this.shell.context.resourcePath:"",placement:this.placement,fontSize:this.readingFontSize,reading:this.readingState.snapshot(),references:this.caseRenderer.snapshotReadingChoices()};
+    return {resourcePath:this.currentResourcePath(),placement:this.followsActiveFile()?"sidebar":"main",fontSize:this.readingFontSize,reading:this.readingState.snapshot(),references:this.caseRenderer.snapshotReadingChoices()};
   }
   async setState(value:unknown,_result:ViewStateResult):Promise<void> {
     if(!value||typeof value!=="object")return;
@@ -592,24 +642,22 @@ class FlowDeskDashboardView extends ItemView {
     this.readingFontSize=[14,16,18].includes(state.fontSize as number)?state.fontSize as number:16;
     this.readingState.restoreSnapshot(state.reading);
     this.caseRenderer.restoreReadingChoices(state.references);
+    if(this.followsActiveFile()){
+      // Saved sidebar state carries reading choices and a return target, never its selection.
+      if(!this.previousTaskPath&&typeof state.resourcePath==="string")this.previousTaskPath=state.resourcePath;
+      if(this.initialLayoutReady)await this.syncToActiveFile();
+      return;
+    }
     if(typeof state.resourcePath!=="string"||!state.resourcePath)return;
     const file=this.app.vault.getAbstractFileByPath(state.resourcePath);
     if(!(file instanceof TFile)||file.path!==state.resourcePath||!(this.plugin.isTaskFile(file)||["work-case","session"].includes(this.plugin.workCaseType(file))))throw new Error("原 Task/Case 已无法确认，保留原阅读位置。");
-    this.restoredInitialState=true;
     await this.syncToActiveFile(file);
     if(this.shell.context.kind==="task"&&!this.taskAdapter.getRenderState()?.snapshot)throw new Error("任务读取失败，保留原 Dashboard。");
     if(this.shell.context.kind===this.caseAdapter.kind&&!this.caseAdapter.getRenderState()?.model)throw new Error("案卷读取失败，保留原 Dashboard。");
   }
   private renderReadingControls(container:HTMLElement):void {
+    if(this.followsActiveFile())return;
     const row=container.createDiv({cls:"flowdesk-reading-controls"});
-    const inMain=this.placement==="main"||(this.leaf?.getRoot?.()===this.app.workspace.rootSplit&&!!this.app.workspace.rootSplit);
-    const expand=row.createEl("button",{cls:"flowdesk-reading-expand",text:inMain?"回到侧栏":"放大阅读",attr:{"aria-label":inMain?"回到侧栏":"在主区域放大阅读"}});
-    expand.disabled=!this.renderedResource;
-    expand.addEventListener("click",async()=>{
-      if(expand.disabled)return;expand.disabled=true;
-      try {await this.plugin.changeDashboardPlacement(this,inMain?"sidebar":"main");}
-      catch(error){new Notice(`未能切换阅读位置：${error instanceof Error?error.message:String(error)}`);expand.disabled=false;}
-    });
     const size=row.createEl("select",{cls:"flowdesk-reading-font-select",attr:{"aria-label":"阅读字号"}});
     for(const value of [14,16,18])size.createEl("option",{text:`${value}px`,value:String(value)});
     size.value=String(this.readingFontSize);
@@ -621,7 +669,8 @@ class FlowDeskDashboardView extends ItemView {
     this.cancelInitialSync = registerInitialDashboardSync(
       (callback) => this.app.workspace.onLayoutReady(callback),
       () => {
-        if(!this.restoredInitialState)void this.syncToActiveFile();
+        this.initialLayoutReady=true;
+        if(this.followsActiveFile())void this.syncToActiveFile();
       }
     );
   }

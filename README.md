@@ -3,10 +3,18 @@
 FlowDesk Dashboard 是一个 desktop-only 的 Obsidian 第三方插件，用来查看当前
 TaskNotes 任务或 Work Case 的 FlowDesk snapshot。插件分别调用本机 FlowDesk-Plugin
 安装目录或指定仓库中的 `bin/flowdesk-execution-snapshot` 与 `bin/flowdesk-work-case-snapshot`，
-在同一 Obsidian 侧栏内渲染隔离的 Task Dashboard 或只读 Case 恢复驾驶舱。
+在 Obsidian 侧栏或独立主区域渲染 Task Dashboard 与只读 Case 恢复驾驶舱。
 
 本项目走 GitHub Release、BRAT 或手动安装，不以提交 Obsidian 官方 Community
 Directory 作为发布路径。
+
+## 2.0.8 更新
+
+- 修正正文与过程记录中复选框被列表基础样式覆盖、与文字重叠的问题；保留多行文字的统一缩进。
+- 侧栏继续跟随当前 Task/Case，移除“放大阅读 / 回到侧栏”切换按钮。
+- 新增命令“在主区域打开 Dashboard”，独立打开当前 Task/Case；侧栏保留，主区域固定阅读对象，两份视图独立保存展开、搜索与阅读位置。重复打开同一对象会显示已有主区域视图。
+- 桌面可通过 Obsidian 原生标签页菜单弹出独立窗口，再使用系统全屏。移动端兼容暂缓，当前仍仅支持桌面。
+- 本次只发布 Dashboard；Core 的行内列表修复另见独立 PR，不随本轮合并或发布。
 
 ## 2.0.7 更新
 

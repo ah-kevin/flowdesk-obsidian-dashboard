@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { placeDashboard, selectContentLeaf } from "../src/dashboard-placement";
+import { openDashboardInMain, selectContentLeaf } from "../src/dashboard-placement";
 
 const dashboardType = "flowdesk-dashboard-view";
 const leaf = (type: string, pinned = false) => ({ view: { getViewType: () => type }, getViewState: () => ({ pinned }) });
@@ -25,21 +25,19 @@ test("Cmd navigation creates a new tab even when another content tab exists", ()
   assert.equal(selectContentLeaf(workspace, dashboardType, true), created);
   assert.deepEqual(calls, ["tab"]);
 });
-test("placement passes the same reading state and closes the source only after the destination is ready", async () => {
+test("opening an independent main reader preserves reading choices and pins the new leaf", async () => {
   const order: string[] = [], reading = { resourcePath: "Notes/Sessions/Case.md", fontSize: 16, query: "report", scroll: 400 };
-  const source = { async setViewState() {}, detach() { order.push("source-close"); } };
   let received: Record<string, unknown> | null = null;
-  const destination = { async setViewState(state: Record<string, unknown>) { received = state; order.push("state"); }, detach() { order.push("destination-close"); } };
-  const workspace = { getLeaf: () => destination, getRightLeaf: () => destination, async revealLeaf() { order.push("reveal"); } };
-  assert.equal(await placeDashboard(workspace, source, dashboardType, reading, "main"), destination);
-  assert.deepEqual(received, { type: dashboardType, active: true, pinned: true, state: reading });
-  assert.deepEqual(order, ["state", "reveal", "source-close"]);
+  const destination = { async setViewState(state: Record<string, unknown>) { received = state; order.push("state"); },setPinned(value:boolean){assert.equal(value,true);order.push("pin");}, detach() { order.push("destination-close"); } };
+  const workspace = { getLeaf: () => destination, async revealLeaf() { order.push("reveal"); } };
+  assert.equal(await openDashboardInMain(workspace, dashboardType, reading,leaf=>{assert.equal(leaf,destination);order.push("validate");}), destination);
+  assert.deepEqual(received, { type: dashboardType, active: true, state: {...reading,placement:"main"} });
+  assert.deepEqual(order, ["state", "pin", "reveal", "validate"]);
 });
-test("failed placement keeps the source available and cleans up only the new destination", async () => {
+test("failed main reader creation cleans up only the newly created destination", async () => {
   const order: string[] = [];
-  const source = { async setViewState() {}, detach() { order.push("source-close"); } };
-  const destination = { async setViewState() { throw new Error("read failed"); }, detach() { order.push("destination-close"); } };
-  const workspace = { getLeaf: () => destination, getRightLeaf: () => destination, revealLeaf() { order.push("reveal"); } };
-  await assert.rejects(placeDashboard(workspace, source, dashboardType, {}, "sidebar"), /read failed/);
+  const destination = { async setViewState() { throw new Error("read failed"); },setPinned(){order.push("pin");}, detach() { order.push("destination-close"); } };
+  const workspace = { getLeaf: () => destination, revealLeaf() { order.push("reveal"); } };
+  await assert.rejects(openDashboardInMain(workspace, dashboardType, {},()=>{order.push("validate");}), /read failed/);
   assert.deepEqual(order, ["destination-close"]);
 });

@@ -1,5 +1,6 @@
 // Public UI host double only. All plugin consumers, producer processes and HTTP remain real.
 class HostClass {}
+class Notice { constructor(message){globalThis.__flowdeskTestNotice?.(message);} }
 class Component {
   children=[];callbacks=[];loaded=false;
   load(){this.loaded=true;for(const child of this.children)child.load();}
@@ -40,7 +41,7 @@ async function renderMarkdown(app,text,element,source,component){
 class TFile { static [Symbol.hasInstance](value){return !!value && typeof value.path==='string' && typeof value.extension==='string';} constructor(path){this.path=path;this.extension='md';} }
 module.exports = {
   App: HostClass, Component, ItemView, MarkdownRenderer: { render:renderMarkdown }, MarkdownView: HostClass,
-  Modal, Notice: HostClass, Plugin, PluginSettingTab: HostClass,
+  Modal, Notice, Plugin, PluginSettingTab: HostClass,
   Setting: HostClass, TFile, WorkspaceLeaf: HostClass, setIcon() {},
   parseLinktext(value){const index=value.indexOf("#");return index<0?{path:value,subpath:""}:{path:value.slice(0,index),subpath:value.slice(index)};},
 };

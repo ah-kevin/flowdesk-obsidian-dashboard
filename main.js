@@ -4271,19 +4271,17 @@ function selectContentLeaf(workspace, dashboardType, newTab = false) {
   });
   return existing != null ? existing : workspace.getLeaf("tab");
 }
-async function placeDashboard(workspace, source, type, state, placement, beforeDetach) {
-  const destination = placement === "main" ? workspace.getLeaf("tab") : workspace.getRightLeaf(false);
-  if (!destination || destination === source) throw new Error("\u672A\u80FD\u521B\u5EFA Dashboard \u9605\u8BFB\u4F4D\u7F6E\u3002");
+async function openDashboardInMain(workspace, type, state, validate2) {
+  const destination = workspace.getLeaf("tab");
   try {
-    await destination.setViewState({ type, active: true, pinned: placement === "main", state });
-    beforeDetach == null ? void 0 : beforeDetach();
+    await destination.setViewState({ type, active: true, state: { ...state, placement: "main" } });
+    destination.setPinned(true);
     await workspace.revealLeaf(destination);
-    beforeDetach == null ? void 0 : beforeDetach();
+    validate2(destination);
   } catch (error) {
     destination.detach();
     throw error;
   }
-  source.detach();
   return destination;
 }
 
@@ -9502,7 +9500,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian3.Plugin {
     this.snapshotCores = /* @__PURE__ */ new WeakMap();
     this.repositoryOpenDependencies = {};
     this.openingRepository = 0;
-    this.changingPlacement = 0;
+    this.openingMainDashboards = /* @__PURE__ */ new Map();
   }
   openRepositoryMarkdown(absolutePath) {
     return new RepositoryMarkdownOpener(this.repositoryOpenDependencies).open(absolutePath);
@@ -9519,15 +9517,49 @@ var FlowDeskDashboardPlugin = class extends import_obsidian3.Plugin {
       this.openingRepository--;
     }
   }
-  async changeDashboardPlacement(view, placement) {
-    const state = { ...view.getState(), placement };
-    this.changingPlacement++;
+  dashboardFile(resourcePath) {
+    const file = this.app.vault.getAbstractFileByPath(resourcePath);
+    return file instanceof import_obsidian3.TFile && (this.isTaskFile(file) || ["work-case", "session"].includes(this.workCaseType(file))) ? file : null;
+  }
+  mainDashboardTarget() {
+    const active = this.app.workspace.getActiveViewOfType(FlowDeskDashboardView);
+    const dashboardFile = active ? this.dashboardFile(active.currentResourcePath()) : null;
+    if (dashboardFile) return dashboardFile;
+    const file = this.app.workspace.getActiveFile();
+    if (file && (this.isTaskFile(file) || ["work-case", "session"].includes(this.workCaseType(file)))) return file;
+    const sidebar = this.getSidebarDashboardLeaf();
+    return sidebar ? this.dashboardFile(this.dashboardLeafResourcePath(sidebar)) : null;
+  }
+  async openDashboardInMain() {
+    var _a;
+    const file = this.mainDashboardTarget();
+    if (!file) {
+      new import_obsidian3.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u6216 Work Case\u3002");
+      return;
+    }
+    const pending = this.openingMainDashboards.get(file.path);
+    if (pending) {
+      await pending;
+      return;
+    }
+    const existing = this.app.workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE).find((leaf) => !this.isSidebarDashboardLeaf(leaf) && this.dashboardLeafResourcePath(leaf) === file.path);
+    if (existing) {
+      await this.app.workspace.revealLeaf(existing);
+      return;
+    }
+    const source = this.getDashboardViews().find((view) => view.currentResourcePath() === file.path);
+    const state = { ...(_a = source == null ? void 0 : source.getState()) != null ? _a : {}, resourcePath: file.path, placement: "main" };
+    const opening = Promise.resolve().then(() => openDashboardInMain(this.app.workspace, FLOWDESK_DASHBOARD_VIEW_TYPE, state, (leaf) => {
+      if (!(leaf.view instanceof FlowDeskDashboardView) || !leaf.view.readyForResource(file.path)) throw new Error(`Task/Case \u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${file.path}`);
+    })).then(() => {
+    }, (error) => {
+      new import_obsidian3.Notice(`\u672A\u80FD\u6253\u5F00\u4E3B\u533A\u57DF Dashboard\uFF1A${error instanceof Error ? error.message : String(error)}`);
+    });
+    this.openingMainDashboards.set(file.path, opening);
     try {
-      await placeDashboard(this.app.workspace, view.leaf, FLOWDESK_DASHBOARD_VIEW_TYPE, state, placement, () => {
-        if (view.getState().resourcePath !== state.resourcePath) throw new Error("\u9605\u8BFB\u5BF9\u8C61\u5DF2\u5207\u6362\uFF0C\u8BF7\u5728\u5F53\u524D\u770B\u677F\u91CD\u8BD5\u3002");
-      });
+      await opening;
     } finally {
-      this.changingPlacement--;
+      this.openingMainDashboards.delete(file.path);
     }
   }
   async onload() {
@@ -9543,6 +9575,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian3.Plugin {
     this.addRibbonIcon("layout-dashboard", "FlowDesk Dashboard", () => {
       void this.refreshDashboard();
     });
+    this.addCommand({ id: "open-dashboard-in-main", name: "\u5728\u4E3B\u533A\u57DF\u6253\u5F00 Dashboard", callback: () => this.openDashboardInMain() });
     this.addCommand({
       id: "show-current-task-dashboard",
       name: "\u663E\u793A\u5F53\u524D Task \u6216 Case",
@@ -9561,31 +9594,32 @@ var FlowDeskDashboardPlugin = class extends import_obsidian3.Plugin {
     this.registerEvent(
       this.app.workspace.on("file-open", (file) => {
         var _a;
-        if (!file && (this.openingRepository || this.changingPlacement || this.app.workspace.getActiveViewOfType(FlowDeskDashboardView) || this.app.workspace.getActiveViewOfType(RepositoryReaderView))) return;
-        void ((_a = this.getDashboardView()) == null ? void 0 : _a.syncToActiveFile(file));
+        if (!file && (this.openingRepository || this.openingMainDashboards.size || this.app.workspace.getActiveViewOfType(FlowDeskDashboardView) || this.app.workspace.getActiveViewOfType(RepositoryReaderView))) return;
+        void ((_a = this.getSidebarDashboardView()) == null ? void 0 : _a.syncToActiveFile(file));
       })
     );
     this.registerEvent(
       this.app.metadataCache.on("changed", (file) => {
         var _a;
-        const view = this.getDashboardView();
-        if (view == null ? void 0 : view.observesFile(file.path)) view.scheduleRefresh();
+        for (const view of this.getDashboardViews()) if (view.observesFile(file.path)) view.scheduleRefresh();
         const activeFile = this.app.workspace.getActiveFile();
         if ((activeFile == null ? void 0 : activeFile.path) === file.path && !this.isTaskFile(activeFile)) {
-          void ((_a = this.getDashboardView()) == null ? void 0 : _a.syncToActiveFile(file));
+          void ((_a = this.getSidebarDashboardView()) == null ? void 0 : _a.syncToActiveFile(file));
         }
       })
     );
     const refreshOnChange = (file) => {
-      const view = this.getDashboardView();
-      if (view && file instanceof import_obsidian3.TFile && view.observesFile(file.path)) view.scheduleRefresh();
+      if (file instanceof import_obsidian3.TFile) {
+        for (const view of this.getDashboardViews()) if (view.observesFile(file.path)) view.scheduleRefresh();
+      }
     };
     this.registerEvent(this.app.vault.on("modify", refreshOnChange));
     this.registerEvent(this.app.vault.on("create", refreshOnChange));
     this.registerEvent(this.app.vault.on("delete", refreshOnChange));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
-      const view = this.getDashboardView();
-      if (view && file instanceof import_obsidian3.TFile && (view.observesFile(file.path) || view.observesFile(oldPath))) view.scheduleRefresh();
+      if (file instanceof import_obsidian3.TFile) {
+        for (const view of this.getDashboardViews()) if (view.observesFile(file.path) || view.observesFile(oldPath)) view.scheduleRefresh();
+      }
     }));
     this.addSettingTab(new FlowDeskDashboardSettingTab(this.app, this));
   }
@@ -9610,34 +9644,38 @@ var FlowDeskDashboardPlugin = class extends import_obsidian3.Plugin {
   async activateDashboard(taskPath) {
     var _a;
     const { workspace } = this.app;
-    let leaf = workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE)[0];
+    let leaf = this.getSidebarDashboardLeaf();
     if (!leaf) {
       leaf = (_a = workspace.getRightLeaf(false)) != null ? _a : workspace.getLeaf(true);
       await leaf.setViewState({
         type: FLOWDESK_DASHBOARD_VIEW_TYPE,
-        active: true
+        active: true,
+        state: { placement: "sidebar" }
       });
     }
+    await workspace.revealLeaf(leaf);
     if (leaf.view instanceof FlowDeskDashboardView) {
       await leaf.view.loadTask(taskPath);
     }
-    workspace.revealLeaf(leaf);
+    await workspace.revealLeaf(leaf);
   }
   async activateWorkCaseDashboard(file) {
     var _a;
     const { workspace } = this.app;
-    let leaf = workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE)[0];
+    let leaf = this.getSidebarDashboardLeaf();
     if (!leaf) {
       leaf = (_a = workspace.getRightLeaf(false)) != null ? _a : workspace.getLeaf(true);
       await leaf.setViewState({
         type: FLOWDESK_DASHBOARD_VIEW_TYPE,
-        active: true
+        active: true,
+        state: { placement: "sidebar" }
       });
     }
+    await workspace.revealLeaf(leaf);
     if (leaf.view instanceof FlowDeskDashboardView) {
       await leaf.view.syncToActiveFile(file);
     }
-    workspace.revealLeaf(leaf);
+    await workspace.revealLeaf(leaf);
   }
   async loadSnapshot(taskPath, signal) {
     var _a;
@@ -9750,9 +9788,8 @@ var FlowDeskDashboardPlugin = class extends import_obsidian3.Plugin {
     this.coreResolution = null;
     if (this.settingsRefresh) clearTimeout(this.settingsRefresh);
     this.settingsRefresh = setTimeout(() => {
-      var _a;
       this.settingsRefresh = null;
-      void ((_a = this.getDashboardView()) == null ? void 0 : _a.settingsChanged());
+      for (const view of this.getDashboardViews()) void view.settingsChanged();
     }, 350);
   }
   openDashboardSettings() {
@@ -9775,9 +9812,26 @@ var FlowDeskDashboardPlugin = class extends import_obsidian3.Plugin {
     const type = (_b = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter) == null ? void 0 : _b.type;
     return typeof type === "string" ? type : "";
   }
-  getDashboardView() {
-    const leaf = this.app.workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE)[0];
-    return (leaf == null ? void 0 : leaf.view) instanceof FlowDeskDashboardView ? leaf.view : null;
+  getDashboardViews() {
+    return this.app.workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE).map((leaf) => leaf.view).filter((view) => view instanceof FlowDeskDashboardView);
+  }
+  dashboardLeafResourcePath(leaf) {
+    if (leaf.view instanceof FlowDeskDashboardView) return leaf.view.currentResourcePath();
+    const state = leaf.getViewState().state;
+    return typeof (state == null ? void 0 : state.resourcePath) === "string" ? state.resourcePath : "";
+  }
+  isSidebarDashboardLeaf(leaf) {
+    var _a;
+    if (leaf.view instanceof FlowDeskDashboardView) return leaf.view.followsActiveFile();
+    return ((_a = leaf.getViewState().state) == null ? void 0 : _a.placement) !== "main" && !(this.app.workspace.rootSplit && leaf.getRoot() === this.app.workspace.rootSplit);
+  }
+  getSidebarDashboardLeaf() {
+    return this.app.workspace.getLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE).find((leaf) => this.isSidebarDashboardLeaf(leaf));
+  }
+  getSidebarDashboardView() {
+    var _a;
+    const view = (_a = this.getSidebarDashboardLeaf()) == null ? void 0 : _a.view;
+    return view instanceof FlowDeskDashboardView ? view : null;
   }
   resolveFlowDeskRoot() {
     var _a;
@@ -9831,7 +9885,7 @@ var FlowDeskDashboardView = class extends import_obsidian3.ItemView {
     this.resourceModal = null;
     this.readingFontSize = 16;
     this.placement = "sidebar";
-    this.restoredInitialState = false;
+    this.initialLayoutReady = false;
     this.layoutCleanup = null;
     this.taskAdapter = new FrozenTaskAdapter({
       shell: () => this.shell,
@@ -9942,9 +9996,28 @@ var FlowDeskDashboardView = class extends import_obsidian3.ItemView {
   getIcon() {
     return "layout-dashboard";
   }
+  currentResourcePath() {
+    return "resourcePath" in this.shell.context ? this.shell.context.resourcePath : "";
+  }
+  followsActiveFile() {
+    var _a, _b;
+    return this.placement !== "main" && !(this.app.workspace.rootSplit && ((_b = (_a = this.leaf).getRoot) == null ? void 0 : _b.call(_a)) === this.app.workspace.rootSplit);
+  }
+  readyForResource(resourcePath) {
+    if (this.currentResourcePath() !== resourcePath) return false;
+    if (this.shell.context.kind === this.taskAdapter.kind) {
+      const state = this.taskAdapter.getRenderState();
+      return !!(state == null ? void 0 : state.snapshot) && state.taskPath === resourcePath && !state.loading && !state.error;
+    }
+    if (this.shell.context.kind === this.caseAdapter.kind) {
+      const state = this.caseAdapter.getRenderState();
+      return !!(state == null ? void 0 : state.model) && state.casePath === resourcePath && !state.loading && !state.error;
+    }
+    return false;
+  }
   getState() {
     this.readingState.capture(this.renderedResource, this.contentEl);
-    return { resourcePath: "resourcePath" in this.shell.context ? this.shell.context.resourcePath : "", placement: this.placement, fontSize: this.readingFontSize, reading: this.readingState.snapshot(), references: this.caseRenderer.snapshotReadingChoices() };
+    return { resourcePath: this.currentResourcePath(), placement: this.followsActiveFile() ? "sidebar" : "main", fontSize: this.readingFontSize, reading: this.readingState.snapshot(), references: this.caseRenderer.snapshotReadingChoices() };
   }
   async setState(value, _result) {
     var _a, _b;
@@ -9954,30 +10027,22 @@ var FlowDeskDashboardView = class extends import_obsidian3.ItemView {
     this.readingFontSize = [14, 16, 18].includes(state.fontSize) ? state.fontSize : 16;
     this.readingState.restoreSnapshot(state.reading);
     this.caseRenderer.restoreReadingChoices(state.references);
+    if (this.followsActiveFile()) {
+      if (!this.previousTaskPath && typeof state.resourcePath === "string") this.previousTaskPath = state.resourcePath;
+      if (this.initialLayoutReady) await this.syncToActiveFile();
+      return;
+    }
     if (typeof state.resourcePath !== "string" || !state.resourcePath) return;
     const file = this.app.vault.getAbstractFileByPath(state.resourcePath);
     if (!(file instanceof import_obsidian3.TFile) || file.path !== state.resourcePath || !(this.plugin.isTaskFile(file) || ["work-case", "session"].includes(this.plugin.workCaseType(file)))) throw new Error("\u539F Task/Case \u5DF2\u65E0\u6CD5\u786E\u8BA4\uFF0C\u4FDD\u7559\u539F\u9605\u8BFB\u4F4D\u7F6E\u3002");
-    this.restoredInitialState = true;
     await this.syncToActiveFile(file);
     if (this.shell.context.kind === "task" && !((_a = this.taskAdapter.getRenderState()) == null ? void 0 : _a.snapshot)) throw new Error("\u4EFB\u52A1\u8BFB\u53D6\u5931\u8D25\uFF0C\u4FDD\u7559\u539F Dashboard\u3002");
     if (this.shell.context.kind === this.caseAdapter.kind && !((_b = this.caseAdapter.getRenderState()) == null ? void 0 : _b.model)) throw new Error("\u6848\u5377\u8BFB\u53D6\u5931\u8D25\uFF0C\u4FDD\u7559\u539F Dashboard\u3002");
   }
   renderReadingControls(container) {
-    var _a, _b, _c;
+    var _a;
+    if (this.followsActiveFile()) return;
     const row = container.createDiv({ cls: "flowdesk-reading-controls" });
-    const inMain = this.placement === "main" || ((_b = (_a = this.leaf) == null ? void 0 : _a.getRoot) == null ? void 0 : _b.call(_a)) === this.app.workspace.rootSplit && !!this.app.workspace.rootSplit;
-    const expand = row.createEl("button", { cls: "flowdesk-reading-expand", text: inMain ? "\u56DE\u5230\u4FA7\u680F" : "\u653E\u5927\u9605\u8BFB", attr: { "aria-label": inMain ? "\u56DE\u5230\u4FA7\u680F" : "\u5728\u4E3B\u533A\u57DF\u653E\u5927\u9605\u8BFB" } });
-    expand.disabled = !this.renderedResource;
-    expand.addEventListener("click", async () => {
-      if (expand.disabled) return;
-      expand.disabled = true;
-      try {
-        await this.plugin.changeDashboardPlacement(this, inMain ? "sidebar" : "main");
-      } catch (error) {
-        new import_obsidian3.Notice(`\u672A\u80FD\u5207\u6362\u9605\u8BFB\u4F4D\u7F6E\uFF1A${error instanceof Error ? error.message : String(error)}`);
-        expand.disabled = false;
-      }
-    });
     const size = row.createEl("select", { cls: "flowdesk-reading-font-select", attr: { "aria-label": "\u9605\u8BFB\u5B57\u53F7" } });
     for (const value of [14, 16, 18]) size.createEl("option", { text: `${value}px`, value: String(value) });
     size.value = String(this.readingFontSize);
@@ -9988,13 +10053,14 @@ var FlowDeskDashboardView = class extends import_obsidian3.ItemView {
       this.readingFontSize = value;
       (_a2 = container.style) == null ? void 0 : _a2.setProperty("--fd-reading-font-size", `${value}px`);
     });
-    (_c = container.style) == null ? void 0 : _c.setProperty("--fd-reading-font-size", `${this.readingFontSize}px`);
+    (_a = container.style) == null ? void 0 : _a.setProperty("--fd-reading-font-size", `${this.readingFontSize}px`);
   }
   async onOpen() {
     this.cancelInitialSync = registerInitialDashboardSync(
       (callback) => this.app.workspace.onLayoutReady(callback),
       () => {
-        if (!this.restoredInitialState) void this.syncToActiveFile();
+        this.initialLayoutReady = true;
+        if (this.followsActiveFile()) void this.syncToActiveFile();
       }
     );
   }

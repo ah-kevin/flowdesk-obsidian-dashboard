@@ -20,19 +20,18 @@ export function selectContentLeaf<TLeaf extends NavigableLeaf>(workspace: Naviga
   return existing??workspace.getLeaf("tab");
 }
 
-interface PlacementLeaf { setViewState(state: {type:string;active:boolean;pinned:boolean;state:Record<string,unknown>}): Promise<void>; detach(): void }
-interface PlacementWorkspace<TLeaf> { getLeaf(type: "tab"): TLeaf; getRightLeaf(split: boolean): TLeaf | null; revealLeaf(leaf: TLeaf): Promise<void> | void }
+interface PlacementLeaf { setViewState(state: {type:string;active:boolean;state:Record<string,unknown>}): Promise<void>; setPinned(pinned:boolean):void; detach(): void }
+interface PlacementWorkspace<TLeaf> { getLeaf(type: "tab"): TLeaf; revealLeaf(leaf: TLeaf): Promise<void> | void }
 
-/** Use public Workspace APIs; retain the original view if handoff fails. */
-export async function placeDashboard<TLeaf extends PlacementLeaf>(workspace: PlacementWorkspace<TLeaf>, source: TLeaf, type: string, state: Record<string, unknown>, placement: DashboardPlacement, beforeDetach?:()=>void): Promise<TLeaf> {
-  const destination=placement==="main"?workspace.getLeaf("tab"):workspace.getRightLeaf(false);
-  if(!destination||destination===source)throw new Error("未能创建 Dashboard 阅读位置。");
+/** Open a separate reader; only its newly created leaf is owned by this operation. */
+export async function openDashboardInMain<TLeaf extends PlacementLeaf>(workspace: PlacementWorkspace<TLeaf>, type: string, state: Record<string, unknown>, validate:(leaf:TLeaf)=>void): Promise<TLeaf> {
+  const destination=workspace.getLeaf("tab");
   try {
-    await destination.setViewState({type,active:true,pinned:placement==="main",state});
-    beforeDetach?.();
+    await destination.setViewState({type,active:true,state:{...state,placement:"main"}});
+    destination.setPinned(true);
     await workspace.revealLeaf(destination);
-    beforeDetach?.();
+    // Obsidian can resolve setViewState even when View.setState logged an error.
+    validate(destination);
   } catch(error) {destination.detach();throw error;}
-  source.detach();
   return destination;
 }

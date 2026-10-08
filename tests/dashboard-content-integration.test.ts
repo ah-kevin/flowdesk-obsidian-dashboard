@@ -60,29 +60,28 @@ test("compiled read-body opens the two primary sections without changing indepen
  assert.ok(h.requests.every(x=>x[0]==="GET"||(x[0]==="POST"&&x[1]==="/api/tasks/query")));
 });
 
-test("compiled Dashboard moves the whole resource into a main tab and back with reading choices",async t=>{
- const h=await setup(t);await h.view.loadTask(h.taskPath);
+test("compiled Task command opens an independent main reader with saved disclosure, position and font choices",async t=>{
+ const h=await setup(t);await h.view.setState({resourcePath:h.taskPath,placement:"sidebar",fontSize:18},{});await h.view.loadTask(h.taskPath);
  const detail=h.root.findByClass("flowdesk-task-specification")[0];assert.ok(detail);detail.open=true;h.root.scrollTop=310;
- const select=h.root.findByClass("flowdesk-reading-font-select")[0];select.value="18";
- for(const change of select.listeners.get("change")??[])change({});
- const workspace=h.plugin.app.workspace, source=h.view.leaf, moved:any[]=[];let closedSource=false;
+ const workspace=h.plugin.app.workspace, source=h.view.leaf, opened:any[]=[];let closedSource=false,revealed:any;
+ workspace.rootSplit={};source.getRoot=()=>({});
  source.view=h.view;source.detach=()=>{closedSource=true;void h.view.onClose();};
+ workspace.getLeavesOfType=()=>[source,...opened];workspace.getActiveViewOfType=()=>h.view;
  const makeLeaf=()=>{
-   const leaf:any={app:h.plugin.app,contentEl:new TestElement(),view:null,state:null,detach(){void this.view?.onClose();}};
-   leaf.setViewState=async(state:any)=>{leaf.state=state;leaf.view=h.plugin.views.get(state.type)(leaf);await leaf.view.onOpen();await leaf.view.setState(state.state,{});moved.push(leaf);};
+   const leaf:any={app:h.plugin.app,contentEl:new TestElement(),view:null,state:null,pinned:false,getRoot:()=>workspace.rootSplit,getViewState(){return {...this.state,pinned:this.pinned};},setPinned(value:boolean){this.pinned=value;},detach(){void this.view?.onClose();}};
+   leaf.setViewState=async(state:any)=>{leaf.state=state;leaf.view=h.plugin.views.get(state.type)(leaf);await leaf.view.onOpen();await leaf.view.setState(state.state,{});opened.push(leaf);};
    return leaf;
  };
  workspace.getLeaf=(type:any)=>{assert.equal(type,"tab");return makeLeaf();};
- workspace.getRightLeaf=()=>makeLeaf();workspace.revealLeaf=async()=>{};
- await h.root.findByClass("flowdesk-reading-expand")[0].click();
- assert.equal(closedSource,true);const main=moved[0];assert.equal(main.state.pinned,true);assert.equal(main.view.getState().resourcePath,h.taskPath);
+ workspace.revealLeaf=async(leaf:any)=>{revealed=leaf;};
+ await h.plugin.openDashboardInMain();
+ assert.equal(closedSource,false);const main=opened[0];assert.equal(main.getViewState().pinned,true);assert.equal(main.view.getState().resourcePath,h.taskPath);
  assert.equal(main.contentEl.findByClass("flowdesk-task-specification")[0].open,true);assert.equal(main.contentEl.scrollTop,310);
  assert.equal(main.contentEl.style["--fd-reading-font-size"],"18px");
- assert.equal(main.contentEl.findByClass("flowdesk-reading-expand")[0].text,"回到侧栏");
- await main.contentEl.findByClass("flowdesk-reading-expand")[0].click();const side=moved[1];
- assert.equal(side.state.pinned,false);assert.equal(side.contentEl.findByClass("flowdesk-reading-expand")[0].text,"放大阅读");
- assert.equal(side.contentEl.findByClass("flowdesk-task-specification")[0].open,true);assert.equal(side.contentEl.scrollTop,310);
- t.after(()=>side.view.onClose());
+ detail.open=false;main.contentEl.scrollTop=620;await h.plugin.openDashboardInMain();assert.equal(opened.length,1);assert.equal(revealed,main);
+ assert.equal(main.contentEl.findByClass("flowdesk-task-specification")[0].open,true);assert.equal(main.contentEl.scrollTop,620);assert.equal(h.root.scrollTop,310);
+ assert.equal(h.root.findByClass("flowdesk-reading-controls").length,0);
+ t.after(()=>main.view.onClose());
 });
 
 test("compiled external Markdown opens exact readonly content in current or Cmd tab and retains the Dashboard",async t=>{

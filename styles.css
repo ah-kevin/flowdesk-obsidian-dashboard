@@ -2305,17 +2305,17 @@ body .flowdesk-dashboard-settings .setting-item-control select,
 body .flowdesk-dashboard-settings .setting-item-control input:not([type="checkbox"]) { box-sizing:border-box; height:34px; min-height:34px; padding:6px 8px; font-size:13px; line-height:20px; }
 
 
-/* Compact reading column: keep marker space, avoid cumulative list indentation. */
+/* Base list spacing stays below the shared checklist marker-column rules. */
 .flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-contract-reading > details > :not(summary) { margin-inline-start:0; margin-left:0; max-width:100%; }
-.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered :is(ul,ol),
-.flowdesk-dashboard .flowdesk-task-process .flowdesk-process-records .markdown-rendered :is(ul,ol) { margin:6px 0; padding-inline-start:16px; padding-left:16px; list-style-position:outside; }
-.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered ol,
-.flowdesk-dashboard .flowdesk-task-process .flowdesk-process-records .markdown-rendered ol { padding-inline-start:20px; padding-left:20px; }
-.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered li,
-.flowdesk-dashboard .flowdesk-task-process .flowdesk-process-records .markdown-rendered li { margin:0; margin-inline-start:0; padding:2px 0; min-width:0; }
-.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered li > p { margin:0; }
-.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered :is(ul,ol):has(> li > input[type="checkbox"]) { padding-inline-start:0; padding-left:0; }
-.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered :is(ul,ol) :is(ul,ol) { margin-block-start:4px; margin-block-end:4px; }
+.flowdesk-dashboard :where(.flowdesk-contract-summary.flowdesk-reading-card) .markdown-rendered :is(ul,ol),
+.flowdesk-dashboard :where(.flowdesk-task-process .flowdesk-process-records) .markdown-rendered :is(ul,ol) { margin:6px 0; padding-inline-start:16px; padding-left:16px; list-style-position:outside; }
+.flowdesk-dashboard :where(.flowdesk-contract-summary.flowdesk-reading-card) .markdown-rendered ol,
+.flowdesk-dashboard :where(.flowdesk-task-process .flowdesk-process-records) .markdown-rendered ol { padding-inline-start:20px; padding-left:20px; }
+.flowdesk-dashboard :where(.flowdesk-contract-summary.flowdesk-reading-card) .markdown-rendered li,
+.flowdesk-dashboard :where(.flowdesk-task-process .flowdesk-process-records) .markdown-rendered li { margin:0; margin-inline-start:0; padding:2px 0; min-width:0; }
+.flowdesk-dashboard :where(.flowdesk-contract-summary.flowdesk-reading-card) .markdown-rendered li > p { margin:0; }
+.flowdesk-dashboard :where(.flowdesk-contract-summary.flowdesk-reading-card) .markdown-rendered :is(ul,ol):has(> li > input[type="checkbox"]) { padding-inline-start:0; padding-left:0; }
+.flowdesk-dashboard :where(.flowdesk-contract-summary.flowdesk-reading-card) .markdown-rendered :is(ul,ol) :is(ul,ol) { margin-block-start:4px; margin-block-end:4px; }
 
 /* Case reference choices are display state; raw targets and source ordering stay intact. */
 .flowdesk-case-dashboard .flowdesk-case-reference-count { color:var(--text-muted);font-size:10px;margin:8px 0; }
@@ -2493,7 +2493,6 @@ body .flowdesk-dashboard-settings .setting-item-control input:not([type="checkbo
   font-size: 12px;
   line-height: 1.5;
 }
-.flowdesk-dashboard .flowdesk-reading-expand,
 .flowdesk-dashboard .flowdesk-reading-font-select {
   box-sizing: border-box;
   min-height: 30px;
@@ -2506,7 +2505,6 @@ body .flowdesk-dashboard-settings .setting-item-control input:not([type="checkbo
   line-height: 1.5;
   padding: 4px 8px;
 }
-.flowdesk-dashboard .flowdesk-reading-expand { height: auto; white-space: normal; }
 .flowdesk-dashboard .flowdesk-reading-font-select { width: auto; }
 
 /* Repository documents share a natural, bounded Markdown reading surface. */
