@@ -8,6 +8,10 @@ TaskNotes 任务或 Work Case 的 FlowDesk snapshot。插件分别调用本机 F
 本项目走 GitHub Release、BRAT 或手动安装，不以提交 Obsidian 官方 Community
 Directory 作为发布路径。
 
+## 2.0.9 更新
+
+- 修复 Dashboard 只读清单复选框垂直位置偏高的问题：checkbox 继承正文的字体与行高，同时保留 14px 标记、8px 间距和多行缩进。
+
 ## 2.0.8 更新
 
 - 修正正文与过程记录中复选框被列表基础样式覆盖、与文字重叠的问题；保留多行文字的统一缩进。
