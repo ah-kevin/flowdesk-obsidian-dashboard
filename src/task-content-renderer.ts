@@ -40,9 +40,10 @@ export class TaskContentRenderer {
     };
     const disclosure = (parent:HTMLElement, title:string, key:string, cls="flowdesk-contract-item-details") => {
       const element=parent.createEl("details",{cls,attr:{"data-disclosure-key":key}});
-      element.createEl("summary",{text:title});return element;
+      element.createEl("summary",{text:title,attr:{"data-focus-key":`disclosure:${key}`}});return element;
     };
     const specification=disclosure(container,"任务说明","task-specification","flowdesk-task-specification");
+    specification.open=true;
     for(const [heading,text] of [["目标",content.goal],["背景",content.why],["范围",content.scopeText],["执行清单",content.steps]]) {
       if(!text)continue;
       const section=specification.createDiv({cls:"flowdesk-specification-section"});section.createEl("h3",{text:heading});body(section,text);
@@ -51,13 +52,14 @@ export class TaskContentRenderer {
     source(specification,{heading:"任务说明",level:2,text:content.goal});
     const items=(heading:string,entries:SnapshotContractItem[])=>{
       if(!entries.length)return;
-      const group=disclosure(container,heading,`list:${heading}`);
+      const group=disclosure(container,`${heading} · ${entries.length} 条`,`list:${heading}`);
       for(const item of entries){const entry=group.createDiv({cls:"flowdesk-specification-section"});body(entry,item.text??item.label??"");}
       source(group,{heading,level:2,text:""});
     };
     items("需求",content.requirements);items("场景",content.scenarios);
     if(content.acceptance.length) {
       const group=disclosure(container,"验收标准","acceptance","flowdesk-acceptance-group");
+      group.open=true;
       group.createDiv({cls:"flowdesk-muted",text:"仅显示原文记录；勾选不代表验证通过。修改请在任务原文进行。"});
       const list=group.createEl("ul",{cls:"flowdesk-acceptance-list"});
       for(const item of content.acceptance) {
@@ -72,8 +74,8 @@ export class TaskContentRenderer {
     if(!reading.orderComplete)container.createDiv({cls:"flowdesk-muted",text:"部分段落无可靠位置，完整顺序请查看原文件。"});
     for(const [kind,title] of [["execution","执行结果"],["verification","验证结果"],["delivery","交付记录"]] as const) {
       const records=content.records[kind];if(!records.length)continue;
-      const result=disclosure(container,title,`result:${kind}`,"flowdesk-contract-item-details flowdesk-record-round");
       const latest=latestRecord(records);
+      const result=disclosure(container,latest?`最近${title} · 摘录`:`${title} · 最近记录未确认`,`result:${kind}`,"flowdesk-contract-item-details flowdesk-record-round");
       if(latest) {
         result.createDiv({cls:"flowdesk-muted",text:"最近一条结果的首段摘录；全文和历轮结果保留在过程记录。"});
         body(result,excerpt(firstParagraph(latest.text)));source(result,latest);

@@ -25,7 +25,7 @@ test("production adapter unsupported/missing/non-Markdown/app failure never call
 });
 
 
-test("compiled_related_json_has_only_copy_and_external_fragment_opens_exact_markdown_base",async(t)=>{
+test("compiled_related_json_has_only_copy_and_external_fragment_reads_exact_markdown_without_OS_open",async(t)=>{
   const fixture=await ownedEnvironment(t);
   const {compilePlugin}=await import("./support/owned-environment.ts");const {createRequire}=await import("node:module");
   const {pathToFileURL}=await import("node:url");const {TestElement}=await import("./support/dom.ts");
@@ -33,6 +33,10 @@ test("compiled_related_json_has_only_copy_and_external_fragment_opens_exact_mark
   const plugin=new Plugin(),root=new TestElement(),copied:string[]=[],calls:any[]=[];
   plugin.app={vault:{adapter:{getBasePath:()=>fixture.env.OBSIDIAN_VAULT},on(){},getAbstractFileByPath(){return null;}},metadataCache:{on(){},getFirstLinkpathDest(){return null;}},workspace:{on(){},onLayoutReady(){}}};
   await plugin.onload();const view=plugin.views.get("flowdesk-dashboard-view")({app:plugin.app,contentEl:root});plugin.app.workspace.getLeavesOfType=()=>[{view}];t.after(()=>view.onClose());
+  const readerRoot=new TestElement(),revealed:any[]=[],contentLeaf:any={app:plugin.app,contentEl:readerRoot};
+  contentLeaf.setViewState=async(state:any)=>{contentLeaf.view=plugin.views.get(state.type)(contentLeaf);await contentLeaf.view.onOpen();await contentLeaf.view.setState(state.state,{});};
+  plugin.app.workspace.getLeaf=()=>contentLeaf;plugin.app.workspace.revealLeaf=async(leaf:any)=>{revealed.push(leaf);};
+  t.after(()=>contentLeaf.view?.onClose());
   const prior=Object.getOwnPropertyDescriptor(globalThis,"navigator");Object.defineProperty(globalThis,"navigator",{configurable:true,value:{clipboard:{writeText:async(text:string)=>{copied.push(text);}}}});
   t.after(()=>{if(prior)Object.defineProperty(globalThis,"navigator",prior);else delete (globalThis as any).navigator;});
   plugin.repositoryOpenDependencies={platform:"darwin",inspect:()=>({isFile:()=>true,isDirectory:()=>true}),execute:async(...args:any[])=>{calls.push(args);}};
@@ -45,7 +49,11 @@ test("compiled_related_json_has_only_copy_and_external_fragment_opens_exact_mark
   await view.openRelated(raw,"Tasks/Owned.md");assert.match(view.relatedTargetPanel.allText().join("\n"),/文件可定位.*章节未验证/);
   await view.relatedTargetPanel.findByClass("flowdesk-copy-related-reference")[0].click();assert.equal(copied.pop(),raw);
   await view.relatedTargetPanel.findByClass("flowdesk-open-repository-document")[0].click();
-  assert.deepEqual(calls,[["/usr/bin/open",["-a","/Applications/Obsidian.app",markdown],{timeoutMs:10000}]]);
+  assert.equal(contentLeaf.view.getViewType(),"flowdesk-repository-reader");assert.equal(contentLeaf.view.ready,true);
+  assert.equal(contentLeaf.view.getState().absolutePath,markdown);assert.deepEqual(revealed,[contentLeaf]);
+  assert.ok(readerRoot.allText().includes(markdown));
+  const body=readerRoot.findByClass("flowdesk-repository-body")[0] as any;assert.match(body.innerHTML,/<h1>Heading<\/h1>/);
+  assert.deepEqual(calls,[],"opening a readonly tab must not execute the OS opener");
 });
 
 

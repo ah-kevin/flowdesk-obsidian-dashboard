@@ -2315,9 +2315,6 @@ body .flowdesk-dashboard-settings .setting-item-control input:not([type="checkbo
 .flowdesk-dashboard .flowdesk-task-process .flowdesk-process-records .markdown-rendered li { margin:0; margin-inline-start:0; padding:2px 0; min-width:0; }
 .flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered li > p { margin:0; }
 .flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered :is(ul,ol):has(> li > input[type="checkbox"]) { padding-inline-start:0; padding-left:0; }
-.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered ul:has(> li > input[type="checkbox"]) > li:not(:has(> input[type="checkbox"])) { margin-inline-start:16px; }
-.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered li:has(> input[type="checkbox"]) { position:relative; list-style:none; padding-inline-start:20px; }
-.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered li > input[type="checkbox"] { position:absolute; inset-inline-start:0; left:0; top:4px; margin:0; width:13px; height:13px; }
 .flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered :is(ul,ol) :is(ul,ol) { margin-block-start:4px; margin-block-end:4px; }
 
 /* Case reference choices are display state; raw targets and source ordering stay intact. */
@@ -2337,9 +2334,241 @@ body .flowdesk-dashboard-settings .setting-item-control input:not([type="checkbo
 .flowdesk-dashboard .flowdesk-task-top-row > .flowdesk-parent-link { flex:1 0 100%; }
 .flowdesk-dashboard .flowdesk-task-top-row:has(> .flowdesk-parent-link) > .flowdesk-task-meta-actions { margin-left:auto; }
 
-/* Keep the native marker and its mask on the same scale within Task explanation only. */
-.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered input[type="checkbox"] { --checkbox-size:14px;width:14px;height:14px;opacity:1; }
-.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered li > input[type="checkbox"] { --checkbox-size:14px;width:14px;height:14px;top:4px;margin:0; }
-.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered .task-list-item.is-checked,
-.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered .task-list-item.is-checked :is(p,span) { text-decoration:none;color:var(--text-muted); }
-.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .markdown-rendered li:has(> input[type="checkbox"]:checked) { text-decoration:none;color:var(--text-muted); }
+/* Read-only Markdown checklists share one marker column in overview, body and history. */
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered :is(ul,ol):has(> li > input[type="checkbox"], > li > p > input[type="checkbox"]) {
+  padding-inline-start:0; padding-left:0;
+}
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered li:has(> input[type="checkbox"], > p > input[type="checkbox"]) {
+  position:relative; list-style:none; padding-block:2px; padding-inline-start:22px;
+}
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered li:has(> input[type="checkbox"], > p > input[type="checkbox"])::marker { content:""; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered ul:has(> li > input[type="checkbox"], > li > p > input[type="checkbox"]) > li:not(:has(> input[type="checkbox"], > p > input[type="checkbox"])) { margin-inline-start:22px; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered li:has(> input[type="checkbox"], > p > input[type="checkbox"]) > p { margin:0; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered li > input[type="checkbox"],
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered li > p > input[type="checkbox"] {
+  --checkbox-size:14px; position:absolute; inset-inline-start:0; left:0;
+  top:calc((1lh - 14px) / 2 + 2px); margin:0; padding:0; width:14px; height:14px; opacity:1;
+}
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered li:has(> input[type="checkbox"]:checked, > p > input[type="checkbox"]:checked),
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered .task-list-item.is-checked :is(p,span) {
+  text-decoration:none; color:var(--text-muted);
+}
+
+/* Reading width follows the actual Dashboard container, independently of the host leaf. */
+@container (max-width: 599px) {
+  .flowdesk-dashboard .flowdesk-reading-font-select { display: none; }
+}
+.flowdesk-dashboard .flowdesk-dashboard-layout {
+  display: flex;
+  flex-direction: column;
+  align-self: center;
+  width: 100%;
+  min-width: 0;
+  gap: 12px;
+}
+.flowdesk-dashboard .flowdesk-dashboard-layout > *,
+.flowdesk-dashboard .flowdesk-dashboard-main > *,
+.flowdesk-dashboard .flowdesk-dashboard-aside > * {
+  min-width: 0;
+  max-width: 100%;
+  flex-shrink: 0;
+}
+.flowdesk-dashboard .flowdesk-dashboard-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(260px, 27%, 300px);
+  align-self: center;
+  align-items: start;
+  gap: 24px;
+  width: 100%;
+  max-width: 1124px;
+  min-width: 0;
+}
+.flowdesk-dashboard .flowdesk-dashboard-main,
+.flowdesk-dashboard .flowdesk-dashboard-aside {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 20px;
+}
+.flowdesk-dashboard .flowdesk-dashboard-aside { gap: 16px; }
+
+/* These sections moved one level below the root when the layout layer was added. */
+.flowdesk-case-dashboard .flowdesk-dashboard-layout > .flowdesk-case-observation { padding: 6px 0; }
+.flowdesk-case-dashboard .flowdesk-dashboard-layout .flowdesk-case-recovery > summary {
+  font-size: 13px; font-weight: 600; color: var(--text-normal); line-height: 1.5; cursor: pointer;
+}
+.flowdesk-case-dashboard .flowdesk-dashboard-layout .flowdesk-case-recovery {
+  padding: 12px; border: 1px solid var(--fd-border); border-radius: 12px; background: var(--background-primary-alt);
+}
+.flowdesk-case-dashboard .flowdesk-dashboard-layout .flowdesk-case-recovery .flowdesk-case-recovery-row { margin-top: 9px; }
+
+@container (min-width: 600px) {
+  .flowdesk-dashboard .flowdesk-dashboard-layout {
+    max-width: 800px;
+    gap: 18px;
+  }
+  .flowdesk-dashboard .flowdesk-dashboard-layout.is-wide.has-auxiliary { max-width: 1200px; }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] {
+    font-size: var(--fd-reading-font-size, 16px);
+    line-height: 1.75;
+  }
+  .flowdesk-dashboard .flowdesk-dashboard-layout .flowdesk-task-title,
+  .flowdesk-dashboard .flowdesk-dashboard-layout .flowdesk-case-title {
+    font-size: calc(var(--fd-reading-font-size, 16px) + 6px);
+    line-height: 1.4;
+  }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .markdown-rendered,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-acceptance-item,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-log-excerpt,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-log-body,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-overview-gap,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-current-value,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-current-original,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-progress-text,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-record-text {
+    font-size: var(--fd-reading-font-size, 16px);
+    line-height: 1.75;
+  }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-dashboard-section-title,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-section-title,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-log-heading h3,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-process-entry > h2 {
+    font-size: calc(var(--fd-reading-font-size, 16px) + 1px);
+    line-height: 1.5;
+  }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-contract-reading > details > summary,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-record-group > summary,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-record-more > summary,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-specification-section h3,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-process-entry > h3 {
+    font-size: var(--fd-reading-font-size, 16px);
+    line-height: 1.5;
+  }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-label,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-summary-label,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-log-date,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-progress-time,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-record-heading {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"].flowdesk-reading-card,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"].flowdesk-task-overview,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"].flowdesk-case-section { padding: 20px; }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-section-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-record-more-grid { grid-template-columns: minmax(0, 1fr); }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-current-card { padding: 14px; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside { font-size: 14px; line-height: 1.6; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-child-title,
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-case-task-title-text,
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-reference-title,
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-dashboard-section-title,
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-case-section-title { font-size: 14px; line-height: 1.5; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-child-summary { font-size: 13px; line-height: 1.6; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-child-meta,
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-child-status,
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-case-task-meta,
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-case-task-summary,
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-case-task-status { font-size: 12px; line-height: 1.5; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-section-heading { display: block; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-section-meta { margin-top: 4px; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-child-row { grid-template-columns: 9px minmax(0, 1fr); }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-child-status { grid-column: 2; justify-self: start; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-case-task-row { grid-template-columns: minmax(0, 1fr); }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-case-task-status { justify-self: start; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-observation-grid { grid-template-columns: minmax(0, 1fr); }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-case-recovery-row { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Shared reading controls stay above both reading columns. */
+.flowdesk-dashboard .flowdesk-reading-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.flowdesk-dashboard .flowdesk-reading-expand,
+.flowdesk-dashboard .flowdesk-reading-font-select {
+  box-sizing: border-box;
+  min-height: 30px;
+  max-width: 100%;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font: inherit;
+  line-height: 1.5;
+  padding: 4px 8px;
+}
+.flowdesk-dashboard .flowdesk-reading-expand { height: auto; white-space: normal; }
+.flowdesk-dashboard .flowdesk-reading-font-select { width: auto; }
+
+/* Repository documents share a natural, bounded Markdown reading surface. */
+.flowdesk-repository-reader {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 24px;
+  overflow: auto;
+  color: var(--text-normal);
+  background: var(--background-primary);
+  font-family: var(--font-interface);
+  line-height: 1.7;
+}
+.flowdesk-repository-reader > h2,
+.flowdesk-repository-reader > p,
+.flowdesk-repository-reader > button {
+  max-width: 800px;
+  overflow-wrap: anywhere;
+}
+.flowdesk-repository-reader > h2 { margin: 0 0 12px; font-size: 22px; line-height: 1.4; }
+.flowdesk-repository-reader .flowdesk-repository-path,
+.flowdesk-repository-reader .flowdesk-repository-boundary {
+  margin: 8px 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.flowdesk-repository-reader .flowdesk-repository-status { color: var(--text-muted); font-size: 13px; overflow-wrap: anywhere; }
+.flowdesk-repository-reader .flowdesk-repository-refresh,
+.flowdesk-repository-reader .flowdesk-repository-open-original {
+  min-height: 30px;
+  height: auto;
+  margin: 4px 8px 4px 0;
+  padding: 4px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: normal;
+}
+.flowdesk-repository-reader button:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+.flowdesk-repository-reader .flowdesk-repository-body {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 800px;
+  min-width: 0;
+  height: auto;
+  margin: 24px auto 0;
+  padding: 0;
+  overflow: visible;
+  color: var(--text-normal);
+  font-size: 16px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.flowdesk-repository-reader .flowdesk-repository-body p,
+.flowdesk-repository-reader .flowdesk-repository-body li { font-size: inherit; line-height: inherit; }
+.flowdesk-repository-reader .flowdesk-repository-body pre,
+.flowdesk-repository-reader .flowdesk-repository-body table { display: block; max-width: 100%; overflow-x: auto; }
+.flowdesk-repository-reader .flowdesk-repository-body pre { font-size: 13px; line-height: 1.65; white-space: pre; overflow-wrap: normal; }
+.flowdesk-repository-reader .flowdesk-repository-body table { white-space: nowrap; overflow-wrap: normal; }
+.flowdesk-repository-reader .flowdesk-repository-body th,
+.flowdesk-repository-reader .flowdesk-repository-body td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--background-modifier-border); }

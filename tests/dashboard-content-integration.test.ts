@@ -43,6 +43,67 @@ async function setup(t:any) {
   return {fixture,plugin,view,root,taskPath,requests,opens,leaves,addVaultFile,setDetails:(d:string)=>{currentDetails=d;},setSlow:()=>{slow=true;},release:()=>{release?.();},hasWaiting:()=>!!release};
 }
 
+test("compiled read-body opens the two primary sections without changing independent history choices",async t=>{
+ const h=await setup(t);h.setDetails(details+"\n\n## 验收\n- [ ] 验收原文保留\n");await h.view.loadTask(h.taskPath);
+ const specification=h.root.findByClass("flowdesk-task-specification")[0],acceptance=h.root.findByClass("flowdesk-acceptance-group")[0];
+ assert.ok(specification&&acceptance);
+ specification.open=false;acceptance.open=false;
+ const other=h.root.querySelectorAll("details").filter(x=>x!==specification&&x!==acceptance);
+ other.forEach((el,index)=>el.open=index===0);const prior=other.map(el=>el.open);
+ const target=h.root.findByClass("flowdesk-contract-summary")[0];let positioned=false;(target as any).scrollIntoView=()=>{positioned=specification.open&&acceptance.open;};
+ (h.root as any).querySelector=(selector:string)=>selector===".flowdesk-contract-summary"?target:null;
+ await h.root.findByClass("flowdesk-reading-navigation")[0].querySelectorAll("button")[0].click();
+ assert.equal(specification.open,true);assert.equal(acceptance.open,true);assert.equal(positioned,true,"primary sections are readable before locating them");
+ assert.deepEqual(other.map(el=>el.open),prior,"history/source/other sections keep their independent choices");
+ specification.open=false;acceptance.open=false;await h.view.refreshCurrentTask();
+ assert.equal(h.root.findByClass("flowdesk-task-specification")[0].open,false);assert.equal(h.root.findByClass("flowdesk-acceptance-group")[0].open,false);
+ assert.ok(h.requests.every(x=>x[0]==="GET"||(x[0]==="POST"&&x[1]==="/api/tasks/query")));
+});
+
+test("compiled Dashboard moves the whole resource into a main tab and back with reading choices",async t=>{
+ const h=await setup(t);await h.view.loadTask(h.taskPath);
+ const detail=h.root.findByClass("flowdesk-task-specification")[0];assert.ok(detail);detail.open=true;h.root.scrollTop=310;
+ const select=h.root.findByClass("flowdesk-reading-font-select")[0];select.value="18";
+ for(const change of select.listeners.get("change")??[])change({});
+ const workspace=h.plugin.app.workspace, source=h.view.leaf, moved:any[]=[];let closedSource=false;
+ source.view=h.view;source.detach=()=>{closedSource=true;void h.view.onClose();};
+ const makeLeaf=()=>{
+   const leaf:any={app:h.plugin.app,contentEl:new TestElement(),view:null,state:null,detach(){void this.view?.onClose();}};
+   leaf.setViewState=async(state:any)=>{leaf.state=state;leaf.view=h.plugin.views.get(state.type)(leaf);await leaf.view.onOpen();await leaf.view.setState(state.state,{});moved.push(leaf);};
+   return leaf;
+ };
+ workspace.getLeaf=(type:any)=>{assert.equal(type,"tab");return makeLeaf();};
+ workspace.getRightLeaf=()=>makeLeaf();workspace.revealLeaf=async()=>{};
+ await h.root.findByClass("flowdesk-reading-expand")[0].click();
+ assert.equal(closedSource,true);const main=moved[0];assert.equal(main.state.pinned,true);assert.equal(main.view.getState().resourcePath,h.taskPath);
+ assert.equal(main.contentEl.findByClass("flowdesk-task-specification")[0].open,true);assert.equal(main.contentEl.scrollTop,310);
+ assert.equal(main.contentEl.style["--fd-reading-font-size"],"18px");
+ assert.equal(main.contentEl.findByClass("flowdesk-reading-expand")[0].text,"回到侧栏");
+ await main.contentEl.findByClass("flowdesk-reading-expand")[0].click();const side=moved[1];
+ assert.equal(side.state.pinned,false);assert.equal(side.contentEl.findByClass("flowdesk-reading-expand")[0].text,"放大阅读");
+ assert.equal(side.contentEl.findByClass("flowdesk-task-specification")[0].open,true);assert.equal(side.contentEl.scrollTop,310);
+ t.after(()=>side.view.onClose());
+});
+
+test("compiled external Markdown opens exact readonly content in current or Cmd tab and retains the Dashboard",async t=>{
+ const h=await setup(t);await h.view.loadTask(h.taskPath);
+ const absolute=h.fixture.path("原文 report.md"),original="# 原文报告\n\n正文保留。\n";writeFileSync(absolute,original);
+ const workspace=h.plugin.app.workspace,calls:any[]=[],opened:any[]=[];
+ const makeLeaf=()=>{
+  const leaf:any={app:h.plugin.app,contentEl:new TestElement(),state:{type:"markdown"},view:{getViewType:()=>"markdown"},getViewState(){return this.state;}};
+  leaf.setViewState=async(state:any)=>{leaf.state=state;leaf.view=h.plugin.views.get(state.type)(leaf);await leaf.view.onOpen();await leaf.view.setState(state.state,{});opened.push(leaf);};return leaf;
+ };
+ const content=makeLeaf(),dashboard={view:h.view,getViewState:()=>({type:"flowdesk-dashboard-view"})};
+ workspace.getMostRecentLeaf=()=>content;workspace.getLeaf=(type:any)=>{calls.push(type);return type==="tab"?makeLeaf():dashboard;};
+ workspace.revealLeaf=async()=>{};
+ await h.plugin.openRepositoryInWorkspace(absolute);assert.equal(opened[0],content);assert.equal(content.view.ready,true);
+ assert.ok(content.contentEl.findByClass("flowdesk-repository-body")[0].innerHTML.includes("正文保留。"));assert.equal(h.view.getState().resourcePath,h.taskPath);
+ await h.plugin.openRepositoryInWorkspace(absolute,{metaKey:true});assert.notEqual(opened[1],content);
+ assert.deepEqual(calls,[false,"tab"]);assert.equal(readFileSync(absolute,"utf8"),original);
+ assert.ok(h.root.allText().join(" ").includes("任务详情"));
+ t.after(async()=>{for(const leaf of opened)await leaf.view.onClose();});
+});
+
 test("plain_requirements_remain_available_in_full_api_data via compiled Dashboard and real producer, zero writes",async(t)=>{
   const {view,root,taskPath,requests,opens}=await setup(t);
   await view.loadTask(taskPath);

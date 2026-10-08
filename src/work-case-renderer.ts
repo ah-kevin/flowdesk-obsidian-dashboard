@@ -43,6 +43,8 @@ export class WorkCaseDashboardRenderer {
   private readonly taskChoices = new Map<string,{selected:Set<string>;known:Set<string>}>();
   private readonly referenceList=new CaseReferenceList();
   constructor(private readonly dependencies: WorkCaseRendererDependencies) {}
+  snapshotReadingChoices():unknown[] {return this.referenceList.snapshot();}
+  restoreReadingChoices(value:unknown):void {this.referenceList.restoreSnapshot(value);}
 
   reset(container: HTMLElement): void {
     this.referenceList.deactivate();

@@ -1,6 +1,6 @@
 import {marked} from "marked";
 const notify=(text:string)=>(window as any).previewNotify?.(text);
-const element=(tag:string,options:any={})=>{const el=document.createElement(tag);if(typeof options==="string")options={cls:options};if(options.cls)el.className=options.cls;if(options.text!==undefined)el.textContent=options.text;for(const [key,value]of Object.entries(options.attr??{}))el.setAttribute(key,String(value));return el;};
+const element=(tag:string,options:any={})=>{const el=document.createElement(tag);if(typeof options==="string")options={cls:options};if(options.cls)el.className=options.cls;if(options.text!==undefined)el.textContent=options.text;if(options.value!==undefined)(el as HTMLInputElement).value=String(options.value);for(const [key,value]of Object.entries(options.attr??{}))el.setAttribute(key,String(value));return el;};
 Object.assign(HTMLElement.prototype,{
   createEl(this:HTMLElement,tag:string,options:any={}){const el=element(tag,options);this.appendChild(el);return el;},
   createDiv(this:HTMLElement,options:any={}){return (this as any).createEl("div",options);},
@@ -26,7 +26,7 @@ export class Plugin {
   registerView(type:string,factory:any){this.views.set(type,factory);}
   addRibbonIcon(){}addCommand(command:any){this.commands.push(command);}registerEvent(){}addSettingTab(){}
 }
-export class ItemView extends Component {app:any;contentEl:HTMLElement;containerEl:HTMLElement;constructor(leaf:any){super();this.app=leaf.app;this.contentEl=leaf.contentEl;this.containerEl=leaf.contentEl;this.load();}}
+export class ItemView extends Component {app:any;leaf:any;contentEl:HTMLElement;containerEl:HTMLElement;constructor(leaf:any){super();this.leaf=leaf;this.app=leaf.app;this.contentEl=leaf.contentEl;this.containerEl=leaf.contentEl;this.load();}}
 export class MarkdownView {}
 export class WorkspaceLeaf {}
 export class TAbstractFile {}

@@ -149,14 +149,14 @@ test("schema 4 explicit legacy_v3 即使带 scope_text 也保持旧数组路径"
   });
 });
 
-test("Task content renderer 将文本 Scope 默认折叠并交给 MarkdownRenderer", () => {
+test("Task content renderer 将文本 Scope 默认展开并交给 MarkdownRenderer", () => {
   const root = new TestElement();
   const rendered: string[] = [];
   const model = createDashboardViewModel(createV4Snapshot({ scope_text: "原 Scope\n" }));
   new TaskContentRenderer({ renderMarkdown: async (text) => { rendered.push(text); }, openSource: async () => {} }).render(root as any, model.content);
   assert.ok(rendered.includes("原 Scope\n"));
   const specification = root.findByClass("flowdesk-task-specification")[0];
-  assert.equal(specification.open, false);
+  assert.equal(specification.open, true);
   assert.ok(specification.allText().includes("范围"));
 });
 

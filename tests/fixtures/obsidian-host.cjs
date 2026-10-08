@@ -14,7 +14,7 @@ class Plugin {
   registerView(name,factory){this.views.set(name,factory);}
   addRibbonIcon(){} addCommand(){} registerEvent(){} addSettingTab(){}
 }
-class ItemView extends Component { constructor(leaf){super();this.app=leaf.app;this.contentEl=leaf.contentEl;this.containerEl=leaf.contentEl;this.load();} }
+class ItemView extends Component { constructor(leaf){super();this.leaf=leaf;this.app=leaf.app;this.contentEl=leaf.contentEl;this.containerEl=leaf.contentEl;this.load();} }
 class Modal {
   constructor(app){this.app=app;const Element=app.workspace.getLeavesOfType()[0].view.contentEl.constructor;this.contentEl=new Element('div');this.titleEl=new Element('h2');this.containerEl=new Element('div');this.containerEl.appendChild(this.titleEl);this.containerEl.appendChild(this.contentEl);}
   open(){this.app.activeModal=this;this.onOpen?.();}

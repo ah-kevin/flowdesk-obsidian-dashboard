@@ -1,16 +1,17 @@
 /** DOM double only; no installed Obsidian or browser acceptance. */
 export class TestElement {
   children: TestElement[]=[]; classes=new Set<string>(); listeners=new Map<string,Function[]>();
-  text=""; open=false; disabled=false; attrs:Record<string,string>={}; style:any={}; parentElement:TestElement|null=null;
-  ownerDocument:any=null;
+  text=""; open=false; disabled=false; attrs:Record<string,string>={}; style:any={setProperty(name:string,value:string){this[name]=value;},getPropertyValue(name:string){return this[name]??"";}}; parentElement:TestElement|null=null;
+  ownerDocument:any={activeElement:null,defaultView:null};scrollTop=0;scrollLeft=0;clientWidth=0;
+  classList={contains:(name:string)=>this.classes.has(name),add:(...names:string[])=>this.addClass(...names),remove:(name:string)=>this.removeClass(name)};
   constructor(readonly tag="div",options:any={}){this.text=options.text??"";this.attrs=options.attr??{};this.addClass(options.cls??"");}
   addClass(...names:string[]){for(const name of names.join(" ").split(/\s+/).filter(Boolean))this.classes.add(name);}
   removeClass(name:string){this.classes.delete(name);}
   createDiv(options:any={}){return this.createEl("div",options);}
   createSpan(options:any={}){return this.createEl("span",options);}
   createEl(tag:string,options:any={}){const el=new TestElement(tag,options);this.appendChild(el);return el;}
-  appendChild(el:TestElement){el.parentElement=this;el.ownerDocument=this.ownerDocument;this.children.push(el);return el;}
-  empty(){this.children=[];this.text="";}
+  appendChild(el:TestElement){el.remove();el.parentElement=this;el.ownerDocument=this.ownerDocument;this.children.push(el);return el;}
+  empty(){if(this.ownerDocument?.activeElement&&this.contains(this.ownerDocument.activeElement))this.ownerDocument.activeElement=this.ownerDocument.body??null;for(const child of this.children)child.parentElement=null;this.children=[];this.text="";}
   setText(text:string){this.text=text;}
   focus(){if(this.ownerDocument)this.ownerDocument.activeElement=this;}
   setAttr(k:string,v:string){this.attrs[k]=v;}
@@ -22,7 +23,7 @@ export class TestElement {
   get textContent():string {return this.allText().join("");}
   getAttribute(key:string){return this.attrs[key]??null;}
   querySelectorAll(selector:string):TestElement[]{return [...this.children.filter(x=>x.tag===selector),...this.children.flatMap(x=>x.querySelectorAll(selector))];}
-  remove(){if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(x=>x!==this);}
+  remove(){if(this.ownerDocument?.activeElement&&this.contains(this.ownerDocument.activeElement))this.ownerDocument.activeElement=this.ownerDocument.body??null;if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(x=>x!==this);this.parentElement=null;}
   findByClass(name:string):TestElement[]{return [...(this.classes.has(name)?[this]:[]),...this.children.flatMap(x=>x.findByClass(name))];}
   allText():string[]{return [this.text,...this.children.flatMap(x=>x.allText())].filter(Boolean);}
 }

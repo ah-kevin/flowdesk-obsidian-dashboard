@@ -18,3 +18,14 @@ export const posix={sep,normalize,join,resolve,dirname,basename,extname,isAbsolu
 export const request=unavailable;
 export const fileURLToPath=(value:string|URL)=>decodeURIComponent((typeof value==="string"?new URL(value):value).pathname);
 export const pathToFileURL=(value:string)=>new URL("file://"+resolve(value).split("/").map(encodeURIComponent).join("/"));
+export const TextDecoder=globalThis.TextDecoder;
+const previewBytes=(file:string):Uint8Array=>{
+  const value=(window as any).__PREVIEW_DATA__.repositoryFiles?.[file];
+  if(typeof value!=="string")throw Error("本地预览未取材此库外文件。");
+  return new TextEncoder().encode(value);
+};
+export const stat=async(file:string)=>({isFile:()=>true,size:previewBytes(file).length});
+export const open=async(file:string,mode:string)=>{
+  if(mode!=="r")throw Error("预览只读。");const data=previewBytes(file);
+  return {stat:async()=>({isFile:()=>true,size:data.length}),read:async(buffer:Uint8Array,offset:number,length:number,position:number)=>{const part=data.subarray(position,position+length);buffer.set(part,offset);return{bytesRead:part.length};},close:async()=>{}};
+};

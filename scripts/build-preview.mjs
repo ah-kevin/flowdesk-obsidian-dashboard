@@ -5,7 +5,7 @@ const args=process.argv.slice(2),value=name=>args[args.indexOf(name)+1];
 if(!args.includes("--data")||!args.includes("--out")||!args.includes("--runtime-modules"))throw Error("Use --data <local read-only snapshot JSON> --out <HTML file> --runtime-modules <bundled packages>");
 const output=path.resolve(value("--out")),dataset=JSON.parse(readFileSync(value("--data"),"utf8"));
 const node=path.resolve("scripts/preview/node.ts");
-const aliases=Object.fromEntries(["fs","os","path","util","child_process","http","https","url","node:url","node:fs","node:os","node:path","node:util","node:child_process","node:http","node:https"].map(name=>[name,node]));
+const aliases=Object.fromEntries(["fs","fs/promises","os","path","util","child_process","http","https","url","node:url","node:fs","node:fs/promises","node:os","node:path","node:util","node:child_process","node:http","node:https"].map(name=>[name,node]));
 const result=await build({entryPoints:["scripts/preview/entry.ts"],bundle:true,write:false,format:"iife",platform:"browser",target:"es2020",alias:{...aliases,obsidian:path.resolve("scripts/preview/host.ts"),marked:path.join(value("--runtime-modules"),"marked/lib/marked.esm.js")}});
 const source=result.outputFiles[0].text.replace(/<\/script/gi,"<\\/script"),data=JSON.stringify(dataset).replace(/</g,"\\u003c");
 const css=readFileSync("styles.css","utf8");

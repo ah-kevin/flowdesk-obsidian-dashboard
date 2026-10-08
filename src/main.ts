@@ -14,6 +14,7 @@ import {
   TFile,
   TAbstractFile,
   WorkspaceLeaf,
+  ViewStateResult,
 } from "obsidian";
 import { execFile } from "child_process";
 import {
@@ -106,6 +107,9 @@ import { latestRecord } from "./task-overview";
 import { createTaskCurrentProgress } from "./task-current-progress";
 import { excerpt, firstParagraph } from "./reading-presentation";
 import { DashboardActionsModal, DashboardContentModal, createReadOnlyTextModal } from "./dashboard-dialogs";
+import { applyDashboardLayout } from "./dashboard-layout";
+import { placeDashboard, selectContentLeaf, type DashboardPlacement } from "./dashboard-placement";
+import { FLOWDESK_REPOSITORY_VIEW_TYPE, RepositoryReaderView } from "./repository-reader-view";
 
 export const FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
 
@@ -139,9 +143,27 @@ export default class FlowDeskDashboardPlugin extends Plugin {
   private readonly snapshotCores = new WeakMap<object,CoreResolution>();
   settings!: FlowDeskDashboardSettings;
   repositoryOpenDependencies: RepositoryOpenDependencies = {};
+  private openingRepository = 0;
+  private changingPlacement = 0;
 
   openRepositoryMarkdown(absolutePath: string): Promise<RepositoryOpenResult> {
     return new RepositoryMarkdownOpener(this.repositoryOpenDependencies).open(absolutePath);
+  }
+  async openRepositoryInWorkspace(absolutePath:string,event?:NavigationModifiers,stillCurrent:()=>boolean=()=>true):Promise<void> {
+    this.openingRepository++;
+    try {
+      const leaf=selectContentLeaf(this.app.workspace,FLOWDESK_DASHBOARD_VIEW_TYPE,!!(event?.metaKey||event?.ctrlKey));
+      await leaf.setViewState({type:FLOWDESK_REPOSITORY_VIEW_TYPE,active:false,state:{absolutePath}});
+      if(!stillCurrent())return;
+      await this.app.workspace.revealLeaf(leaf);
+      if(!(leaf.view instanceof RepositoryReaderView)||!leaf.view.ready)throw new Error(leaf.view instanceof RepositoryReaderView?leaf.view.readError||"原文件尚未读取完成":"只读视图未能加载");
+    } finally {this.openingRepository--;}
+  }
+  async changeDashboardPlacement(view:FlowDeskDashboardView,placement:DashboardPlacement):Promise<void> {
+    const state:Record<string,unknown>={...view.getState(),placement};this.changingPlacement++;
+    try {await placeDashboard(this.app.workspace,view.leaf,FLOWDESK_DASHBOARD_VIEW_TYPE,state,placement,()=>{
+      if(view.getState().resourcePath!==state.resourcePath)throw new Error("阅读对象已切换，请在当前看板重试。");
+    });}finally{this.changingPlacement--;}
   }
 
   async onload() {
@@ -150,6 +172,10 @@ export default class FlowDeskDashboardPlugin extends Plugin {
       FLOWDESK_DASHBOARD_VIEW_TYPE,
       (leaf) => new FlowDeskDashboardView(leaf, this)
     );
+    this.registerView(FLOWDESK_REPOSITORY_VIEW_TYPE,leaf=>new RepositoryReaderView(leaf,{openOriginal:async absolutePath=>{
+      const outcome=await this.openRepositoryMarkdown(absolutePath);
+      if(outcome.kind!=="accepted")throw new Error(outcome.message);
+    }}));
     this.addRibbonIcon("layout-dashboard", "FlowDesk Dashboard", () => {
       void this.refreshDashboard();
     });
@@ -170,6 +196,7 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     });
     this.registerEvent(
       this.app.workspace.on("file-open", (file) => {
+        if(!file&&(this.openingRepository||this.changingPlacement||this.app.workspace.getActiveViewOfType(FlowDeskDashboardView)||this.app.workspace.getActiveViewOfType(RepositoryReaderView)))return;
         void this.getDashboardView()?.syncToActiveFile(file);
       })
     );
@@ -203,6 +230,7 @@ export default class FlowDeskDashboardPlugin extends Plugin {
   async onunload() {
     if (this.settingsRefresh) clearTimeout(this.settingsRefresh);
     this.app.workspace.detachLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(FLOWDESK_REPOSITORY_VIEW_TYPE);
   }
 
   async refreshDashboard(fallbackTaskPath = "") {
@@ -447,6 +475,10 @@ class FlowDeskDashboardView extends ItemView {
   private navigationOpening: {path:string;signal:AbortSignal} | null = null;
   private relatedTargetPanel: HTMLElement | null = null;
   private resourceModal:DashboardContentModal|null=null;
+  private readingFontSize=16;
+  private placement:DashboardPlacement="sidebar";
+  private restoredInitialState=false;
+  private layoutCleanup:(()=>void)|null=null;
 
   private closeResourceModal():void {
     const modal=this.resourceModal;this.resourceModal=null;this.relatedTargetPanel=null;modal?.close();
@@ -549,12 +581,47 @@ class FlowDeskDashboardView extends ItemView {
   getIcon() {
     return "layout-dashboard";
   }
+  getState():Record<string,unknown> {
+    this.readingState.capture(this.renderedResource,this.contentEl);
+    return {resourcePath:"resourcePath" in this.shell.context?this.shell.context.resourcePath:"",placement:this.placement,fontSize:this.readingFontSize,reading:this.readingState.snapshot(),references:this.caseRenderer.snapshotReadingChoices()};
+  }
+  async setState(value:unknown,_result:ViewStateResult):Promise<void> {
+    if(!value||typeof value!=="object")return;
+    const state=value as Record<string,unknown>;
+    this.placement=state.placement==="main"?"main":"sidebar";
+    this.readingFontSize=[14,16,18].includes(state.fontSize as number)?state.fontSize as number:16;
+    this.readingState.restoreSnapshot(state.reading);
+    this.caseRenderer.restoreReadingChoices(state.references);
+    if(typeof state.resourcePath!=="string"||!state.resourcePath)return;
+    const file=this.app.vault.getAbstractFileByPath(state.resourcePath);
+    if(!(file instanceof TFile)||file.path!==state.resourcePath||!(this.plugin.isTaskFile(file)||["work-case","session"].includes(this.plugin.workCaseType(file))))throw new Error("原 Task/Case 已无法确认，保留原阅读位置。");
+    this.restoredInitialState=true;
+    await this.syncToActiveFile(file);
+    if(this.shell.context.kind==="task"&&!this.taskAdapter.getRenderState()?.snapshot)throw new Error("任务读取失败，保留原 Dashboard。");
+    if(this.shell.context.kind===this.caseAdapter.kind&&!this.caseAdapter.getRenderState()?.model)throw new Error("案卷读取失败，保留原 Dashboard。");
+  }
+  private renderReadingControls(container:HTMLElement):void {
+    const row=container.createDiv({cls:"flowdesk-reading-controls"});
+    const inMain=this.placement==="main"||(this.leaf?.getRoot?.()===this.app.workspace.rootSplit&&!!this.app.workspace.rootSplit);
+    const expand=row.createEl("button",{cls:"flowdesk-reading-expand",text:inMain?"回到侧栏":"放大阅读",attr:{"aria-label":inMain?"回到侧栏":"在主区域放大阅读"}});
+    expand.disabled=!this.renderedResource;
+    expand.addEventListener("click",async()=>{
+      if(expand.disabled)return;expand.disabled=true;
+      try {await this.plugin.changeDashboardPlacement(this,inMain?"sidebar":"main");}
+      catch(error){new Notice(`未能切换阅读位置：${error instanceof Error?error.message:String(error)}`);expand.disabled=false;}
+    });
+    const size=row.createEl("select",{cls:"flowdesk-reading-font-select",attr:{"aria-label":"阅读字号"}});
+    for(const value of [14,16,18])size.createEl("option",{text:`${value}px`,value:String(value)});
+    size.value=String(this.readingFontSize);
+    size.addEventListener("change",()=>{const value=Number(size.value);if(![14,16,18].includes(value))return;this.readingFontSize=value;container.style?.setProperty("--fd-reading-font-size",`${value}px`);});
+    container.style?.setProperty("--fd-reading-font-size",`${this.readingFontSize}px`);
+  }
 
   async onOpen() {
     this.cancelInitialSync = registerInitialDashboardSync(
       (callback) => this.app.workspace.onLayoutReady(callback),
       () => {
-        void this.syncToActiveFile();
+        if(!this.restoredInitialState)void this.syncToActiveFile();
       }
     );
   }
@@ -646,6 +713,7 @@ class FlowDeskDashboardView extends ItemView {
   }
 
   private clearRenderLifetime():void {
+    this.layoutCleanup?.();this.layoutCleanup=null;
     this.renderController.abort();
     if(this.markdownScope)this.removeChild(this.markdownScope);
     this.markdownScope=null;
@@ -666,6 +734,7 @@ class FlowDeskDashboardView extends ItemView {
     container.empty();
     this.caseRenderer.reset(container);
     container.addClass("flowdesk-dashboard");
+    this.renderReadingControls(container);
     try {
     if (this.shell.context.kind === this.taskAdapter.kind) {
       this.taskAdapter.render(container);
@@ -690,6 +759,7 @@ class FlowDeskDashboardView extends ItemView {
       });
     }
     } finally {
+      if(this.shell.context.kind===this.taskAdapter.kind||this.shell.context.kind===this.caseAdapter.kind)this.layoutCleanup=applyDashboardLayout(container,this.shell.context.kind===this.taskAdapter.kind?"task":"case");
       const resource=this.renderedResource;
       this.readingState.restore(resource,container,{position:false});
       this.rendering=false;
@@ -764,7 +834,14 @@ class FlowDeskDashboardView extends ItemView {
     if (presentation.primaryStatus.diagnostic) this.renderPrimaryDiagnostic(overview, presentation.primaryStatus, model.currentTask.title, model.currentTask.id);
     const navigation = container.createDiv({cls:"flowdesk-reading-navigation"});
     const read = navigation.createEl("button",{text:"阅读正文",attr:{"data-focus-key":"read-body"}});
-    read.addEventListener("click",()=>{const target=this.contentEl.querySelector<HTMLElement>(".flowdesk-contract-summary");target?.scrollIntoView?.({block:"start",behavior:"smooth"});});
+    read.addEventListener("click",()=>{
+      const target=this.contentEl.querySelector<HTMLElement>(".flowdesk-contract-summary");
+      if(!target)return;
+      for(const section of Array.from(target.querySelectorAll<HTMLDetailsElement>("details"))) {
+        if(["task-specification","acceptance"].includes(section.getAttribute("data-disclosure-key")??""))section.open=true;
+      }
+      target.scrollIntoView?.({block:"start",behavior:"smooth"});
+    });
     if (presentation.children.length) {
       this.renderChildren(container, model, presentation.children);
     }
@@ -1007,9 +1084,12 @@ class FlowDeskDashboardView extends ItemView {
 
   private async openNavigationFile(file: TFile, signal: AbortSignal, event?: NavigationModifiers): Promise<boolean> {
     const opening = {path:file.path,signal};this.navigationOpening = opening;
-    try { await this.app.workspace.getLeaf(taskNavigationLeafType("current", event)).openFile(file); return true; }
+    try { await this.navigationLeaf("current",event).openFile(file); return true; }
     catch (error) { if (!signal.aborted) new Notice(`无法打开准确原文：${error instanceof Error ? error.message : String(error)}`); return false; }
     finally { if (this.navigationOpening === opening) this.navigationOpening = null; }
+  }
+  private navigationLeaf(origin:TaskNavigationOrigin,event?:NavigationModifiers):WorkspaceLeaf {
+    return selectContentLeaf(this.app.workspace,FLOWDESK_DASHBOARD_VIEW_TYPE,taskNavigationLeafType(origin,event)==="tab");
   }
 
   private async openSnapshotSource(taskPath: string, source?: SnapshotSource, sourceKind = "来源", text = "", event?: NavigationModifiers): Promise<void> {
@@ -1403,9 +1483,7 @@ class FlowDeskDashboardView extends ItemView {
       new Notice(`未找到任务文件：${taskPath}`);
       return;
     }
-    await this.app.workspace
-      .getLeaf(taskNavigationLeafType(origin, event))
-      .openFile(file);
+    await this.navigationLeaf(origin,event).openFile(file);
   }
 
   private async openCaseSource(casePath: string, source: WorkCaseSourceRange, event?: NavigationModifiers): Promise<void> {
@@ -1449,7 +1527,7 @@ class FlowDeskDashboardView extends ItemView {
   private async openCaseProperties(casePath:string,event?:NavigationModifiers):Promise<void> {
     const file=this.app.vault.getAbstractFileByPath(casePath);
     if(!(file instanceof TFile)||file.path!==casePath||!["work-case","session"].includes(this.plugin.workCaseType(file))){new Notice("无法确认原Case文件，请从文件列表核对。");return;}
-    await this.app.workspace.getLeaf(taskNavigationLeafType("current",event)).openFile(file,{active:true,state:{mode:"source"}});
+    await this.navigationLeaf("current",event).openFile(file,{active:true,state:{mode:"source"}});
     new Notice("在Case顶部属性中维护project、plans、docs和related；保存后看板会刷新。Dashboard不会代写这些属性。");
   }
 
@@ -1479,16 +1557,15 @@ class FlowDeskDashboardView extends ItemView {
           if (!target.fragment) return;
           // Literal #, percent or edge-whitespace filenames keep their exact TFile; fragment location remains unverified.
         } else {
+          if(taskNavigationLeafType("current",event)===false)this.app.workspace.setActiveLeaf?.(this.navigationLeaf("current",event),{focus:false});
           await this.app.workspace.openLinkText(target.linkText, sourcePath, taskNavigationLeafType("current", event));return;
         }
       }
     }
-    let firstOutcome:RepositoryOpenResult|null=null;
+    let firstError="";
     if(direct&&target.kind==="repository"&&/\.md$/i.test(path.extname(target.absolutePath))){
-      new Notice("正在打开文档…");
-      try{firstOutcome=await this.plugin.openRepositoryMarkdown(target.absolutePath);}catch{firstOutcome={kind:"unknown",message:"打开结果未知；请核对原文件，不自动重试。"};}
+      try{await this.plugin.openRepositoryInWorkspace(target.absolutePath,event,request.current);if(request.current()&&target.fragment)new Notice("已打开准确原文件，章节位置尚未定位。");if(request.current())return;}catch(error){firstError=`只读读取失败：${error instanceof Error?error.message:String(error)}`;}
       if(!request.current())return;
-      if(firstOutcome.kind==="accepted"){new Notice(firstOutcome.message);return;}
     }
     const modal=this.displayResourceModal(new DashboardContentModal(this.app,"引用资料",()=>{}));
     const panel = modal.contentEl.createDiv({cls:"flowdesk-dashboard-section flowdesk-related-target"});this.relatedTargetPanel = panel;
@@ -1505,18 +1582,15 @@ class FlowDeskDashboardView extends ItemView {
     }
     if (target.kind === "repository" && /\.md$/i.test(path.extname(target.absolutePath))) {
       const documentPath = target.absolutePath;
-      const result = panel.createDiv({cls:"flowdesk-repository-open-feedback",attr:{role:"status"},text:firstOutcome?.message??"点击后向 Obsidian 提交打开此原文件的请求。"});
-      const openDocument = panel.createEl("button",{cls:"flowdesk-open-repository-document",text:"在 Obsidian 打开文档",attr:{"aria-label":"明确向指定Obsidian提交此Markdown原文件"}});
-      openDocument.addEventListener("click",async()=>{
+      const result = panel.createDiv({cls:"flowdesk-repository-open-feedback",attr:{role:"status"},text:firstError||"在 Obsidian 内只读查看准确原文件，Cmd/Ctrl 点击在新标签页打开。"});
+      const openDocument = panel.createEl("button",{cls:"flowdesk-open-repository-document",text:"只读打开文档",attr:{"aria-label":"在Obsidian只读查看准确Markdown原文件"}});
+      openDocument.addEventListener("click",async event=>{
         if(openDocument.disabled)return;
-        openDocument.disabled=true;result.setText("正在提交打开请求…");
-        try { const outcome=await this.plugin.openRepositoryMarkdown(documentPath); result.setText(outcome.message); }
-        catch { result.setText("打开请求结果未知；请核对原文件，保留复制路径，不自动重试。"); }
+        openDocument.disabled=true;result.setText("正在读取原文件…");
+        try { await this.plugin.openRepositoryInWorkspace(documentPath,event,request.current);if(request.current())this.closeResourceModal(); }
+        catch(error) { if(request.current())result.setText(`只读读取失败：${error instanceof Error?error.message:String(error)}`); }
         finally { openDocument.disabled=false; }
       });
-      const steps = `${pathText}\n在Obsidian命令面板选择 Open file from outside the vault…，选择此路径对应的原文件。`;
-      panel.createDiv({cls:"flowdesk-muted",text:steps});
-      const copySteps = panel.createEl("button",{text:"复制打开步骤"});copySteps.addEventListener("click",()=>{void navigator.clipboard.writeText(steps);});
     } else if (isFileTarget && /\.json$/i.test(path.extname(pathText))) {
       panel.createDiv({cls:"flowdesk-muted",text:"JSON资料仅提供准确路径与原引用；可通过关联的Markdown证据索引查看说明。"});
     }

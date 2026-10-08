@@ -4,6 +4,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import test from "node:test";
 import { TestElement } from "./support/dom.ts";
+import { installReaderWorkspace } from "./support/reader-workspace.ts";
 import { resumeFixture } from "./support/resume-fixture.ts";
 import { compilePlugin, CORE_ROOT } from "./support/owned-environment.ts";
 import { buildSnapshotInvocation } from "../src/snapshot-invocation.ts";
@@ -22,7 +23,15 @@ async function setup(t:any, reading=false, references: "valid"|"gaps"|null=null)
   const old=Object.getOwnPropertyDescriptor(globalThis,"navigator");Object.defineProperty(globalThis,"navigator",{configurable:true,value:{clipboard:{writeText:async(text:string)=>{copied.push(text);}}}});
   t.after(()=>{if(old)Object.defineProperty(globalThis,"navigator",old);else delete (globalThis as any).navigator;});
   view=plugin.views.get("flowdesk-dashboard-view")({app:plugin.app,contentEl:root});t.after(()=>view.onClose());
-  return {fixture,plugin,view,root,opens,cursors,copied,files,setEditorOverride:(text:string|null)=>{editorOverride=text;},setDeferredRead:(read:(()=>Promise<string>)|null)=>{deferRead=read;}};
+  const readers=installReaderWorkspace(plugin,t);
+  return {fixture,plugin,view,root,opens,cursors,copied,files,readers,setEditorOverride:(text:string|null)=>{editorOverride=text;},setDeferredRead:(read:(()=>Promise<string>)|null)=>{deferRead=read;}};
+}
+
+async function assertReaderFile(leaf:any,absolutePath:string):Promise<void>{
+ assert.equal(leaf.view.getViewType(),"flowdesk-repository-reader");assert.equal(leaf.view.ready,true);assert.equal(leaf.view.getState().absolutePath,absolutePath);
+ assert.ok(leaf.contentEl.allText().includes(absolutePath));const body=leaf.contentEl.findByClass("flowdesk-repository-body")[0];assert.ok(body?.innerHTML);
+ await leaf.contentEl.findByClass("flowdesk-repository-source-toggle")[0].click();assert.equal(leaf.contentEl.findByClass("flowdesk-repository-source")[0].text,readFileSync(absolutePath,"utf8"));
+ await leaf.contentEl.findByClass("flowdesk-repository-source-toggle")[0].click();
 }
 
 async function recoveryRoot(view:any,root:TestElement):Promise<TestElement> {
@@ -76,8 +85,8 @@ test("approved native groups keep lazy full history readable and its position th
   const {fixture,view,root}=await setup(t,true);const task=fixture.tasks[0];
   await view.loadTask(task.id);
   const details=root.findByClass("flowdesk-contract-summary")[0],process=root.findByClass("flowdesk-task-process")[0];
-  assert.ok(process);assert.equal(process.parentElement,root);
-  assert.equal(root.findByClass("flowdesk-task-technical")[0].parentElement,root);
+  assert.ok(process);assert.equal(process.parentElement,root.findByClass("flowdesk-dashboard-layout")[0]);
+  assert.equal(root.findByClass("flowdesk-task-technical")[0].parentElement,root.findByClass("flowdesk-dashboard-layout")[0]);
   assert.equal(details.findByClass("flowdesk-progress-log").length,0);
   assert.equal(process.findByClass("flowdesk-process-records").length,1);
   assert.match(process.allText().join("\n"),/早期执行原文|普通H3原文|人工说明原文/);
@@ -151,15 +160,15 @@ test("approved daily view keeps API data offscreen and exposes Case recovery thr
   assert.ok(fixture.requests.every(x=>x.method==="GET"||(x.method==="POST"&&x.url==="/api/tasks/query")));
 });
 
-test("curated Markdown entry opens the verified original once on the first explicit click and failures stay visible",async t=>{
-  const {fixture,plugin,view,root}=await setup(t,true,"valid");await view.syncToActiveFile({path:fixture.casePath,extension:"md"});
-  const calls:any[]=[];plugin.repositoryOpenDependencies={platform:"darwin",inspect:(p:string)=>({isFile:()=>!p.endsWith('.app'),isDirectory:()=>p.endsWith('.app')}),execute:async(...args:any[])=>{calls.push(args);throw Error('owned open failure');}};
-  const reference=fixture.referenceFixture.markdown;
-  await showAllCaseReferences(root);
-  const button=root.findByClass("flowdesk-case-related-link").find(x=>x.attrs.title===reference)!;assert.ok(button);await button.click();
-  const end=Date.now()+3000;while(!plugin.app.activeModal&&Date.now()<end)await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(calls.length,1);assert.equal(calls[0][1][2],fixture.referenceFixture.markdownPath);
-  assert.ok(plugin.app.activeModal);assert.match(plugin.app.activeModal.contentEl.allText().join("\n"),/错误|未知|核对/);
+test("curated Markdown entry reads the verified original on the first click and Cmd creates another tab",async t=>{
+  const {fixture,plugin,view,root,readers,opens}=await setup(t,true,"valid");await view.syncToActiveFile({path:fixture.casePath,extension:"md"});
+  const calls:any[]=[];plugin.repositoryOpenDependencies={platform:"darwin",inspect:()=>({isFile:()=>true,isDirectory:()=>true}),execute:async(...args:any[])=>{calls.push(args);throw Error('owned open failure');}};
+  const reference=fixture.referenceFixture.markdown,file=fixture.referenceFixture.markdownPath;
+  await showAllCaseReferences(root);const button=root.findByClass("flowdesk-case-related-link").find(x=>x.attrs.title===reference)!;assert.ok(button);await button.click();
+  const end=Date.now()+3000;while(!readers.current.view?.ready&&Date.now()<end)await new Promise(resolve=>setImmediate(resolve));
+  await assertReaderFile(readers.current,file);assert.equal(readers.revealed.length,1);assert.deepEqual(calls,[]);assert.deepEqual(opens,[]);
+  const first=readers.current;await view.openRelated(reference,fixture.casePath,undefined,true,{metaKey:true});
+  assert.notEqual(readers.current,first);await assertReaderFile(readers.current,file);assert.deepEqual(calls,[]);assert.deepEqual(opens,[]);
   assert.equal(root.findByClass("flowdesk-related-target").length,0);
 });
 
@@ -174,17 +183,19 @@ test("UX: one ended Task overview shows result and verification instead of an ac
 
 test("UX: inner reading choices and scroll survive same Task refresh and API read, but another Task is isolated",async t=>{
   const {fixture,view,root}=await setup(t,true);await view.loadTask(fixture.tasks[0].id);
-  root.findByClass("flowdesk-task-specification")[0].open=true;
+  root.findByClass("flowdesk-task-specification")[0].open=false;
   root.findByClass("flowdesk-process-records")[0].open=true;
   (root as any).scrollTop=431;
   await view.refreshCurrentTask();
-  assert.equal(root.findByClass("flowdesk-task-specification")[0].open,true);
+  assert.equal(root.findByClass("flowdesk-task-specification")[0].open,false);
   assert.equal(root.findByClass("flowdesk-process-records")[0].open,true);
   assert.equal((root as any).scrollTop,431);
   await view.loadRawTaskContent(fixture.tasks[0].id);
+  assert.equal(root.findByClass("flowdesk-task-specification")[0].open,false);
   assert.equal(root.findByClass("flowdesk-process-records")[0].open,true);
   await view.loadTask(fixture.tasks[1].id);
-  assert.equal(root.findByClass("flowdesk-task-specification")[0].open,false);
+  assert.equal(root.findByClass("flowdesk-task-specification")[0].open,true);
+  assert.equal(root.findByClass("flowdesk-process-records")[0].open,false);
   assert.equal((root as any).scrollTop,0);
   assert.ok(fixture.requests.every(x=>x.method==="GET"||(x.method==="POST"&&x.url==="/api/tasks/query")));
 });
@@ -387,22 +398,20 @@ test("navigation follow-up P2: decoded entity label cannot grant another occurre
   }
 });
 
-test("explicit compiled document-open click consumes production adapter through owned boundary once and retains feedback/path on error",async(t)=>{
-  const {fixture,plugin,view,root}=await setup(t);const {statSync,mkdirSync,writeFileSync}=await import("node:fs");
+test("explicit document-open reads registered View; optional OS request stays independent and failed reads retain feedback",async(t)=>{
+  const {fixture,plugin,view,readers}=await setup(t);const {statSync,mkdirSync,writeFileSync,unlinkSync}=await import("node:fs");
   const app=fixture.path("owned-app"),binary=fixture.path("owned-app-binary");mkdirSync(app);writeFileSync(binary,"owned inert binary metadata");
-  const file=path.join(fixture.cwd,"docs/中文 空格 #1.md");const calls:any[]=[];let reject=false;
+  const file=path.join(fixture.cwd,"docs/中文 空格 #1.md"),original=readFileSync(file,"utf8");const calls:any[]=[];let reject=false;
   plugin.repositoryOpenDependencies={platform:"darwin",inspect:(p:string)=>statSync(p==="/Applications/Obsidian.app"?app:p==="/Applications/Obsidian.app/Contents/MacOS/Obsidian"?binary:p),execute:async(...args:any[])=>{calls.push(args);if(reject)throw Error("owned failed submission");}};
-  await view.loadTask(fixture.tasks[0].id);await view.openRelated(file,fixture.tasks[0].id);assert.equal(calls.length,0,"viewing/navigating/copying is not an implicit launch");
-  const open=view.relatedTargetPanel.findByClass("flowdesk-open-repository-document")[0];assert.ok(open);
-  await open.click();assert.deepEqual(calls,[["/usr/bin/open",["-a","/Applications/Obsidian.app",file],{timeoutMs:10000}]]);
-  assert.match(view.relatedTargetPanel.allText().join("\n"),/打开请求已提交/);assert.doesNotMatch(root.allText().join("\n"),/文件已打开|原位保存成功/);
-  reject=true;await open.click();assert.equal(calls.length,2,"one attempt per new explicit click, no auto retry");
-  assert.match(view.relatedTargetPanel.allText().join("\n"),/结果未知|是否打开未知/);assert.equal(view.relatedTargetPanel.findByClass("flowdesk-copy-related-path").length,1);
-  reject=false;let release:()=>void=()=>{};
-  plugin.repositoryOpenDependencies.execute=async(...args:any[])=>{calls.push(args);await new Promise<void>(resolve=>{release=resolve;});};
-  const pending=open.click();await new Promise(resolve=>setImmediate(resolve));await open.click();assert.equal(calls.length,3,"busy button rejects concurrent duplicate click");release();await pending;
-  plugin.repositoryOpenDependencies.platform="linux";await open.click();assert.equal(calls.length,3);assert.match(view.relatedTargetPanel.allText().join("\n"),/当前平台.*参数/);
-  assert.ok(fixture.requests.every(r=>r.method==="GET"||(r.method==="POST"&&r.url==="/api/tasks/query")));
+  await view.loadTask(fixture.tasks[0].id);await view.openRelated(file,fixture.tasks[0].id);assert.equal(calls.length,0);
+  const open=view.relatedTargetPanel.findByClass("flowdesk-open-repository-document")[0];assert.ok(open);await open.click();await assertReaderFile(readers.current,file);assert.equal(calls.length,0,"readonly reading must not launch OS");
+  const osButton=readers.current.contentEl.findByClass("flowdesk-repository-open-original")[0];assert.ok(osButton);await osButton.click();
+  assert.deepEqual(calls,[["/usr/bin/open",["-a","/Applications/Obsidian.app",file],{timeoutMs:10000}]]);assert.match(readers.current.contentEl.allText().join("\n"),/已提交系统打开请求/);
+  reject=true;await osButton.click();assert.equal(calls.length,2);assert.match(readers.current.contentEl.allText().join("\n"),/结果未知|是否打开未知/);
+  assert.equal(readers.current.view.ready,true,"OS submission failure does not invalidate successful read");
+  await view.openRelated(file,fixture.tasks[0].id);const panel=view.relatedTargetPanel;unlinkSync(file);await panel.findByClass("flowdesk-open-repository-document")[0].click();
+  assert.equal(readers.current.view.ready,false);assert.match(panel.allText().join("\n"),/只读读取失败/);assert.equal(panel.findByClass("flowdesk-copy-related-path").length,1);assert.equal(calls.length,2);
+  writeFileSync(file,original);assert.ok(fixture.requests.every(r=>r.method==="GET"||(r.method==="POST"&&r.url==="/api/tasks/query")));
 });
 
 test("final navigation P2: Markdown body literal hash opens confirmed vault TFile instead of native subpath",async(t)=>{
@@ -427,7 +436,7 @@ test("snapshot_progress_displays_latest_event_without_api_read via real writer H
   const viewStart=fixture.requests.length;await view.loadTask(task.id);assert.deepEqual(fixture.requests.slice(viewStart).map(({method,url})=>({method,url})),baseline,"top must add no direct GET to snapshot baseline");
   const top=root.findByClass("flowdesk-task-current-progress")[0];assert.ok(top,"current Progress is visible above collapsed task details");
   assert.ok(top.allText().includes(fixture.largeProgress));assert.ok(top.allText().includes(fixture.currentNext));assert.ok(top.findByClass("flowdesk-muted").some(x=>x.attrs.title?.includes("2026-10-03T13:00:00+09:00")));assert.doesNotMatch(top.allText().join("\n"),/不可冒充最新/);
-  assert.ok(root.children.findIndex(x=>x.classes.has("flowdesk-task-overview"))<root.children.findIndex(x=>x.classes.has("flowdesk-contract-summary")));
+  assert.ok(root.findByClass("flowdesk-dashboard-layout")[0].children.findIndex(x=>x.classes.has("flowdesk-task-overview"))<root.findByClass("flowdesk-dashboard-layout")[0].children.findIndex(x=>x.classes.has("flowdesk-contract-summary")));
   const currentContent=view.taskAdapter.getRenderState().snapshot.contract.task_contract.domain_sections.find((section:any)=>section.heading==="Progress");assert.ok(Buffer.byteLength(currentContent.text,"utf8")>1024);assert.ok(currentContent.text.includes(fixture.largeProgress.split("\n")[1]));
   const body=root.findByClass("flowdesk-process-records")[0].allText().join("\n");const markers=["早期执行原文。","普通H3原文。","早期验证原文。","人工说明原文。","早期未实施（历史原文）。"];assert.ok(markers.every((text,index)=>body.indexOf(text)>=0&&(index===0||body.indexOf(text)>body.indexOf(markers[index-1]))));
   const noReadStart=fixture.requests.length;view.renderShell();const details=root.findByClass("flowdesk-contract-summary")[0];details.open=true;for(const callback of details.listeners.get("toggle")??[])await callback();assert.equal(fixture.requests.length,noReadStart);
@@ -501,7 +510,7 @@ async function clickCaseReference(view:any,root:TestElement,raw:string){
 }
 
 for(const scenario of ["valid","gaps"] as const)test(`joint_case_references_${scenario}_preserve_producer_core_and_compiled_dashboard_identity`,async(t)=>{
-  const {fixture,plugin,view,root,copied,opens,files}=await setup(t,false,scenario),refs=fixture.referenceFixture!;
+  const {fixture,plugin,view,root,copied,opens,files,readers}=await setup(t,false,scenario),refs=fixture.referenceFixture!;
   const {existsSync}=await import("node:fs"),{createHash}=await import("node:crypto");
   const hash=(file:string)=>createHash("sha256").update(readFileSync(file)).digest("hex");
   const tracked=[fixture.absoluteCase,...fixture.tasks.map(task=>path.join(fixture.env.OBSIDIAN_VAULT!,task.id)),refs.markdownPath,refs.indexPath,refs.jsonPath,refs.decoyPath,...refs.rawSpaceDecoys,...refs.bracketPlans.map(raw=>path.join(fixture.cwd,raw)),...refs.vaultPaths.map(relative=>path.join(fixture.env.OBSIDIAN_VAULT!,relative))];
@@ -523,14 +532,14 @@ for(const scenario of ["valid","gaps"] as const)test(`joint_case_references_${sc
   const buttons=root.findByClass("flowdesk-case-related-link");assert.equal(buttons.find(button=>button.attrs.title===refs.markdown)?.findByClass("flowdesk-reference-title")[0]?.text,"编码实施方案（中文）");assert.equal(buttons.find(button=>button.attrs.title===refs.wiki)?.findByClass("flowdesk-reference-title")[0]?.text,"Vault方案");assert.equal(buttons.find(button=>button.attrs.title===refs.index)?.findByClass("flowdesk-reference-title")[0]?.text,"受控证据索引");
   await clickCaseReference(view,root,refs.markdown);assert.match(view.relatedTargetPanel.allText().join("\n"),/章节未验证/);assert.ok(view.relatedTargetPanel.allText().some((text:string)=>text.includes("#Heading%20one")));
   await view.relatedTargetPanel.findByClass("flowdesk-copy-related-path")[0].click();assert.equal(copied.pop(),refs.markdownPath);await view.relatedTargetPanel.findByClass("flowdesk-copy-related-reference")[0].click();assert.equal(copied.pop(),refs.markdown);
-  await view.relatedTargetPanel.findByClass("flowdesk-open-repository-document")[0].click();assert.deepEqual(calls,[["/usr/bin/open",["-a","/Applications/Obsidian.app",refs.markdownPath],{timeoutMs:10000}]]);
-  await clickCaseReference(view,root,refs.jsonPath);assert.equal(view.relatedTargetPanel.findByClass("flowdesk-open-repository-document").length,0);await view.relatedTargetPanel.findByClass("flowdesk-copy-related-path")[0].click();assert.equal(copied.pop(),refs.jsonPath);await view.relatedTargetPanel.findByClass("flowdesk-copy-related-reference")[0].click();assert.equal(copied.pop(),refs.jsonPath);assert.equal(calls.length,1,"JSON has zero additional executor calls");
+  await view.relatedTargetPanel.findByClass("flowdesk-open-repository-document")[0].click();await assertReaderFile(readers.current,refs.markdownPath);assert.deepEqual(calls,[],"readonly reference does not execute OS opener");
+  await clickCaseReference(view,root,refs.jsonPath);assert.equal(view.relatedTargetPanel.findByClass("flowdesk-open-repository-document").length,0);await view.relatedTargetPanel.findByClass("flowdesk-copy-related-path")[0].click();assert.equal(copied.pop(),refs.jsonPath);await view.relatedTargetPanel.findByClass("flowdesk-copy-related-reference")[0].click();assert.equal(copied.pop(),refs.jsonPath);assert.equal(calls.length,0,"JSON has zero executor calls");
   if(scenario==="gaps")for(const raw of [refs.missing,refs.invalid,...refs.rawSpaceRefs]){
-    await clickCaseReference(view,root,raw);assert.equal(view.relatedTargetPanel.findByClass("flowdesk-open-repository-document").length,0);await view.relatedTargetPanel.findByClass("flowdesk-copy-related-path")[0].click();assert.equal(copied.pop(),raw);assert.equal(calls.length,1);assert.ok(view.relatedTargetPanel.allText().some((text:string)=>text.includes(raw===refs.invalid?"查询":raw===refs.missing?refs.missingPath:path.isAbsolute(raw)?raw:path.join(fixture.cwd,raw))));
+    await clickCaseReference(view,root,raw);assert.equal(view.relatedTargetPanel.findByClass("flowdesk-open-repository-document").length,0);await view.relatedTargetPanel.findByClass("flowdesk-copy-related-path")[0].click();assert.equal(copied.pop(),raw);assert.equal(calls.length,0);assert.ok(view.relatedTargetPanel.allText().some((text:string)=>text.includes(raw===refs.invalid?"查询":raw===refs.missing?refs.missingPath:path.isAbsolute(raw)?raw:path.join(fixture.cwd,raw))));
   }
   for(const raw of refs.bracketPlans){
     await clickCaseReference(view,root,raw);await view.relatedTargetPanel.findByClass("flowdesk-copy-related-path")[0].click();assert.equal(copied.pop(),path.join(fixture.cwd,raw));
-    await view.relatedTargetPanel.findByClass("flowdesk-copy-related-reference")[0].click();assert.equal(copied.pop(),raw);assert.equal(calls.length,1,"raw filename copies are not implicit opener calls");
+    await view.relatedTargetPanel.findByClass("flowdesk-copy-related-reference")[0].click();assert.equal(copied.pop(),raw);assert.equal(calls.length,0,"raw filename copies are not implicit opener calls");
   }
   // Wiki navigation remains the real source-aware route, without a filesystem/percent fallback.
   const wikiButton=root.findByClass("flowdesk-case-related-link").find(button=>button.attrs.title===refs.wiki)!;await wikiButton.click();const wikiDeadline=Date.now()+3000;while(!opens.includes("Notes/Plans/Vault plan.md#Decision")&&Date.now()<wikiDeadline)await new Promise(resolve=>setImmediate(resolve));assert.ok(opens.includes("Notes/Plans/Vault plan.md#Decision"));

@@ -25,6 +25,17 @@ export class CaseReferenceList {
   constructor(private readonly capacity=20){}
   deactivate():void {this.generation++;}
   clear():void {this.deactivate();this.choices.clear();}
+  snapshot():unknown[] {return [...this.choices].map(([casePath,choice])=>({casePath,query:choice.query,open:[...choice.open],all:[...choice.all]}));}
+  restoreSnapshot(value:unknown):void {
+    this.clear();if(!Array.isArray(value))return;
+    for(const item of value.slice(-this.capacity)) {
+      if(!item||typeof item!=="object"||typeof item.casePath!=="string"||!item.casePath||item.casePath.length>4096)continue;
+      const open=new Map<string,boolean>(),all=new Set<string>();
+      if(Array.isArray(item.open))for(const pair of item.open.slice(0,32))if(Array.isArray(pair)&&typeof pair[0]==="string"&&typeof pair[1]==="boolean")open.set(pair[0],pair[1]);
+      if(Array.isArray(item.all))for(const group of item.all.slice(0,32))if(typeof group==="string")all.add(group);
+      this.choices.set(item.casePath,{query:typeof item.query==="string"?item.query.slice(0,4096):"",open,all});
+    }
+  }
 
   render(container:HTMLElement,casePath:string,groups:ReferenceGroup[],dependencies:Dependencies):void {
     let choice=this.choices.get(casePath);

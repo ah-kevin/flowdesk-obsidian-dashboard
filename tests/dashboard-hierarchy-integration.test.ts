@@ -101,7 +101,7 @@ test("compiled Task keeps done and cancel ended subtrees separate from successfu
  assert.equal(h.root.findByClass("flowdesk-task-history")[0].findByClass("flowdesk-child-row").length,2);
  assert.doesNotMatch(h.root.allText().join(" "),/可信完成|验收通过|阻塞于 Past/);
  assert.match(h.root.allText().join(" "),/来源读取完整/);
- const classes=h.root.children.map(x=>[...x.classes].join(" ")).join("|");
+ const classes=h.root.findByClass("flowdesk-dashboard-layout")[0].children.map(x=>[...x.classes].join(" ")).join("|");
  assert.match(classes,/flowdesk-task-header.*flowdesk-trust-summary.*flowdesk-task-overview.*flowdesk-child-section.*flowdesk-contract-summary/);
 });
 

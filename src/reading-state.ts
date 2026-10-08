@@ -26,6 +26,19 @@ function scrollTargets(container:HTMLElement):Array<[string,HTMLElement]> {
 export class ReadingStateCache {
   private readonly entries=new Map<string,ReadingState>();
   constructor(private readonly capacity=20) {}
+  snapshot(): unknown[] {
+    return [...this.entries].map(([key,state])=>({key,open:[...state.open],scroll:state.scroll,nested:[...state.nested].map(([id,value])=>[id,{...value}]),focus:state.focus}));
+  }
+  restoreSnapshot(value:unknown):void {
+    this.clear();if(!Array.isArray(value))return;
+    for(const item of value.slice(-this.capacity)) {
+      if(!item||typeof item!=="object"||typeof item.key!=="string"||!item.key||item.key.length>4096)continue;
+      const open=new Map<string,boolean>(),nested=new Map<string,{scroll:number;items:string|null}>();
+      if(Array.isArray(item.open))for(const pair of item.open.slice(0,1000))if(Array.isArray(pair)&&typeof pair[0]==="string"&&typeof pair[1]==="boolean")open.set(pair[0],pair[1]);
+      if(Array.isArray(item.nested))for(const pair of item.nested.slice(0,1000))if(Array.isArray(pair)&&typeof pair[0]==="string"&&pair[1]&&typeof pair[1]==="object")nested.set(pair[0],{scroll:Number.isFinite(pair[1].scroll)?Math.max(0,pair[1].scroll):0,items:typeof pair[1].items==="string"?pair[1].items:null});
+      this.entries.set(item.key,{open,nested,scroll:Number.isFinite(item.scroll)?Math.max(0,item.scroll):0,focus:typeof item.focus==="string"?item.focus:null});
+    }
+  }
   capture(key:string,container:HTMLElement,options:{position?:boolean}={}):void {
     if(!key)return;
     const list=disclosures(container);if(!list.length)return;

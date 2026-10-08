@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { TaskContentRenderer } from "../src/task-content-renderer.ts";
+import { ReadingStateCache } from "../src/reading-state.ts";
 import { TestElement } from "./support/dom.ts";
 
 const section={heading:"Execution Result (2026-10-01 10:00)",level:2,text:"\n原文\n```ts\nconst x=1;\n```",source:{section:"Execution Result",line_start:10}};
@@ -23,6 +24,78 @@ test("all Markdown and repeated rounds remain readable with a single static acce
 
 
 const readingContent=(domainSections:any[],records:any)=>({taskId:"Tasks/Reading.md",goal:"",why:"",scopeText:"",steps:"",domainSections,records,requirements:[],scenarios:[],acceptance:[]});
+
+const renderReadingContent=(content:any)=>{
+  const root=new TestElement();
+  new TaskContentRenderer({renderMarkdown:async(text,element)=>(element as any).setText(text),openSource:async()=>{}}).render(root as any,content);
+  return root;
+};
+const disclosureByKey=(root:TestElement,key:string)=>root.querySelectorAll("details").find(element=>element.getAttribute("data-disclosure-key")===key)!;
+
+test("a new task exposes specification and acceptance while optional groups remain folded",()=>{
+  const content=readingContent([],{execution:[section],verification:[section],delivery:[section]}) as any;
+  content.goal="任务目标原文";content.requirements=[{text:"第一条需求"},{text:"第二条需求"}];content.scenarios=[{text:"一个场景"}];content.acceptance=[{text:"验收原文",checked:false}];
+  const before=JSON.stringify(content),root=renderReadingContent(content);
+  assert.equal(disclosureByKey(root,"task-specification").open,true,"the task specification is readable on first visit");
+  assert.equal(disclosureByKey(root,"acceptance").open,true,"acceptance is readable on first visit");
+  for(const key of ["list:需求","list:场景","result:execution","result:verification","result:delivery","process-records"])assert.equal(disclosureByKey(root,key).open,false,`${key} remains optional`);
+  assert.equal(disclosureByKey(root,"list:需求").querySelectorAll("summary")[0].textContent,"需求 · 2 条");
+  assert.equal(disclosureByKey(root,"list:场景").querySelectorAll("summary")[0].textContent,"场景 · 1 条");
+  assert.equal(JSON.stringify(content),before);
+});
+
+test("saved explicit closed choices override reading defaults after a refresh and transfer",()=>{
+  const content=readingContent([],{execution:[section],verification:[],delivery:[]}) as any;
+  content.requirements=[{text:"需求原文"}];content.acceptance=[{text:"验收原文",checked:true}];
+  const first=renderReadingContent(content),cache=new ReadingStateCache();
+  assert.equal(disclosureByKey(first,"task-specification").open,true);
+  assert.equal(disclosureByKey(first,"acceptance").open,true);
+  disclosureByKey(first,"task-specification").open=false;disclosureByKey(first,"acceptance").open=false;
+  disclosureByKey(first,"list:需求").open=true;disclosureByKey(first,"process-records").open=true;
+  cache.capture("task:Tasks/Reading.md",first as any);
+  const transferred=new ReadingStateCache();transferred.restoreSnapshot(cache.snapshot());
+  const refreshed=renderReadingContent(content);transferred.restore("task:Tasks/Reading.md",refreshed as any);
+  assert.equal(disclosureByKey(refreshed,"task-specification").open,false);
+  assert.equal(disclosureByKey(refreshed,"acceptance").open,false);
+  assert.equal(disclosureByKey(refreshed,"list:需求").open,true);
+  assert.equal(disclosureByKey(refreshed,"process-records").open,true);
+  const other=renderReadingContent({...content,taskId:"Tasks/Other.md"});transferred.restore("task:Tasks/Other.md",other as any);
+  assert.equal(disclosureByKey(other,"task-specification").open,true);
+  assert.equal(disclosureByKey(other,"acceptance").open,true);
+  assert.equal(disclosureByKey(other,"list:需求").open,false);
+  assert.equal(disclosureByKey(other,"process-records").open,false);
+});
+
+test("changed item counts retain the focused requirement group and its expanded choice",()=>{
+  const content=readingContent([],{execution:[],verification:[],delivery:[]}) as any;
+  content.requirements=[{text:"需求一"},{text:"需求二"}];
+  const first=renderReadingContent(content),group=disclosureByKey(first,"list:需求"),summary=group.querySelectorAll("summary")[0],cache=new ReadingStateCache();
+  group.open=true;summary.focus();cache.capture("task:Tasks/Reading.md",first as any);
+  const refreshed=renderReadingContent({...content,requirements:[...content.requirements,{text:"需求三"}]}),nextGroup=disclosureByKey(refreshed,"list:需求"),nextSummary=nextGroup.querySelectorAll("summary")[0];
+  cache.restore("task:Tasks/Reading.md",refreshed as any);
+  assert.equal(nextSummary.textContent,"需求 · 3 条");
+  assert.equal(nextSummary.getAttribute("data-focus-key"),"disclosure:list:需求");
+  assert.equal(nextGroup.open,true);
+  assert.equal(refreshed.ownerDocument.activeElement,nextSummary,"focus follows the same group when its count changes");
+});
+
+test("folded result groups identify recent excerpts without presenting unconfirmed rounds as latest",()=>{
+  const earlier={heading:"Execution Result",level:2,text:"早期执行正文",source:{line_start:10}};
+  const latest={heading:"Execution Result",level:2,text:"最近执行首段\n\n最近执行完整尾部",source:{line_start:30}};
+  const verification={heading:"Verification Result",level:2,text:"验证首段\n\n验证完整尾部",source:{line_start:40}};
+  const delivery={heading:"Delivery Record",level:2,text:"交付首段\n\n交付完整尾部",source:{line_start:50}};
+  const content=readingContent([],{execution:[latest,earlier],verification:[verification],delivery:[delivery]}),before=JSON.stringify(content),root=renderReadingContent(content);
+  for(const [key,title,excerptText] of [["result:execution","最近执行结果 · 摘录","最近执行首段"],["result:verification","最近验证结果 · 摘录","验证首段"],["result:delivery","最近交付记录 · 摘录","交付首段"]]) {
+    const group=disclosureByKey(root,key);assert.equal(group.open,false);
+    assert.equal(group.querySelectorAll("summary")[0].textContent,title);
+    assert.ok(group.allText().includes(excerptText));assert.doesNotMatch(group.allText().join("\n"),/完整尾部|早期执行正文/);
+  }
+  const history=disclosureByKey(root,"process-records");assert.equal(history.open,false);
+  assert.deepEqual(history.findByClass("flowdesk-process-entry").map(entry=>entry.findByClass("flowdesk-contract-scope-markdown")[0].textContent),[earlier.text,latest.text,verification.text,delivery.text]);
+  const uncertain=renderReadingContent(readingContent([],{execution:[earlier,{...latest,source:undefined}],verification:[],delivery:[]}));
+  assert.equal(disclosureByKey(uncertain,"result:execution").querySelectorAll("summary")[0].textContent,"执行结果 · 最近记录未确认");
+  assert.equal(JSON.stringify(content),before);
+});
 test("results_keep_source_order_across_record_types_and_plain_h3",async()=>{
   const e={heading:"Execution Result",level:2,text:"执行正文",source:{line_start:10,line_end:12}};
   const h3={heading:"普通标题",level:3,text:"普通H3正文",source:{line_start:14,line_end:17}};
