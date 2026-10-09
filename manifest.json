@@ -1,9 +1,9 @@
 {
   "id": "flowdesk-dashboard",
   "name": "FlowDesk Dashboard",
-  "version": "2.0.10",
+  "version": "2.0.11",
   "minAppVersion": "1.5.0",
-  "description": "Read-only FlowDesk execution dashboard for the current TaskNotes task.",
+  "description": "FlowDesk execution dashboard for the current TaskNotes task (read-only), plus a doc hub that can write pinned/reviewed frontmatter.",
   "author": "FlowDesk",
   "main": "main.js",
   "isDesktopOnly": true

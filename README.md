@@ -8,6 +8,10 @@ TaskNotes 任务或 Work Case 的 FlowDesk snapshot。插件分别调用本机 F
 本项目走 GitHub Release、BRAT 或手动安装，不以提交 Obsidian 官方 Community
 Directory 作为发布路径。
 
+## 2.0.11 更新
+
+- 修正 `manifest.json` 的插件描述：Dashboard 仍只读，文档中心的“置顶 / 已回看”会写文档 frontmatter。代码无其他改动。
+
 ## 2.0.10 更新
 
 - 新增命令“打开文档中心”：在 Obsidian 内浏览 `Notes/Docs`、`Notes/Plans`、`Notes/Research` 顶层 Markdown 文档，实时读取 frontmatter，不依赖 Core 或 TaskNotes。
