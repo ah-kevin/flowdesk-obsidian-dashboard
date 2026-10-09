@@ -110,6 +110,8 @@ import { DashboardActionsModal, DashboardContentModal, createReadOnlyTextModal }
 import { applyDashboardLayout } from "./dashboard-layout";
 import { openDashboardInMain as openMainDashboard, selectContentLeaf, type DashboardPlacement } from "./dashboard-placement";
 import { FLOWDESK_REPOSITORY_VIEW_TYPE, RepositoryReaderView } from "./repository-reader-view";
+import { DOC_HUB_HOVER_SOURCE, DOC_HUB_VIEW_TYPE, DocHubView, openDocHub } from "./doc-hub-view";
+import { normalizePrefs, type DocHubPrefs } from "./doc-hub-style";
 
 export const FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
 
@@ -121,6 +123,7 @@ interface FlowDeskDashboardSettings {
   workingDirectory: string;
   apiUrl: string;
   tasknotesEnv: string;
+  docHub?: DocHubPrefs;
 }
 
 const DEFAULT_SETTINGS: FlowDeskDashboardSettings = {
@@ -201,9 +204,12 @@ export default class FlowDeskDashboardPlugin extends Plugin {
       const outcome=await this.openRepositoryMarkdown(absolutePath);
       if(outcome.kind!=="accepted")throw new Error(outcome.message);
     }}));
+    this.registerView(DOC_HUB_VIEW_TYPE,leaf=>new DocHubView(leaf,{prefs:()=>this.settings.docHub,savePrefs:prefs=>this.saveDocHubPrefs(prefs)}));
+    this.registerHoverLinkSource?.(DOC_HUB_HOVER_SOURCE,{display:"文档中心",defaultMod:false});
     this.addRibbonIcon("layout-dashboard", "FlowDesk Dashboard", () => {
       void this.refreshDashboard();
     });
+    this.addCommand({id:"open-doc-hub",name:"打开文档中心",callback:()=>void openDocHub(this.app.workspace)});
     this.addCommand({id:"open-dashboard-in-main",name:"在主区域打开 Dashboard",callback:()=>this.openDashboardInMain()});
     this.addCommand({
       id: "show-current-task-dashboard",
@@ -254,6 +260,13 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     if (this.settingsRefresh) clearTimeout(this.settingsRefresh);
     this.app.workspace.detachLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(FLOWDESK_REPOSITORY_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(DOC_HUB_VIEW_TYPE);
+  }
+
+  /** 文档中心偏好独立保存：不走 saveSettings，避免重置 Core 解析并触发 Dashboard 刷新。 */
+  async saveDocHubPrefs(prefs: DocHubPrefs) {
+    this.settings.docHub = normalizePrefs(prefs);
+    await this.saveData(this.settings);
   }
 
   async refreshDashboard(fallbackTaskPath = "") {

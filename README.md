@@ -8,6 +8,15 @@ TaskNotes 任务或 Work Case 的 FlowDesk snapshot。插件分别调用本机 F
 本项目走 GitHub Release、BRAT 或手动安装，不以提交 Obsidian 官方 Community
 Directory 作为发布路径。
 
+## 2.0.10 更新
+
+- 新增命令“打开文档中心”：在 Obsidian 内浏览 `Notes/Docs`、`Notes/Plans`、`Notes/Research` 顶层 Markdown 文档，实时读取 frontmatter，不依赖 Core 或 TaskNotes。
+- 三个视角：最近（按文件修改时间分今天 / 7 天 / 30 天 / 更早）、按项目（`project` 与 `projects` 合并，多项目文档在每个项目下出现）、常驻（`pinned: true`）。支持类型筛选、搜索，`superseded` / `archived` 默认隐藏并可开关。
+- 常驻视角：没有 `reviewed` 的文档显示“未回看”并排最前，其余按距上次回看最久排前；绿 < 7 天、黄 < 30 天、红 ≥ 30 天。置顶会刷新文件修改时间，所以回看状态只看 `reviewed`，不看修改时间。
+- `T` 切换深浅主题，`S` 循环四种风格（经典 / 信号流 / 蓝图 / 编辑）；`/` 搜索，`1` `2` `3` 切视角，`Esc` 清空。选择保存在插件设置的 `docHub`。
+- 卡片上的“置顶 / 取消置顶 / 已回看”会通过 Obsidian 的 `processFrontMatter` 写入该文档的 `pinned` / `reviewed`，正文不改。`processFrontMatter` 会重新序列化整段 frontmatter，其他键的值不变，但写法可能被规范化（例如行内 `tags: [a, b]` 变为块列表）。
+- 悬停卡片可预览笔记；点击在内容标签页打开，Cmd/Ctrl 点击新开标签页。
+
 ## 2.0.9 更新
 
 - 修复 Dashboard 只读清单复选框垂直位置偏高的问题：checkbox 继承正文的字体与行高，同时保留 14px 标记、8px 间距和多行缩进。
