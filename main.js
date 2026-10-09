@@ -9654,6 +9654,7 @@ var DOC_HUB_VIEW_TYPE = "flowdesk-doc-hub";
 var DOC_HUB_HOVER_SOURCE = "flowdesk-doc-hub";
 var RECENT_CAP = 48;
 var REFRESH_DELAY = 300;
+var HOVER_DELAY = 700;
 var TABS = [["recent", "\u6700\u8FD1"], ["project", "\u6309\u9879\u76EE"], ["pinned", "\u5E38\u9A7B"]];
 async function openDocHub(workspace) {
   const existing = workspace.getLeavesOfType(DOC_HUB_VIEW_TYPE)[0];
@@ -9673,6 +9674,7 @@ var DocHubView = class extends import_obsidian3.ItemView {
     this.projectOpen = /* @__PURE__ */ new Map();
     this.generation = 0;
     this.timer = null;
+    this.hoverTimer = null;
     this.closed = false;
     this.processor = (file, mutate) => this.app.fileManager.processFrontMatter(file, mutate);
     this.prefs = normalizePrefs(host.prefs());
@@ -9706,6 +9708,7 @@ var DocHubView = class extends import_obsidian3.ItemView {
     this.generation++;
     if (this.timer !== null) window.clearTimeout(this.timer);
     this.timer = null;
+    this.cancelHover();
   }
   currentTheme() {
     var _a;
@@ -9926,7 +9929,21 @@ var DocHubView = class extends import_obsidian3.ItemView {
         open2(event);
       }
     });
-    card.addEventListener("mouseover", (event) => this.app.workspace.trigger("hover-link", { event, source: DOC_HUB_HOVER_SOURCE, hoverParent: this, targetEl: card, linktext: doc.path }));
+    card.addEventListener("mouseenter", (event) => this.scheduleHover(card, doc, event));
+    card.addEventListener("mouseleave", () => this.cancelHover());
+  }
+  /** 悬停预览防抖：停留满 HOVER_DELAY 才触发，划过不弹；同一时间只保留一个待触发。 */
+  scheduleHover(card, doc, event) {
+    this.cancelHover();
+    this.hoverTimer = window.setTimeout(() => {
+      this.hoverTimer = null;
+      if (this.closed || !card.isConnected) return;
+      this.app.workspace.trigger("hover-link", { event, source: DOC_HUB_HOVER_SOURCE, hoverParent: this, targetEl: card, linktext: doc.path });
+    }, HOVER_DELAY);
+  }
+  cancelHover() {
+    if (this.hoverTimer !== null) window.clearTimeout(this.hoverTimer);
+    this.hoverTimer = null;
   }
   fileOf(doc) {
     const file = this.app.vault.getAbstractFileByPath(doc.path);

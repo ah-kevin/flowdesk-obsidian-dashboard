@@ -8,6 +8,10 @@ TaskNotes 任务或 Work Case 的 FlowDesk snapshot。插件分别调用本机 F
 本项目走 GitHub Release、BRAT 或手动安装，不以提交 Obsidian 官方 Community
 Directory 作为发布路径。
 
+## 2.0.12 更新
+
+- 文档中心的悬停预览加防抖：鼠标在卡片上停留满 0.7 秒才弹出，快速划过不再触发；离开卡片会取消待触发的预览。
+
 ## 2.0.11 更新
 
 - 修正 `manifest.json` 的插件描述：Dashboard 仍只读，文档中心的“置顶 / 已回看”会写文档 frontmatter。代码无其他改动。

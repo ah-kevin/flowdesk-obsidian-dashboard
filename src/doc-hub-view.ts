@@ -10,6 +10,7 @@ export const DOC_HUB_VIEW_TYPE = 'flowdesk-doc-hub';
 export const DOC_HUB_HOVER_SOURCE = 'flowdesk-doc-hub';
 const RECENT_CAP = 48;
 const REFRESH_DELAY = 300;
+const HOVER_DELAY = 700;
 const TABS: ReadonlyArray<[DocHubTab, string]> = [['recent', '最近'], ['project', '按项目'], ['pinned', '常驻']];
 
 export interface DocHubHost { prefs(): unknown; savePrefs(prefs: DocHubPrefs): Promise<void> }
@@ -31,6 +32,7 @@ export class DocHubView extends ItemView {
   private prefs: DocHubPrefs;
   private generation = 0;
   private timer: number | null = null;
+  private hoverTimer: number | null = null;
   private closed = false;
   private els!: Record<'root' | 'sub' | 'tabs' | 'filters' | 'list' | 'theme' | 'style', HTMLElement> & { search: HTMLInputElement };
   constructor(leaf: WorkspaceLeaf, private readonly host: DocHubHost) { super(leaf); this.prefs = normalizePrefs(host.prefs()); }
@@ -48,7 +50,7 @@ export class DocHubView extends ItemView {
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => { touch(file.path); touch(oldPath); }));
     await this.reload();
   }
-  async onClose(): Promise<void> { this.closed = true; this.generation++; if (this.timer !== null) window.clearTimeout(this.timer); this.timer = null; }
+  async onClose(): Promise<void> { this.closed = true; this.generation++; if (this.timer !== null) window.clearTimeout(this.timer); this.timer = null; this.cancelHover(); }
 
   private currentTheme(): DocHubTheme { return this.prefs.theme ?? (document.body.classList.contains('theme-light') ? 'light' : 'dark'); }
   private scheduleReload(): void {
@@ -216,7 +218,22 @@ export class DocHubView extends ItemView {
     const open = (event: MouseEvent | KeyboardEvent) => this.openDoc(doc, event.metaKey || event.ctrlKey);
     card.addEventListener('click', event => { if (!(event.target as HTMLElement).closest('button')) open(event); });
     card.addEventListener('keydown', event => { if (event.key === 'Enter' && event.target === card) { event.preventDefault(); event.stopPropagation(); open(event); } });
-    card.addEventListener('mouseover', event => this.app.workspace.trigger('hover-link', { event, source: DOC_HUB_HOVER_SOURCE, hoverParent: this, targetEl: card, linktext: doc.path }));
+    card.addEventListener('mouseenter', event => this.scheduleHover(card, doc, event));
+    card.addEventListener('mouseleave', () => this.cancelHover());
+  }
+
+  /** 悬停预览防抖：停留满 HOVER_DELAY 才触发，划过不弹；同一时间只保留一个待触发。 */
+  private scheduleHover(card: HTMLElement, doc: DocHubDoc, event: MouseEvent): void {
+    this.cancelHover();
+    this.hoverTimer = window.setTimeout(() => {
+      this.hoverTimer = null;
+      if (this.closed || !card.isConnected) return;
+      this.app.workspace.trigger('hover-link', { event, source: DOC_HUB_HOVER_SOURCE, hoverParent: this, targetEl: card, linktext: doc.path });
+    }, HOVER_DELAY);
+  }
+  private cancelHover(): void {
+    if (this.hoverTimer !== null) window.clearTimeout(this.hoverTimer);
+    this.hoverTimer = null;
   }
 
   private readonly processor = (file: TFile, mutate: (frontmatter: Record<string, unknown>) => void) => this.app.fileManager.processFrontMatter(file, mutate);
