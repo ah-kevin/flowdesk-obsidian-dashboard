@@ -24,7 +24,7 @@ async function setup(t:any, rootTitle="Root") {
   requests.push([req.method!,req.url!,req.headers.authorization]);res.setHeader("Content-Type","application/json");
   if(mode==="401"){res.writeHead(401).end(JSON.stringify({error:"unauthorized"}));return;}
   if(req.url==="/api/filter-options"){res.end(JSON.stringify({data:{statuses:[{value:"done",isCompleted:true},{value:"cancel",isCompleted:true},{value:"in-progress",isCompleted:false},{value:"open",isCompleted:false}]}}));return;}
-  if(req.url==="/api/tasks/query"){queries++;res.end(JSON.stringify({data:{tasks,filtered:tasks.length,hasMore:mode==="partial"}}));return;}
+  if(req.url==="/api/tasks/query"){queries++;{const all=[taskRoot,...tasks];res.end(JSON.stringify({data:{tasks:all,filtered:all.length,hasMore:mode==="partial"}}))};return;}
   const id=decodeURIComponent(req.url!.slice("/api/tasks/".length));const task=id===taskRoot.id?taskRoot:tasks.find(x=>x.id===id);
   if(!task){res.writeHead(404).end(JSON.stringify({error:"absent"}));return;}res.end(JSON.stringify({success:true,data:task}));
  });

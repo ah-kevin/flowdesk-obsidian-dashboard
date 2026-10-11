@@ -31,7 +31,7 @@ test("真实 controlled HTTP→producer→envelope/model/content preserves paren
   const {url}=await fixture.server(async(req,res)=>{
     requests.push(`${req.method} ${req.url}`);res.setHeader("Content-Type","application/json");
     if(req.method==="GET"&&req.url==="/api/filter-options") {res.end(JSON.stringify({data:{statuses:[{value:"in-progress",isCompleted:false},{value:"done",isCompleted:true}]}}));return;}
-    if(req.method==="POST"&&req.url==="/api/tasks/query") {res.end(JSON.stringify({success:true,data:{tasks:[child],filtered:1}}));return;}
+    if(req.method==="POST"&&req.url==="/api/tasks/query") {res.end(JSON.stringify({success:true,data:{tasks:[root,child],filtered:2}}));return;}
     const id=decodeURIComponent(req.url!.replace("/api/tasks/",""));
     const task=id===root.id?root: id===child.id?child:null;
     if(!task){res.writeHead(404).end();return;}res.end(JSON.stringify({success:true,data:task}));
