@@ -279,7 +279,7 @@ __export(main_exports, {
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian4 = require("obsidian");
-var import_child_process2 = require("child_process");
+var import_child_process3 = require("child_process");
 
 // src/tasknotes-auth.ts
 function parseTaskNotesEnvironment(configuration) {
@@ -336,6 +336,88 @@ function sanitizeTaskNotesSnapshot(snapshot, token) {
     return result;
   }
   return visit(snapshot);
+}
+
+// src/login-shell-path.ts
+var import_child_process = require("child_process");
+var import_fs = require("fs");
+var LOGIN_SHELL_TIMEOUT_MS = 3e3;
+var LOGIN_SHELL_PATH_LIMIT = 8192;
+var START = "__FD_PATH_START__";
+var END = "__FD_PATH_END__";
+var SHELL_ARGS = ["-lc", `printf "${START}%s${END}" "$PATH"`];
+function isExecutableFile(path9) {
+  try {
+    if (!(0, import_fs.statSync)(path9).isFile()) return false;
+    (0, import_fs.accessSync)(path9, import_fs.constants.X_OK);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+function pickShell(shell, isExecutable = isExecutableFile) {
+  return shell && shell.startsWith("/") && !shell.includes("\0") && isExecutable(shell) ? shell : void 0;
+}
+function parseLoginShellPath(stdout) {
+  const start = stdout.indexOf(START);
+  if (start < 0) return void 0;
+  const from = start + START.length;
+  const end = stdout.indexOf(END, from);
+  if (end < 0) return void 0;
+  const value = stdout.slice(from, end);
+  if (!value || value.length > LOGIN_SHELL_PATH_LIMIT || /[\r\n\0]/.test(value)) return void 0;
+  return value.split(":").every((segment) => segment.startsWith("/")) ? value : void 0;
+}
+function mergePath(login, current) {
+  if (!login) return current;
+  const seen = /* @__PURE__ */ new Set(), merged = [];
+  for (const segment of [...login.split(":"), ...(current != null ? current : "").split(":")]) {
+    if (segment && !seen.has(segment)) {
+      seen.add(segment);
+      merged.push(segment);
+    }
+  }
+  return merged.join(":");
+}
+function createLoginShellPathResolver(deps = {}) {
+  var _a, _b;
+  const run = (_a = deps.execFile) != null ? _a : import_child_process.execFile;
+  const timeoutMs = (_b = deps.timeoutMs) != null ? _b : LOGIN_SHELL_TIMEOUT_MS;
+  let cached;
+  const read = () => {
+    var _a2;
+    if (((_a2 = deps.platform) != null ? _a2 : process.platform) === "win32") return Promise.resolve(void 0);
+    return new Promise((resolve6) => {
+      const timer = setTimeout(() => resolve6(void 0), timeoutMs + 500);
+      const finish = (value) => {
+        clearTimeout(timer);
+        resolve6(value);
+      };
+      try {
+        const shell = pickShell("shell" in deps ? deps.shell : process.env.SHELL, deps.isExecutable);
+        if (!shell) {
+          finish(void 0);
+          return;
+        }
+        run(shell, SHELL_ARGS, { timeout: timeoutMs, maxBuffer: 64 * 1024, killSignal: "SIGKILL", windowsHide: true }, (error, stdout) => {
+          finish(error ? void 0 : parseLoginShellPath(String(stdout != null ? stdout : "")));
+        });
+      } catch (e) {
+        finish(void 0);
+      }
+    });
+  };
+  return () => cached != null ? cached : cached = read();
+}
+var defaultResolver = createLoginShellPathResolver();
+async function resolveSnapshotEnv(env, configuration, resolver = defaultResolver) {
+  try {
+    if (Object.prototype.hasOwnProperty.call(parseTaskNotesEnvironment(configuration), "PATH")) return env;
+    const merged = mergePath(await resolver(), env.PATH);
+    return merged && merged !== env.PATH ? { ...env, PATH: merged } : env;
+  } catch (e) {
+    return env;
+  }
 }
 
 // src/main.ts
@@ -3624,7 +3706,7 @@ function caseTitle(casePath) {
 
 // src/source-navigation.ts
 var path3 = __toESM(require("path"));
-var import_fs = require("fs");
+var import_fs2 = require("fs");
 var import_url = require("url");
 function locateTaskSource(fileText, details, section2) {
   var _a;
@@ -3701,9 +3783,9 @@ function resolveRelatedTarget(raw, context) {
   if (!literalWhitespace && /^(?:Notes|Tasks|TaskNotes)\//.test(target) || target.startsWith("#")) return { kind: "vault", linkText: target, label };
   if (!target || !path3.isAbsolute(target) && !/[./\\]/.test(target)) return unavailable("\u5F15\u7528\u6CA1\u6709\u660E\u786Evault\u6216\u4ED3\u5E93\u6765\u6E90\uFF1B\u53EF\u590D\u5236\u539F\u5F15\u7528\u6838\u5BF9");
   if (!path3.isAbsolute(target) && (!context.cwd || !path3.isAbsolute(context.cwd))) return unavailable("\u7F3A\u5C11\u552F\u4E00\u660E\u786E\u7684Case cwd\uFF0C\u4E0D\u80FD\u5B9A\u4F4D\u4ED3\u5E93\u76F8\u5BF9\u8DEF\u5F84");
-  if (!path3.isAbsolute(target) && !(0, import_fs.existsSync)(context.cwd)) return unavailable("Case checkout\u76EE\u5F55\u5728\u672C\u673A\u4E0D\u5B58\u5728");
+  if (!path3.isAbsolute(target) && !(0, import_fs2.existsSync)(context.cwd)) return unavailable("Case checkout\u76EE\u5F55\u5728\u672C\u673A\u4E0D\u5B58\u5728");
   let absolutePath = path3.isAbsolute(target) ? path3.normalize(target) : path3.resolve(context.cwd, target);
-  if (!explicitFileUrl && !(0, import_fs.existsSync)(absolutePath) && /%[0-9a-f]{2}/i.test(target)) {
+  if (!explicitFileUrl && !(0, import_fs2.existsSync)(absolutePath) && /%[0-9a-f]{2}/i.test(target)) {
     try {
       const decoded = decodeURIComponent(target);
       absolutePath = path3.isAbsolute(decoded) ? path3.normalize(decoded) : path3.resolve(context.cwd, decoded);
@@ -3711,9 +3793,9 @@ function resolveRelatedTarget(raw, context) {
       return unavailable("\u6587\u4EF6\u8DEF\u5F84\u7F16\u7801\u65E0\u6548");
     }
   }
-  if (!(0, import_fs.existsSync)(absolutePath)) return unavailable(`\u6587\u4EF6\u5728\u672C\u673A\u4E0D\u5B58\u5728\uFF1A${absolutePath}`);
+  if (!(0, import_fs2.existsSync)(absolutePath)) return unavailable(`\u6587\u4EF6\u5728\u672C\u673A\u4E0D\u5B58\u5728\uFF1A${absolutePath}`);
   try {
-    if (!(0, import_fs.statSync)(absolutePath).isFile()) return unavailable(`\u5F15\u7528\u4E0D\u662F\u6587\u4EF6\uFF1A${absolutePath}`);
+    if (!(0, import_fs2.statSync)(absolutePath).isFile()) return unavailable(`\u5F15\u7528\u4E0D\u662F\u6587\u4EF6\uFF1A${absolutePath}`);
   } catch (e) {
     return unavailable(`\u65E0\u6CD5\u786E\u8BA4\u539F\u6587\u4EF6\uFF1A${absolutePath}`);
   }
@@ -3737,8 +3819,8 @@ function chooseTaskCase(contexts, candidates) {
 }
 
 // src/repository-open.ts
-var import_child_process = require("child_process");
-var import_fs2 = require("fs");
+var import_child_process2 = require("child_process");
+var import_fs3 = require("fs");
 var path4 = __toESM(require("path"));
 var application = "/Applications/Obsidian.app";
 var RepositoryMarkdownOpener = class {
@@ -3750,7 +3832,7 @@ var RepositoryMarkdownOpener = class {
     const platform = (_a = this.dependencies.platform) != null ? _a : process.platform;
     if (platform !== "darwin") return { kind: "unsupported", message: "\u5F53\u524D\u5E73\u53F0\u6CA1\u6709\u5DF2\u6838\u5BF9\u7684\u6307\u5B9AObsidian\u6253\u5F00\u53C2\u6570\uFF1B\u53EF\u590D\u5236\u8DEF\u5F84\u548C\u624B\u5DE5\u6B65\u9AA4\u3002" };
     if (!path4.isAbsolute(absolutePath) || !/^\.md$/i.test(path4.extname(absolutePath)) || absolutePath.includes("\0")) return { kind: "unavailable", message: "\u4EC5\u652F\u6301\u51C6\u786E\u672C\u673A\u7EDD\u5BF9Markdown\u6587\u4EF6\u8DEF\u5F84\uFF1B\u53EF\u590D\u5236\u8DEF\u5F84\u6838\u5BF9\u3002" };
-    const inspect = (_b = this.dependencies.inspect) != null ? _b : import_fs2.statSync;
+    const inspect = (_b = this.dependencies.inspect) != null ? _b : import_fs3.statSync;
     try {
       if (!inspect(absolutePath).isFile()) return { kind: "unavailable", message: "\u76EE\u6807\u4E0D\u662F\u672C\u673AMarkdown\u6587\u4EF6\uFF1B\u8BF7\u6838\u5BF9\u539F\u8DEF\u5F84\u3002" };
       if (!inspect(application).isDirectory() || !inspect(`${application}/Contents/MacOS/Obsidian`).isFile()) return { kind: "unavailable", message: "\u672A\u786E\u8BA4\u6307\u5B9AObsidian\u5E94\u7528\u4E0E\u53EF\u6267\u884C\u6587\u4EF6\uFF1B\u4FDD\u7559\u590D\u5236\u8DEF\u5F84\uFF0C\u4E0D\u6539\u7CFB\u7EDF\u5173\u8054\u3002" };
@@ -3771,7 +3853,7 @@ var RepositoryMarkdownOpener = class {
 };
 function executePublicFileOpen(executable, args, options) {
   return new Promise((resolve6, reject) => {
-    (0, import_child_process.execFile)(executable, args, { timeout: options.timeoutMs, shell: false, windowsHide: true }, (error) => error ? reject(error) : resolve6());
+    (0, import_child_process2.execFile)(executable, args, { timeout: options.timeoutMs, shell: false, windowsHide: true }, (error) => error ? reject(error) : resolve6());
   });
 }
 
@@ -3923,14 +4005,14 @@ function createCaseContent(casePath, details, readAt) {
 }
 
 // src/core-resolution.ts
-var import_fs3 = require("fs");
+var import_fs4 = require("fs");
 var path5 = __toESM(require("path"));
 var stableVersion = (value) => typeof value === "string" && /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value);
-var json = (file) => JSON.parse((0, import_fs3.readFileSync)(file, "utf8"));
+var json = (file) => JSON.parse((0, import_fs4.readFileSync)(file, "utf8"));
 function validate(root, installed) {
   var _a;
-  const canonical = (0, import_fs3.realpathSync)(root);
-  for (const name of ["flowdesk-execution-snapshot", "flowdesk-work-case-snapshot"]) (0, import_fs3.accessSync)(path5.join(canonical, "bin", name), import_fs3.constants.X_OK);
+  const canonical = (0, import_fs4.realpathSync)(root);
+  for (const name of ["flowdesk-execution-snapshot", "flowdesk-work-case-snapshot"]) (0, import_fs4.accessSync)(path5.join(canonical, "bin", name), import_fs4.constants.X_OK);
   const manifests = [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"].flatMap((file) => {
     try {
       return [json(path5.join(canonical, file))];
@@ -3976,7 +4058,7 @@ function resolveCore(options) {
   const cache = path5.join(options.home, ".codex/plugins/cache/flowdesk-marketplace/flow-desk");
   const candidates = [];
   try {
-    for (const name of (0, import_fs3.readdirSync)(cache).filter(stableVersion)) {
+    for (const name of (0, import_fs4.readdirSync)(cache).filter(stableVersion)) {
       try {
         const found = validate(path5.join(cache, name), true);
         if (found.version === name) candidates.push(found);
@@ -10100,7 +10182,7 @@ var DocHubView = class extends import_obsidian3.ItemView {
 
 // src/main.ts
 var FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
-var execFileAsync = (0, import_util2.promisify)(import_child_process2.execFile);
+var execFileAsync = (0, import_util2.promisify)(import_child_process3.execFile);
 var DEFAULT_SETTINGS = {
   coreMode: "installed",
   flowdeskRoot: "",
@@ -10304,15 +10386,16 @@ var FlowDeskDashboardPlugin = class extends import_obsidian4.Plugin {
     await workspace.revealLeaf(leaf);
   }
   async loadSnapshot(taskPath, signal) {
-    var _a;
+    var _a, _b;
     const auth = resolveTaskNotesAuth((_a = this.settings.tasknotesEnv) != null ? _a : "{}");
+    const snapshotEnv = await resolveSnapshotEnv(auth.env, (_b = this.settings.tasknotesEnv) != null ? _b : "{}");
     const invocation = this.createSnapshotInvocation(taskPath, "json");
     const usedCore = this.coreResolution ? { ...this.coreResolution, notices: [...this.coreResolution.notices] } : null;
     let stdout;
     try {
       const result = await execFileAsync(invocation.executable, invocation.args, {
         ...createSnapshotExecutionOptions(invocation.cwd, signal),
-        env: auth.env
+        env: snapshotEnv
       });
       stdout = result.stdout;
     } catch (error) {
@@ -10328,22 +10411,23 @@ var FlowDeskDashboardPlugin = class extends import_obsidian4.Plugin {
     }
   }
   async loadWorkCaseSnapshot(casePath, signal) {
-    var _a, _b;
+    var _a, _b, _c;
     const auth = resolveTaskNotesAuth((_a = this.settings.tasknotesEnv) != null ? _a : "{}");
+    const snapshotEnv = await resolveSnapshotEnv(auth.env, (_b = this.settings.tasknotesEnv) != null ? _b : "{}");
     const invocation = this.createWorkCaseSnapshotInvocation(casePath);
     const usedCore = this.coreResolution ? { ...this.coreResolution, notices: [...this.coreResolution.notices] } : null;
     let stdout;
     let resumeUnavailable = false;
     const execute = (args) => execFileAsync(invocation.executable, args, {
       ...createSnapshotExecutionOptions(invocation.cwd, signal),
-      env: auth.env
+      env: snapshotEnv
     });
     try {
       const result = await execute(invocation.args);
       stdout = result.stdout;
     } catch (error) {
       const failure = error;
-      if (failure.code !== 2 || !/^.*: error: unrecognized arguments: --resume-bundle\s*$/m.test((_b = failure.stderr) != null ? _b : "")) throw new Error(formatTaskNotesAuthError(formatWorkCaseCommandError(error), auth.token));
+      if (failure.code !== 2 || !/^.*: error: unrecognized arguments: --resume-bundle\s*$/m.test((_c = failure.stderr) != null ? _c : "")) throw new Error(formatTaskNotesAuthError(formatWorkCaseCommandError(error), auth.token));
       try {
         const result = await execute(invocation.args.filter((arg) => arg !== "--resume-bundle"));
         stdout = result.stdout;

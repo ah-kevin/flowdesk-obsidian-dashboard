@@ -24,6 +24,7 @@ import {
   parseTaskNotesEnvironment,
   sanitizeTaskNotesSnapshot,
 } from "./tasknotes-auth";
+import { resolveSnapshotEnv } from "./login-shell-path";
 import { homedir } from "os";
 import * as path from "path";
 import { promisify } from "util";
@@ -324,13 +325,14 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     signal: AbortSignal
   ): Promise<ExecutionSnapshot> {
     const auth = resolveTaskNotesAuth(this.settings.tasknotesEnv ?? "{}");
+    const snapshotEnv = await resolveSnapshotEnv(auth.env, this.settings.tasknotesEnv ?? "{}");
     const invocation = this.createSnapshotInvocation(taskPath, "json");
     const usedCore = this.coreResolution ? {...this.coreResolution,notices:[...this.coreResolution.notices]} : null;
     let stdout: string;
     try {
       const result = await execFileAsync(invocation.executable, invocation.args, {
         ...createSnapshotExecutionOptions(invocation.cwd, signal),
-        env: auth.env,
+        env: snapshotEnv,
       });
       stdout = result.stdout;
     } catch (error) {
@@ -351,12 +353,13 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     signal: AbortSignal
   ): Promise<unknown> {
     const auth = resolveTaskNotesAuth(this.settings.tasknotesEnv ?? "{}");
+    const snapshotEnv = await resolveSnapshotEnv(auth.env, this.settings.tasknotesEnv ?? "{}");
     const invocation = this.createWorkCaseSnapshotInvocation(casePath);
     const usedCore = this.coreResolution ? {...this.coreResolution,notices:[...this.coreResolution.notices]} : null;
     let stdout: string;
     let resumeUnavailable = false;
     const execute = (args: string[]) => execFileAsync(invocation.executable, args, {
-      ...createSnapshotExecutionOptions(invocation.cwd, signal), env: auth.env,
+      ...createSnapshotExecutionOptions(invocation.cwd, signal), env: snapshotEnv,
     });
     try {
       const result = await execute(invocation.args);stdout = result.stdout;

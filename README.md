@@ -8,6 +8,12 @@ TaskNotes 任务或 Work Case 的 FlowDesk snapshot。插件分别调用本机 F
 本项目走 GitHub Release、BRAT 或手动安装，不以提交 Obsidian 官方 Community
 Directory 作为发布路径。
 
+## 2.0.14 更新
+
+- 修复 Finder / Dock 启动的 Obsidian 读取 Task 或 Case 时报 Python `TypeError … GenericAlias` 的问题：这种方式启动的 Obsidian 只继承 `/usr/bin:/bin:/usr/sbin:/sbin`，Core 脚本的 `#!/usr/bin/env python3` 会落到系统 Python 3.9，而 Core 需要 3.14。现在 Dashboard 启动 snapshot 子进程前，会用你的登录 shell（`$SHELL -lc`，即终端里的 PATH）取一次 PATH 并缓存，把它放在原有 PATH 之前（去重保序）再传给子进程。
+- 只影响 Task 与 Case 两个 snapshot 子进程；不新增设置项，不改系统配置、不改 Core。取不到时（`$SHELL` 缺失或不可执行、命令失败、约 3 秒超时、输出异常、Windows）原样沿用 Obsidian 自己的环境，行为与以前一致，不会阻塞视图。
+- 环境变量 JSON（插件设置 `tasknotesEnv`）里显式写了 `PATH` 时以它为准，不再合并登录 shell 的 PATH。登录 shell PATH 每次插件加载只取一次，修改 `~/.zprofile` 等之后需要重载插件（或重启 Obsidian）才会生效。
+
 ## 2.0.13 更新
 
 - 文档中心的工具栏与风格参考 archify 的 architecture 页重做：右上角是一个胶囊工具栏，含三个控件——明暗滑块开关、风格下拉菜单（色块 + 名称 + 箭头，菜单里每种风格带缩略图、一句说明与选中勾，`S` 仍可循环）、全屏按钮（对文档中心整页全屏，再点或 `Esc` 退出）。快捷键：`T` 切明暗、`S` 循环风格、`F` 全屏、`/` 搜索、`1` `2` `3` 切视角、`Esc` 清空。菜单支持方向键 / `Home` / `End` / `Esc` 与点击外部关闭。
