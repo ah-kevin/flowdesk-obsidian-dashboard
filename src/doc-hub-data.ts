@@ -164,7 +164,7 @@ export function setPinned<F>(process: ProcessFrontmatter<F>, file: F, pinned: bo
 export function markReviewed<F>(process: ProcessFrontmatter<F>, file: F, now: Date): Promise<void> { return process(file, reviewMutator(formatLocalDate(now))); }
 
 // ---- 键盘：焦点在输入框时只响应 Esc ----
-export type DocHubKeyAction = { type: 'focus-search' } | { type: 'tab'; tab: DocHubTab } | { type: 'theme' } | { type: 'style' } | { type: 'clear' };
+export type DocHubKeyAction = { type: 'focus-search' } | { type: 'tab'; tab: DocHubTab } | { type: 'theme' } | { type: 'style' } | { type: 'fullscreen' } | { type: 'clear' };
 const TAB_KEYS: Record<string, DocHubTab> = { '1': 'recent', '2': 'project', '3': 'pinned' };
 
 export function resolveKey(key: string, typing: boolean, modified: boolean): DocHubKeyAction | null {
@@ -174,5 +174,6 @@ export function resolveKey(key: string, typing: boolean, modified: boolean): Doc
   if (TAB_KEYS[key]) return { type: 'tab', tab: TAB_KEYS[key] };
   if (key === 't' || key === 'T') return { type: 'theme' };
   if (key === 's' || key === 'S') return { type: 'style' };
+  if (key === 'f' || key === 'F') return { type: 'fullscreen' };
   return null;
 }

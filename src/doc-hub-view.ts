@@ -4,7 +4,7 @@ import {
   DOC_HUB_FOLDERS, DOC_HUB_KIND_LABELS, SUMMARY_LIMIT, agoText, buildDoc, filterDocs, freshness, groupByProject, groupRecent, isHidden, kindOfPath,
   markReviewed, pinnedDocs, resolveKey, reviewBadge, setPinned, stripFrontmatter, summaryOfBody, type DocHubDoc, type DocHubFilter, type DocHubKeyAction, type DocHubTab,
 } from './doc-hub-data';
-import { nextStyle, normalizePrefs, styleLabel, toggleTheme, type DocHubPrefs, type DocHubTheme } from './doc-hub-style';
+import { DOC_HUB_STYLES, effectiveTheme, nextStyle, normalizePrefs, styleLabel, toggleTheme, type DocHubPrefs, type DocHubStyleId, type DocHubTheme } from './doc-hub-style';
 
 export const DOC_HUB_VIEW_TYPE = 'flowdesk-doc-hub';
 export const DOC_HUB_HOVER_SOURCE = 'flowdesk-doc-hub';
@@ -34,7 +34,7 @@ export class DocHubView extends ItemView {
   private timer: number | null = null;
   private hoverTimer: number | null = null;
   private closed = false;
-  private els!: Record<'root' | 'sub' | 'tabs' | 'filters' | 'list' | 'theme' | 'style', HTMLElement> & { search: HTMLInputElement };
+  private els!: Record<'root' | 'sub' | 'tabs' | 'filters' | 'list' | 'searchBox' | 'theme' | 'preset' | 'presetName' | 'menu' | 'full', HTMLElement> & { search: HTMLInputElement };
   constructor(leaf: WorkspaceLeaf, private readonly host: DocHubHost) { super(leaf); this.prefs = normalizePrefs(host.prefs()); }
   getViewType(): string { return DOC_HUB_VIEW_TYPE; }
   getDisplayText(): string { return '文档中心'; }
@@ -48,11 +48,13 @@ export class DocHubView extends ItemView {
     this.registerEvent(this.app.vault.on('create', file => touch(file.path)));
     this.registerEvent(this.app.vault.on('delete', file => touch(file.path)));
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => { touch(file.path); touch(oldPath); }));
+    // 未显式选择明暗时跟随 Obsidian：主题切换后同步开关与 data-theme，不需要重开视图。
+    this.registerEvent(this.app.workspace.on('css-change', () => this.syncChrome()));
     await this.reload();
   }
   async onClose(): Promise<void> { this.closed = true; this.generation++; if (this.timer !== null) window.clearTimeout(this.timer); this.timer = null; this.cancelHover(); }
 
-  private currentTheme(): DocHubTheme { return this.prefs.theme ?? (document.body.classList.contains('theme-light') ? 'light' : 'dark'); }
+  private currentTheme(): DocHubTheme { return effectiveTheme(this.prefs, this.contentEl.ownerDocument.body.classList.contains('theme-light') ? 'light' : 'dark'); }
   private scheduleReload(): void {
     if (this.closed) return;
     if (this.timer !== null) window.clearTimeout(this.timer);
@@ -95,41 +97,120 @@ export class DocHubView extends ItemView {
     const sub = titles.createDiv({ cls: 'fd-dochub-sub' });
     const tools = head.createDiv({ cls: 'fd-dochub-tools' });
     const tabs = tools.createDiv({ cls: 'fd-dochub-tabs', attr: { role: 'tablist' } });
-    const search = tools.createEl('input', { cls: 'fd-dochub-search', attr: { type: 'search', placeholder: '搜索标题 / 摘要 / 项目…（/）' } });
-    search.addEventListener('input', () => { this.filter.query = search.value; this.renderBody(); });
-    const style = tools.createEl('button', { cls: 'fd-dochub-icon', attr: { 'aria-label': '切换风格（S）' } });
-    const theme = tools.createEl('button', { cls: 'fd-dochub-icon', attr: { 'aria-label': '切换明暗（T）' } });
-    style.addEventListener('click', () => this.act({ type: 'style' }));
+    const searchBox = tools.createDiv({ cls: 'fd-dochub-searchbox' });
+    searchBox.createSpan({ cls: 'fd-dochub-ticon fd-dochub-search-icon', attr: { 'aria-hidden': 'true' } });
+    const search = searchBox.createEl('input', { cls: 'fd-dochub-search', attr: { type: 'search', placeholder: '搜索标题 / 摘要 / 项目…', 'aria-label': '搜索文档', 'aria-keyshortcuts': '/', spellcheck: 'false' } });
+    searchBox.createEl('kbd', { cls: 'fd-dochub-search-kbd', text: '/', attr: { 'aria-hidden': 'true' } });
+    const clear = searchBox.createEl('button', { cls: 'fd-dochub-search-clear', attr: { type: 'button', title: '清除搜索（Esc）', 'aria-label': '清除搜索' } });
+    clear.createSpan({ cls: 'fd-dochub-ticon', attr: { 'aria-hidden': 'true' } });
+    search.addEventListener('input', () => { this.filter.query = search.value; this.syncSearch(); this.renderBody(); });
+    clear.addEventListener('click', () => { search.value = ''; this.filter.query = ''; this.syncSearch(); this.renderBody(); search.focus(); });
+    const bar = tools.createDiv({ cls: 'fd-dochub-toolbar', attr: { role: 'toolbar', 'aria-label': '文档中心工具' } });
+    const theme = bar.createEl('button', { cls: 'fd-dochub-tbtn fd-dochub-theme', attr: { type: 'button', title: '切换主题（T）', 'aria-keyshortcuts': 'T' } });
+    theme.createSpan({ cls: 'fd-dochub-ticon fd-dochub-theme-icon', attr: { 'aria-hidden': 'true' } });
+    const wrap = bar.createDiv({ cls: 'fd-dochub-preset-wrap' });
+    const preset = wrap.createEl('button', { cls: 'fd-dochub-tbtn fd-dochub-preset', attr: { type: 'button', title: '选择视觉风格（S 循环切换）', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-keyshortcuts': 'S' } });
+    preset.createSpan({ cls: 'fd-dochub-mark', attr: { 'aria-hidden': 'true' } });
+    const presetName = preset.createSpan({ cls: 'fd-dochub-preset-name' });
+    preset.createSpan({ cls: 'fd-dochub-ticon fd-dochub-chevron', attr: { 'aria-hidden': 'true' } });
+    const menu = wrap.createDiv({ cls: 'fd-dochub-menu', attr: { role: 'menu', 'aria-label': '视觉风格' } });
+    const heading = menu.createDiv({ cls: 'fd-dochub-menu-heading', attr: { role: 'presentation' } });
+    heading.createSpan({ text: '视觉表达' });
+    const shortcut = heading.createSpan({ cls: 'fd-dochub-menu-shortcut' });
+    shortcut.createEl('kbd', { text: 'S' }); shortcut.appendText('循环切换');
+    for (const item of DOC_HUB_STYLES) {
+      const option = menu.createEl('button', { cls: 'fd-dochub-option', attr: { type: 'button', role: 'menuitemradio', 'aria-checked': 'false', tabindex: '-1', 'data-style-id': item.id } });
+      option.createSpan({ cls: `fd-dochub-swatch is-${item.id}`, attr: { 'aria-hidden': 'true' } });
+      const copy = option.createSpan({ cls: 'fd-dochub-option-copy' });
+      copy.createEl('strong', { text: item.label }); copy.createEl('small', { text: item.hint });
+      option.createSpan({ cls: 'fd-dochub-check', attr: { 'aria-hidden': 'true' } });
+    }
+    const full = bar.createEl('button', { cls: 'fd-dochub-tbtn fd-dochub-full', attr: { type: 'button', title: '全屏（F）', 'aria-keyshortcuts': 'F' } });
+    full.createSpan({ cls: 'fd-dochub-ticon fd-dochub-full-icon', attr: { 'aria-hidden': 'true' } });
     theme.addEventListener('click', () => this.act({ type: 'theme' }));
+    full.addEventListener('click', () => this.act({ type: 'fullscreen' }));
+    preset.addEventListener('click', () => (this.menuOpen() ? this.closeMenu(false) : this.openMenu(false)));
+    preset.addEventListener('keydown', event => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); event.stopPropagation(); if (!this.menuOpen()) this.openMenu(event.key === 'ArrowUp'); } });
+    menu.addEventListener('click', event => {
+      const option = (event.target as HTMLElement).closest<HTMLElement>('[data-style-id]');
+      if (option) { this.setStyle(option.dataset.styleId as DocHubStyleId); this.closeMenu(true); }
+    });
+    menu.addEventListener('keydown', event => this.onMenuKey(event));
     const filters = root.createDiv({ cls: 'fd-dochub-filters' });
     const list = root.createDiv({ cls: 'fd-dochub-list' });
-    this.els = { root, sub, tabs, filters, list, theme, style, search };
+    this.els = { root, sub, tabs, filters, list, searchBox, theme, preset, presetName, menu, full, search };
     this.registerDomEvent(root, 'keydown', event => {
       const target = event.target as HTMLElement;
       const action = resolveKey(event.key, ['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable, event.metaKey || event.ctrlKey || event.altKey);
       if (action) { event.preventDefault(); this.act(action); }
     });
+    // 点击菜单与触发按钮之外的位置关闭风格菜单；全屏状态变化时同步按钮。
+    this.registerDomEvent(root.ownerDocument, 'click', event => {
+      const target = event.target as Node;
+      if (!this.els.menu.contains(target) && !this.els.preset.contains(target)) this.closeMenu(false);
+    });
+    this.registerDomEvent(root.ownerDocument, 'fullscreenchange', () => this.syncChrome());
     this.renderAll();
     root.focus();
   }
+
 
   private act(action: DocHubKeyAction): void {
     if (action.type === 'focus-search') this.els.search.focus();
     else if (action.type === 'tab') { this.tab = action.tab; this.renderAll(); }
     else if (action.type === 'theme') { this.prefs = { ...this.prefs, theme: toggleTheme(this.currentTheme()) }; this.persistPrefs(); }
-    else if (action.type === 'style') { this.prefs = { ...this.prefs, style: nextStyle(this.prefs.style) }; this.persistPrefs(); }
-    else { this.filter.query = ''; this.els.search.value = ''; this.els.search.blur(); this.els.root.focus(); this.renderBody(); }
+    else if (action.type === 'style') this.setStyle(nextStyle(this.prefs.style));
+    else if (action.type === 'fullscreen') void this.toggleFullscreen();
+    else { this.closeMenu(false); this.filter.query = ''; this.els.search.value = ''; this.syncSearch(); this.els.search.blur(); this.els.root.focus(); this.renderBody(); }
   }
+  /** 有内容时才显示清除按钮、隐藏 `/` 提示。 */
+  private syncSearch(): void { this.els.searchBox.toggleClass('has-value', this.els.search.value.length > 0); }
+  private setStyle(style: DocHubStyleId): void { this.prefs = { ...this.prefs, style }; this.persistPrefs(); }
   private persistPrefs(): void {
-    this.renderAll();
+    this.syncChrome();
     this.host.savePrefs(this.prefs).catch(error => new Notice(`文档中心设置未能保存：${error instanceof Error ? error.message : String(error)}`));
   }
 
-  private renderAll(): void {
-    const { root, theme, style } = this.els;
-    root.setAttr('data-theme', this.currentTheme()); root.setAttr('data-style', this.prefs.style);
-    theme.setText(this.currentTheme() === 'dark' ? '☾' : '☀'); style.setText(styleLabel(this.prefs.style));
-    this.renderBody();
+  private renderAll(): void { this.syncChrome(); this.renderBody(); }
+  /** 同步工具栏与根元素状态：生效明暗、风格、菜单选中项、全屏按钮。 */
+  private syncChrome(): void {
+    const { root, theme, preset, presetName, menu, full } = this.els;
+    const dark = this.currentTheme() === 'dark', fullscreen = root.ownerDocument.fullscreenElement === root;
+    root.setAttr('data-theme', dark ? 'dark' : 'light'); root.setAttr('data-style', this.prefs.style);
+    theme.setAttr('aria-pressed', String(dark)); theme.setAttr('aria-label', `切换颜色主题（当前${dark ? '深色' : '浅色'}）`);
+    presetName.setText(styleLabel(this.prefs.style)); preset.setAttr('aria-label', `选择视觉风格（当前${styleLabel(this.prefs.style)}）`);
+    menu.querySelectorAll<HTMLElement>('[data-style-id]').forEach(option => option.setAttr('aria-checked', String(option.dataset.styleId === this.prefs.style)));
+    full.setAttr('aria-pressed', String(fullscreen)); full.setAttr('aria-label', fullscreen ? '退出全屏' : '进入全屏'); full.title = fullscreen ? '退出全屏（F / Esc）' : '全屏（F）';
+  }
+
+  private menuOpen(): boolean { return this.els.menu.hasClass('is-open'); }
+  private menuOptions(): HTMLElement[] { return Array.from(this.els.menu.querySelectorAll<HTMLElement>('[data-style-id]')); }
+  private openMenu(focusLast: boolean): void {
+    this.els.menu.addClass('is-open'); this.els.preset.setAttr('aria-expanded', 'true');
+    const options = this.menuOptions();
+    (focusLast ? options[options.length - 1] : options.find(option => option.dataset.styleId === this.prefs.style) ?? options[0])?.focus();
+  }
+  private closeMenu(focusTrigger: boolean): void {
+    if (!this.menuOpen()) return;
+    this.els.menu.removeClass('is-open'); this.els.preset.setAttr('aria-expanded', 'false');
+    if (focusTrigger) this.els.preset.focus();
+  }
+  /** 菜单内键盘：方向键 / Home / End 移动，Esc 关闭并回到触发按钮；这些键不再冒泡成文档中心的全局快捷键。 */
+  private onMenuKey(event: KeyboardEvent): void {
+    if (event.key === 'Tab') { this.closeMenu(false); return; }
+    const options = this.menuOptions(), active = options.indexOf(event.target as HTMLElement), last = options.length - 1;
+    const target = event.key === 'ArrowDown' ? options[(active + 1) % options.length] : event.key === 'ArrowUp' ? options[(active - 1 + options.length) % options.length]
+      : event.key === 'Home' ? options[0] : event.key === 'End' ? options[last] : null;
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.closeMenu(true); }
+    else if (target) { event.preventDefault(); event.stopPropagation(); target.focus(); }
+  }
+  /** 全屏作用于文档中心根元素；失败只提示，不抛出。退出由再次触发或浏览器原生 Esc 完成。 */
+  private async toggleFullscreen(): Promise<void> {
+    const doc = this.els.root.ownerDocument;
+    try {
+      if (doc.fullscreenElement === this.els.root) await doc.exitFullscreen();
+      else await this.els.root.requestFullscreen();
+    } catch (error) { new Notice(`全屏切换失败：${error instanceof Error ? error.message : String(error)}`); }
   }
   private renderBody(): void {
     const { sub, tabs, filters, list } = this.els, now = Date.now();

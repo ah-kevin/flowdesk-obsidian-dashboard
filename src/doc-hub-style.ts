@@ -1,10 +1,13 @@
-// 文档中心视觉 token：明暗主题 × 四种风格，实际色值在 styles.css 的 data-theme / data-style 变量里。
+// 文档中心视觉 token：明暗默认跟随 Obsidian（theme 缺省），用户切换后写入显式值；四种风格的形状 / 强调色在 styles.css 的 data-style 变量里。
 export type DocHubTheme = 'dark' | 'light';
 export type DocHubStyleId = 'classic' | 'signal' | 'blueprint' | 'editorial';
 export interface DocHubPrefs { theme?: DocHubTheme; style: DocHubStyleId }
 
-export const DOC_HUB_STYLES: ReadonlyArray<{ id: DocHubStyleId; label: string }> = [
-  { id: 'classic', label: '经典' }, { id: 'signal', label: '信号流' }, { id: 'blueprint', label: '蓝图' }, { id: 'editorial', label: '编辑' },
+export const DOC_HUB_STYLES: ReadonlyArray<{ id: DocHubStyleId; label: string; hint: string }> = [
+  { id: 'classic', label: '经典', hint: '稳定的技术默认风格' },
+  { id: 'signal', label: '信号流', hint: '突出动态流向' },
+  { id: 'blueprint', label: '蓝图', hint: '工程评审' },
+  { id: 'editorial', label: '编辑风格', hint: '适合发布与上线说明' },
 ];
 
 /** 设置读回做校验：未知值回退，theme 缺省表示跟随 Obsidian。 */
@@ -13,6 +16,8 @@ export function normalizePrefs(value: unknown): DocHubPrefs {
   const style = DOC_HUB_STYLES.find(item => item.id === raw.style)?.id ?? 'classic';
   return raw.theme === 'dark' || raw.theme === 'light' ? { theme: raw.theme, style } : { style };
 }
+/** 生效明暗：用户显式选择优先，否则跟随 Obsidian 当前明暗。 */
+export function effectiveTheme(prefs: DocHubPrefs, obsidian: DocHubTheme): DocHubTheme { return prefs.theme ?? obsidian; }
 export function toggleTheme(current: DocHubTheme): DocHubTheme { return current === 'dark' ? 'light' : 'dark'; }
 export function nextStyle(current: DocHubStyleId): DocHubStyleId {
   const index = DOC_HUB_STYLES.findIndex(item => item.id === current);

@@ -9621,21 +9621,26 @@ function resolveKey(key, typing, modified) {
   if (TAB_KEYS[key]) return { type: "tab", tab: TAB_KEYS[key] };
   if (key === "t" || key === "T") return { type: "theme" };
   if (key === "s" || key === "S") return { type: "style" };
+  if (key === "f" || key === "F") return { type: "fullscreen" };
   return null;
 }
 
 // src/doc-hub-style.ts
 var DOC_HUB_STYLES = [
-  { id: "classic", label: "\u7ECF\u5178" },
-  { id: "signal", label: "\u4FE1\u53F7\u6D41" },
-  { id: "blueprint", label: "\u84DD\u56FE" },
-  { id: "editorial", label: "\u7F16\u8F91" }
+  { id: "classic", label: "\u7ECF\u5178", hint: "\u7A33\u5B9A\u7684\u6280\u672F\u9ED8\u8BA4\u98CE\u683C" },
+  { id: "signal", label: "\u4FE1\u53F7\u6D41", hint: "\u7A81\u51FA\u52A8\u6001\u6D41\u5411" },
+  { id: "blueprint", label: "\u84DD\u56FE", hint: "\u5DE5\u7A0B\u8BC4\u5BA1" },
+  { id: "editorial", label: "\u7F16\u8F91\u98CE\u683C", hint: "\u9002\u5408\u53D1\u5E03\u4E0E\u4E0A\u7EBF\u8BF4\u660E" }
 ];
 function normalizePrefs(value) {
   var _a, _b;
   const raw = value != null ? value : {};
   const style = (_b = (_a = DOC_HUB_STYLES.find((item) => item.id === raw.style)) == null ? void 0 : _a.id) != null ? _b : "classic";
   return raw.theme === "dark" || raw.theme === "light" ? { theme: raw.theme, style } : { style };
+}
+function effectiveTheme(prefs, obsidian) {
+  var _a;
+  return (_a = prefs.theme) != null ? _a : obsidian;
 }
 function toggleTheme(current) {
   return current === "dark" ? "light" : "dark";
@@ -9701,6 +9706,7 @@ var DocHubView = class extends import_obsidian3.ItemView {
       touch(file.path);
       touch(oldPath);
     }));
+    this.registerEvent(this.app.workspace.on("css-change", () => this.syncChrome()));
     await this.reload();
   }
   async onClose() {
@@ -9711,8 +9717,7 @@ var DocHubView = class extends import_obsidian3.ItemView {
     this.cancelHover();
   }
   currentTheme() {
-    var _a;
-    return (_a = this.prefs.theme) != null ? _a : document.body.classList.contains("theme-light") ? "light" : "dark";
+    return effectiveTheme(this.prefs, this.contentEl.ownerDocument.body.classList.contains("theme-light") ? "light" : "dark");
   }
   scheduleReload() {
     if (this.closed) return;
@@ -9762,18 +9767,69 @@ var DocHubView = class extends import_obsidian3.ItemView {
     const sub = titles.createDiv({ cls: "fd-dochub-sub" });
     const tools = head.createDiv({ cls: "fd-dochub-tools" });
     const tabs = tools.createDiv({ cls: "fd-dochub-tabs", attr: { role: "tablist" } });
-    const search = tools.createEl("input", { cls: "fd-dochub-search", attr: { type: "search", placeholder: "\u641C\u7D22\u6807\u9898 / \u6458\u8981 / \u9879\u76EE\u2026\uFF08/\uFF09" } });
+    const searchBox = tools.createDiv({ cls: "fd-dochub-searchbox" });
+    searchBox.createSpan({ cls: "fd-dochub-ticon fd-dochub-search-icon", attr: { "aria-hidden": "true" } });
+    const search = searchBox.createEl("input", { cls: "fd-dochub-search", attr: { type: "search", placeholder: "\u641C\u7D22\u6807\u9898 / \u6458\u8981 / \u9879\u76EE\u2026", "aria-label": "\u641C\u7D22\u6587\u6863", "aria-keyshortcuts": "/", spellcheck: "false" } });
+    searchBox.createEl("kbd", { cls: "fd-dochub-search-kbd", text: "/", attr: { "aria-hidden": "true" } });
+    const clear = searchBox.createEl("button", { cls: "fd-dochub-search-clear", attr: { type: "button", title: "\u6E05\u9664\u641C\u7D22\uFF08Esc\uFF09", "aria-label": "\u6E05\u9664\u641C\u7D22" } });
+    clear.createSpan({ cls: "fd-dochub-ticon", attr: { "aria-hidden": "true" } });
     search.addEventListener("input", () => {
       this.filter.query = search.value;
+      this.syncSearch();
       this.renderBody();
     });
-    const style = tools.createEl("button", { cls: "fd-dochub-icon", attr: { "aria-label": "\u5207\u6362\u98CE\u683C\uFF08S\uFF09" } });
-    const theme = tools.createEl("button", { cls: "fd-dochub-icon", attr: { "aria-label": "\u5207\u6362\u660E\u6697\uFF08T\uFF09" } });
-    style.addEventListener("click", () => this.act({ type: "style" }));
+    clear.addEventListener("click", () => {
+      search.value = "";
+      this.filter.query = "";
+      this.syncSearch();
+      this.renderBody();
+      search.focus();
+    });
+    const bar = tools.createDiv({ cls: "fd-dochub-toolbar", attr: { role: "toolbar", "aria-label": "\u6587\u6863\u4E2D\u5FC3\u5DE5\u5177" } });
+    const theme = bar.createEl("button", { cls: "fd-dochub-tbtn fd-dochub-theme", attr: { type: "button", title: "\u5207\u6362\u4E3B\u9898\uFF08T\uFF09", "aria-keyshortcuts": "T" } });
+    theme.createSpan({ cls: "fd-dochub-ticon fd-dochub-theme-icon", attr: { "aria-hidden": "true" } });
+    const wrap = bar.createDiv({ cls: "fd-dochub-preset-wrap" });
+    const preset = wrap.createEl("button", { cls: "fd-dochub-tbtn fd-dochub-preset", attr: { type: "button", title: "\u9009\u62E9\u89C6\u89C9\u98CE\u683C\uFF08S \u5FAA\u73AF\u5207\u6362\uFF09", "aria-haspopup": "menu", "aria-expanded": "false", "aria-keyshortcuts": "S" } });
+    preset.createSpan({ cls: "fd-dochub-mark", attr: { "aria-hidden": "true" } });
+    const presetName = preset.createSpan({ cls: "fd-dochub-preset-name" });
+    preset.createSpan({ cls: "fd-dochub-ticon fd-dochub-chevron", attr: { "aria-hidden": "true" } });
+    const menu = wrap.createDiv({ cls: "fd-dochub-menu", attr: { role: "menu", "aria-label": "\u89C6\u89C9\u98CE\u683C" } });
+    const heading2 = menu.createDiv({ cls: "fd-dochub-menu-heading", attr: { role: "presentation" } });
+    heading2.createSpan({ text: "\u89C6\u89C9\u8868\u8FBE" });
+    const shortcut = heading2.createSpan({ cls: "fd-dochub-menu-shortcut" });
+    shortcut.createEl("kbd", { text: "S" });
+    shortcut.appendText("\u5FAA\u73AF\u5207\u6362");
+    for (const item of DOC_HUB_STYLES) {
+      const option = menu.createEl("button", { cls: "fd-dochub-option", attr: { type: "button", role: "menuitemradio", "aria-checked": "false", tabindex: "-1", "data-style-id": item.id } });
+      option.createSpan({ cls: `fd-dochub-swatch is-${item.id}`, attr: { "aria-hidden": "true" } });
+      const copy = option.createSpan({ cls: "fd-dochub-option-copy" });
+      copy.createEl("strong", { text: item.label });
+      copy.createEl("small", { text: item.hint });
+      option.createSpan({ cls: "fd-dochub-check", attr: { "aria-hidden": "true" } });
+    }
+    const full = bar.createEl("button", { cls: "fd-dochub-tbtn fd-dochub-full", attr: { type: "button", title: "\u5168\u5C4F\uFF08F\uFF09", "aria-keyshortcuts": "F" } });
+    full.createSpan({ cls: "fd-dochub-ticon fd-dochub-full-icon", attr: { "aria-hidden": "true" } });
     theme.addEventListener("click", () => this.act({ type: "theme" }));
+    full.addEventListener("click", () => this.act({ type: "fullscreen" }));
+    preset.addEventListener("click", () => this.menuOpen() ? this.closeMenu(false) : this.openMenu(false));
+    preset.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!this.menuOpen()) this.openMenu(event.key === "ArrowUp");
+      }
+    });
+    menu.addEventListener("click", (event) => {
+      const option = event.target.closest("[data-style-id]");
+      if (option) {
+        this.setStyle(option.dataset.styleId);
+        this.closeMenu(true);
+      }
+    });
+    menu.addEventListener("keydown", (event) => this.onMenuKey(event));
     const filters = root.createDiv({ cls: "fd-dochub-filters" });
     const list2 = root.createDiv({ cls: "fd-dochub-list" });
-    this.els = { root, sub, tabs, filters, list: list2, theme, style, search };
+    this.els = { root, sub, tabs, filters, list: list2, searchBox, theme, preset, presetName, menu, full, search };
     this.registerDomEvent(root, "keydown", (event) => {
       const target = event.target;
       const action = resolveKey(event.key, ["INPUT", "TEXTAREA"].includes(target.tagName) || target.isContentEditable, event.metaKey || event.ctrlKey || event.altKey);
@@ -9782,6 +9838,11 @@ var DocHubView = class extends import_obsidian3.ItemView {
         this.act(action);
       }
     });
+    this.registerDomEvent(root.ownerDocument, "click", (event) => {
+      const target = event.target;
+      if (!this.els.menu.contains(target) && !this.els.preset.contains(target)) this.closeMenu(false);
+    });
+    this.registerDomEvent(root.ownerDocument, "fullscreenchange", () => this.syncChrome());
     this.renderAll();
     root.focus();
   }
@@ -9793,28 +9854,95 @@ var DocHubView = class extends import_obsidian3.ItemView {
     } else if (action.type === "theme") {
       this.prefs = { ...this.prefs, theme: toggleTheme(this.currentTheme()) };
       this.persistPrefs();
-    } else if (action.type === "style") {
-      this.prefs = { ...this.prefs, style: nextStyle(this.prefs.style) };
-      this.persistPrefs();
-    } else {
+    } else if (action.type === "style") this.setStyle(nextStyle(this.prefs.style));
+    else if (action.type === "fullscreen") void this.toggleFullscreen();
+    else {
+      this.closeMenu(false);
       this.filter.query = "";
       this.els.search.value = "";
+      this.syncSearch();
       this.els.search.blur();
       this.els.root.focus();
       this.renderBody();
     }
   }
+  /** 有内容时才显示清除按钮、隐藏 `/` 提示。 */
+  syncSearch() {
+    this.els.searchBox.toggleClass("has-value", this.els.search.value.length > 0);
+  }
+  setStyle(style) {
+    this.prefs = { ...this.prefs, style };
+    this.persistPrefs();
+  }
   persistPrefs() {
-    this.renderAll();
+    this.syncChrome();
     this.host.savePrefs(this.prefs).catch((error) => new import_obsidian3.Notice(`\u6587\u6863\u4E2D\u5FC3\u8BBE\u7F6E\u672A\u80FD\u4FDD\u5B58\uFF1A${error instanceof Error ? error.message : String(error)}`));
   }
   renderAll() {
-    const { root, theme, style } = this.els;
-    root.setAttr("data-theme", this.currentTheme());
-    root.setAttr("data-style", this.prefs.style);
-    theme.setText(this.currentTheme() === "dark" ? "\u263E" : "\u2600");
-    style.setText(styleLabel(this.prefs.style));
+    this.syncChrome();
     this.renderBody();
+  }
+  /** 同步工具栏与根元素状态：生效明暗、风格、菜单选中项、全屏按钮。 */
+  syncChrome() {
+    const { root, theme, preset, presetName, menu, full } = this.els;
+    const dark = this.currentTheme() === "dark", fullscreen = root.ownerDocument.fullscreenElement === root;
+    root.setAttr("data-theme", dark ? "dark" : "light");
+    root.setAttr("data-style", this.prefs.style);
+    theme.setAttr("aria-pressed", String(dark));
+    theme.setAttr("aria-label", `\u5207\u6362\u989C\u8272\u4E3B\u9898\uFF08\u5F53\u524D${dark ? "\u6DF1\u8272" : "\u6D45\u8272"}\uFF09`);
+    presetName.setText(styleLabel(this.prefs.style));
+    preset.setAttr("aria-label", `\u9009\u62E9\u89C6\u89C9\u98CE\u683C\uFF08\u5F53\u524D${styleLabel(this.prefs.style)}\uFF09`);
+    menu.querySelectorAll("[data-style-id]").forEach((option) => option.setAttr("aria-checked", String(option.dataset.styleId === this.prefs.style)));
+    full.setAttr("aria-pressed", String(fullscreen));
+    full.setAttr("aria-label", fullscreen ? "\u9000\u51FA\u5168\u5C4F" : "\u8FDB\u5165\u5168\u5C4F");
+    full.title = fullscreen ? "\u9000\u51FA\u5168\u5C4F\uFF08F / Esc\uFF09" : "\u5168\u5C4F\uFF08F\uFF09";
+  }
+  menuOpen() {
+    return this.els.menu.hasClass("is-open");
+  }
+  menuOptions() {
+    return Array.from(this.els.menu.querySelectorAll("[data-style-id]"));
+  }
+  openMenu(focusLast) {
+    var _a, _b;
+    this.els.menu.addClass("is-open");
+    this.els.preset.setAttr("aria-expanded", "true");
+    const options = this.menuOptions();
+    (_b = focusLast ? options[options.length - 1] : (_a = options.find((option) => option.dataset.styleId === this.prefs.style)) != null ? _a : options[0]) == null ? void 0 : _b.focus();
+  }
+  closeMenu(focusTrigger) {
+    if (!this.menuOpen()) return;
+    this.els.menu.removeClass("is-open");
+    this.els.preset.setAttr("aria-expanded", "false");
+    if (focusTrigger) this.els.preset.focus();
+  }
+  /** 菜单内键盘：方向键 / Home / End 移动，Esc 关闭并回到触发按钮；这些键不再冒泡成文档中心的全局快捷键。 */
+  onMenuKey(event) {
+    if (event.key === "Tab") {
+      this.closeMenu(false);
+      return;
+    }
+    const options = this.menuOptions(), active = options.indexOf(event.target), last = options.length - 1;
+    const target = event.key === "ArrowDown" ? options[(active + 1) % options.length] : event.key === "ArrowUp" ? options[(active - 1 + options.length) % options.length] : event.key === "Home" ? options[0] : event.key === "End" ? options[last] : null;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeMenu(true);
+    } else if (target) {
+      event.preventDefault();
+      event.stopPropagation();
+      target.focus();
+    }
+  }
+  /** 全屏作用于文档中心根元素；失败只提示，不抛出。退出由再次触发或浏览器原生 Esc 完成。 */
+  async toggleFullscreen() {
+    const doc = this.els.root.ownerDocument;
+    try {
+      if (doc.fullscreenElement === this.els.root) await doc.exitFullscreen();
+      else await this.els.root.requestFullscreen();
+    } catch (error) {
+      new import_obsidian3.Notice(`\u5168\u5C4F\u5207\u6362\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`);
+    }
   }
   renderBody() {
     const { sub, tabs, filters, list: list2 } = this.els, now = Date.now();

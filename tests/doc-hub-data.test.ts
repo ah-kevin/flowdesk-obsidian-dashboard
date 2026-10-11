@@ -4,7 +4,7 @@ import {
   buildDoc, filterDocs, formatLocalDate, groupByProject, groupRecent, kindOfPath, markReviewed, parseReviewed, pinnedDocs, projectsOf, resolveKey, reviewBadge, setPinned,
   stripFrontmatter, summaryOfBody, type DocHubDoc, type Frontmatter,
 } from "../src/doc-hub-data.ts";
-import { DOC_HUB_STYLES, nextStyle, normalizePrefs, toggleTheme } from "../src/doc-hub-style.ts";
+import { DOC_HUB_STYLES, effectiveTheme, nextStyle, normalizePrefs, toggleTheme } from "../src/doc-hub-style.ts";
 
 const DAY = 86400000, NOW = new Date(2026, 9, 9, 15, 0, 0).getTime();
 const doc = (path: string, patch: Partial<DocHubDoc> = {}): DocHubDoc => ({ path, title: path, kind: "doc", status: "", projects: [], mtime: NOW, pinned: false, reviewedAt: null, summary: "", ...patch });
@@ -144,23 +144,32 @@ test("写回失败向调用方抛出且不吞错", async () => {
   await assert.rejects(setPinned(async () => { throw new Error("磁盘只读"); }, "f", true), /磁盘只读/);
 });
 
-test("键盘：输入框内只响应 Esc；带修饰键不响应；/ 1 2 3 T S 在视图内生效", () => {
+test("键盘：输入框内只响应 Esc；带修饰键不响应；/ 1 2 3 T S F 在视图内生效", () => {
   assert.deepEqual(resolveKey("/", false, false), { type: "focus-search" });
   assert.deepEqual([resolveKey("1", false, false), resolveKey("2", false, false), resolveKey("3", false, false)], [{ type: "tab", tab: "recent" }, { type: "tab", tab: "project" }, { type: "tab", tab: "pinned" }]);
   assert.deepEqual([resolveKey("t", false, false), resolveKey("T", false, false)], [{ type: "theme" }, { type: "theme" }]);
   assert.deepEqual([resolveKey("s", false, false), resolveKey("S", false, false)], [{ type: "style" }, { type: "style" }]);
+  assert.deepEqual([resolveKey("f", false, false), resolveKey("F", false, false)], [{ type: "fullscreen" }, { type: "fullscreen" }]);
   assert.deepEqual(resolveKey("Escape", true, false), { type: "clear" });
-  for (const key of ["/", "1", "t", "s"]) assert.equal(resolveKey(key, true, false), null, `输入框中 ${key} 不触发`);
-  for (const key of ["t", "s", "1", "/"]) assert.equal(resolveKey(key, false, true), null, `Cmd/Ctrl+${key} 不触发`);
+  for (const key of ["/", "1", "t", "s", "f"]) assert.equal(resolveKey(key, true, false), null, `输入框中 ${key} 不触发`);
+  for (const key of ["t", "s", "f", "1", "/"]) assert.equal(resolveKey(key, false, true), null, `Cmd/Ctrl+${key} 不触发`);
   assert.equal(resolveKey("x", false, false), null);
 });
 
 test("风格 S 按 经典 → 信号流 → 蓝图 → 编辑 循环，主题 T 切明暗，设置读回做校验", () => {
-  assert.deepEqual(DOC_HUB_STYLES.map(s => s.label), ["经典", "信号流", "蓝图", "编辑"]);
+  assert.deepEqual(DOC_HUB_STYLES.map(s => s.label), ["经典", "信号流", "蓝图", "编辑风格"]);
+  assert.deepEqual(DOC_HUB_STYLES.map(s => s.hint), ["稳定的技术默认风格", "突出动态流向", "工程评审", "适合发布与上线说明"]);
   assert.deepEqual(DOC_HUB_STYLES.map(s => nextStyle(s.id)), ["signal", "blueprint", "editorial", "classic"]);
+  assert.deepEqual(normalizePrefs(undefined), { style: "classic" });
   assert.equal(toggleTheme("dark"), "light");
   assert.equal(toggleTheme("light"), "dark");
-  assert.deepEqual(normalizePrefs(undefined), { style: "classic" });
   assert.deepEqual(normalizePrefs({ theme: "light", style: "blueprint" }), { theme: "light", style: "blueprint" });
   assert.deepEqual(normalizePrefs({ theme: "sepia", style: "neon" }), { style: "classic" });
+});
+
+test("生效明暗：theme 缺省跟随 Obsidian，显式值优先", () => {
+  assert.equal(effectiveTheme({ style: "classic" }, "dark"), "dark");
+  assert.equal(effectiveTheme({ style: "classic" }, "light"), "light");
+  assert.equal(effectiveTheme({ theme: "light", style: "classic" }, "dark"), "light");
+  assert.equal(effectiveTheme({ theme: "dark", style: "classic" }, "light"), "dark");
 });
