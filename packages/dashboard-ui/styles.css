@@ -2571,3 +2571,18 @@ body .flowdesk-dashboard-settings .setting-item-control input:not([type="checkbo
 .flowdesk-repository-reader .flowdesk-repository-body table { white-space: nowrap; overflow-wrap: normal; }
 .flowdesk-repository-reader .flowdesk-repository-body th,
 .flowdesk-repository-reader .flowdesk-repository-body td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--background-modifier-border); }
+
+/* Shared full-body reading surface; host colors and font remain authoritative. */
+.flowdesk-body-reader { min-width: 0; }
+.flowdesk-body-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.flowdesk-body-title { margin: 20px 0 6px; font-size: 1.35em; line-height: 1.4; overflow-wrap: anywhere; }
+.flowdesk-body-source { color: var(--text-muted); font-size: .86em; margin: 6px 0 12px; }
+.flowdesk-body-status { margin: 4px 0; }
+.flowdesk-body-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.flowdesk-body-warning { border-left: 3px solid var(--interactive-accent); padding-left: 10px; color: var(--text-muted); }
+.flowdesk-body-content { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--background-modifier-border); line-height: 1.75; overflow-wrap: anywhere; }
+.flowdesk-body-content h1, .flowdesk-body-content h2, .flowdesk-body-content h3 { line-height: 1.4; margin-top: 1.5em; }
+.flowdesk-body-content blockquote { border-left: 3px solid var(--background-modifier-border); margin: 12px 0; padding: 0 14px; color: var(--text-muted); }
+.flowdesk-body-content pre { font: .9em/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.flowdesk-body-content code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.flowdesk-body-content table { display: block; width: 100%; overflow-x: auto; border-collapse: collapse; }

@@ -5,3 +5,4 @@ export * from "./task-overview.js";
 export * from "./dashboard-layout.js";
 export * from "./reading-state.js";
 export * from "./host-types.js";
+export * from "./readonly-body-renderer.js";

@@ -61,3 +61,26 @@ test('complete Case mode exposes source-only background and noncanonical history
   for(const heading of ['Summary','Context','Current'])assert.ok(root.textContent.includes(heading+'_SOURCE_ONLY'),heading+' remains readable');
   const button=root.findByClass('flowdesk-case-progress-history')[0];assert.ok(button);button.click();assert.ok(history.includes('Progress_SOURCE_ONLY'));
 });
+
+import * as shared from "../packages/dashboard-ui/src/index";
+test("readonly body reader shows complete text and preserves exact action references",()=>{
+ const Renderer=(shared as any).ReadonlyBodyRenderer;
+ assert.ok(Renderer,"readonly body reader missing");
+ const root=new NativeElement(),calls:string[]=[],markdown:string[]=[];
+ const renderer=new Renderer({renderMarkdown:async(text:string,el:HTMLElement)=>{markdown.push(text);el.textContent=text;},back:()=>calls.push('back'),refresh:()=>calls.push('refresh'),showReference:(raw:string)=>calls.push('show:'+raw),copyReference:(raw:string)=>calls.push('copy:'+raw)});
+ const ref='[[Notes/Docs/Exact|资料]]',body='## A\r\n\r\nfirst\r\n## A\r\n\r\nsecond';
+ renderer.render(root as any,{title:'<img src=x onerror=attack()>',status:'custom',reference:ref,sourceLabel:'TaskNotes API',readAt:'13:20',state:'available',details:body});
+ assert.deepEqual(markdown,[body]);assert.ok(root.textContent.includes('<img src=x onerror=attack()>'));
+ for(const cls of ['flowdesk-body-back','flowdesk-body-refresh','flowdesk-body-reference','flowdesk-body-copy'])root.findByClass(cls)[0].click();
+ assert.deepEqual(calls,['back','refresh','show:'+ref,'copy:'+ref]);assert.equal(root.querySelectorAll('img').length,0);
+});
+test("readonly error and loading views never render an old supplied body",()=>{
+ const Renderer=(shared as any).ReadonlyBodyRenderer;assert.ok(Renderer,"readonly body reader missing");
+ const root=new NativeElement(),markdown:string[]=[];
+ const renderer=new Renderer({renderMarkdown:async(text:string)=>{markdown.push(text);},back(){},refresh(){},showReference(){},copyReference(){}});
+ for(const state of ['loading','unavailable','unsupported','too_large']){
+  renderer.render(root as any,{title:'A',reference:'exact.md',sourceLabel:'Markdown',readAt:'',state,details:'OLD_SECRET'});
+  assert.ok(!root.textContent.includes('OLD_SECRET'));assert.ok(root.textContent.includes('A'));
+ }
+ assert.deepEqual(markdown,[]);
+});
