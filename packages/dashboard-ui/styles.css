@@ -1,0 +1,2588 @@
+.flowdesk-dashboard {
+  --fd-green: var(--color-green);
+  --fd-yellow: var(--color-yellow);
+  --fd-red: var(--color-red);
+  --fd-blue: var(--color-blue);
+  --fd-parent: var(--color-purple, #8b5cf6);
+  --fd-child: var(--color-cyan, #0d9488);
+  --fd-border: color-mix(in srgb, var(--background-modifier-border) 78%, transparent);
+  --fd-soft: color-mix(in srgb, var(--background-secondary) 62%, transparent);
+  color: var(--text-normal);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-interface);
+  font-size: 13px;
+  gap: 10px;
+  line-height: 1.45;
+  padding: 8px 10px 18px;
+}
+
+.flowdesk-dashboard button {
+  font: inherit;
+}
+
+.flowdesk-dashboard button:focus-visible,
+.flowdesk-dashboard .is-clickable:focus-visible,
+.flowdesk-dashboard details > summary:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+.flowdesk-task-header {
+  display: block;
+  border: 1px solid var(--fd-border);
+  border-radius: 8px;
+  background: var(--background-primary-alt);
+  padding: 10px;
+}
+
+.flowdesk-task-top-row {
+  display: flex;
+  min-width: 0;
+  min-height: 26px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.flowdesk-task-heading {
+  width: 100%;
+  min-width: 0;
+}
+
+.flowdesk-task-title {
+  width: 100%;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.flowdesk-dashboard .flowdesk-current-task-link {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-normal);
+  padding: 0;
+  box-shadow: none;
+  appearance: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.flowdesk-dashboard .flowdesk-current-task-link:hover {
+  background: transparent;
+  color: var(--text-accent);
+  box-shadow: none;
+}
+
+.flowdesk-parent-link,
+.flowdesk-diagnostic-link,
+.flowdesk-diagnostic-source,
+.flowdesk-contract-item-source {
+  border: 0;
+  background: transparent;
+  color: var(--text-accent);
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.flowdesk-dashboard .flowdesk-parent-link {
+  display: block;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+  flex: 1;
+  margin: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  appearance: none;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flowdesk-dashboard .flowdesk-parent-link:hover {
+  background: transparent;
+  color: var(--text-accent-hover);
+  box-shadow: none;
+}
+
+.flowdesk-task-context-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.flowdesk-task-meta-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin-top: 10px;
+}
+
+.flowdesk-task-badges,
+.flowdesk-dashboard-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.flowdesk-task-badges {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.flowdesk-task-meta-actions {
+  flex: none;
+  margin-left: auto;
+}
+
+.flowdesk-task-read-meta {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.flowdesk-dashboard-toolbar {
+  flex-shrink: 0;
+}
+
+.flowdesk-toolbar-button {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  place-items: center;
+  border: 1px solid var(--fd-border);
+  border-radius: 7px;
+  background: var(--interactive-normal);
+  color: var(--text-muted);
+  padding: 0;
+  cursor: pointer;
+}
+
+.flowdesk-toolbar-button:hover {
+  border-color: var(--background-modifier-border-hover);
+  background: var(--interactive-hover);
+  color: var(--text-normal);
+}
+
+.flowdesk-toolbar-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.flowdesk-toolbar-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.flowdesk-review-button {
+  color: var(--text-accent);
+}
+
+.flowdesk-state-pill {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--fd-soft);
+  color: var(--text-muted);
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.flowdesk-state-pill.is-healthy,
+.flowdesk-state-pill.is-done {
+  color: var(--fd-green);
+}
+
+.flowdesk-state-pill.is-running {
+  color: var(--fd-blue);
+}
+
+.flowdesk-state-pill.is-warning {
+  color: var(--fd-yellow);
+}
+
+.flowdesk-state-pill.is-error {
+  color: var(--fd-red);
+}
+
+.flowdesk-subline,
+.flowdesk-section-meta,
+.flowdesk-child-meta {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-empty,
+.flowdesk-error,
+.flowdesk-context-pause {
+  border: 1px solid var(--fd-border);
+  border-radius: 8px;
+  background: var(--fd-soft);
+  padding: 12px;
+}
+
+.flowdesk-error {
+  border-color: color-mix(in srgb, var(--fd-red) 58%, var(--fd-border));
+  color: var(--text-error);
+  white-space: pre-wrap;
+}
+
+.flowdesk-card-kicker,
+.flowdesk-dashboard-section-title,
+.flowdesk-summary-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.flowdesk-trust-summary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--fd-border);
+  border-radius: 7px;
+  background: var(--background-secondary);
+  padding: 7px 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.flowdesk-trust-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--fd-blue);
+}
+
+.flowdesk-trust-summary.is-healthy .flowdesk-trust-dot {
+  background: var(--fd-green);
+}
+
+.flowdesk-trust-summary.is-warning .flowdesk-trust-dot {
+  background: var(--fd-yellow);
+}
+
+.flowdesk-trust-summary.is-error .flowdesk-trust-dot {
+  background: var(--fd-red);
+}
+
+.flowdesk-trust-badge {
+  flex: none;
+  color: var(--text-normal);
+  font-weight: 700;
+}
+
+.flowdesk-trust-source {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flowdesk-trust-contract {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-muted);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.flowdesk-trust-contract.is-warning {
+  color: var(--fd-yellow);
+}
+
+.flowdesk-trust-contract.is-error {
+  color: var(--fd-red);
+}
+
+.flowdesk-trust-contract.is-healthy {
+  color: var(--fd-green);
+}
+
+.flowdesk-primary-status {
+  border: 1px solid color-mix(in srgb, var(--fd-blue) 20%, var(--fd-border));
+  border-left: 3px solid var(--fd-blue);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fd-blue) 5%, var(--background-primary));
+  padding: 10px 11px;
+}
+
+.flowdesk-primary-status.is-healthy {
+  border-color: color-mix(in srgb, var(--fd-green) 22%, var(--fd-border));
+  border-left-color: var(--fd-green);
+  background: color-mix(in srgb, var(--fd-green) 5%, var(--background-primary));
+}
+
+.flowdesk-primary-status.is-warning {
+  border-color: color-mix(in srgb, var(--fd-yellow) 25%, var(--fd-border));
+  border-left-color: var(--fd-yellow);
+  background: color-mix(in srgb, var(--fd-yellow) 6%, var(--background-primary));
+}
+
+.flowdesk-primary-status.is-error {
+  border-color: color-mix(in srgb, var(--fd-red) 25%, var(--fd-border));
+  border-left-color: var(--fd-red);
+  background: color-mix(in srgb, var(--fd-red) 5%, var(--background-primary));
+}
+
+.flowdesk-primary-title {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.flowdesk-primary-status .flowdesk-diagnostic-link {
+  color: var(--text-normal);
+}
+
+.flowdesk-primary-status .flowdesk-diagnostic-link:hover {
+  color: var(--text-accent);
+}
+
+.flowdesk-diagnostic-row,
+.flowdesk-meta-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 7px;
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-evidence-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/*
+ * min-width: 0 让内层 grid 的 minmax(0, 1fr) 生效，防长内容撑宽侧栏；
+ * flex-shrink: 0 防止下方折叠区展开时压缩本区块高度。两者作用于不同机制，需并存。
+ * 不要加 overflow: hidden——它会把被压缩后溢出的子任务行裁掉。
+ */
+.flowdesk-child-section {
+  min-width: 0;
+  flex-shrink: 0;
+  border: 1px solid var(--fd-border);
+  border-radius: 8px;
+  background: var(--background-primary-alt);
+}
+
+.flowdesk-section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+}
+
+.flowdesk-child-list {
+  border-top: 1px solid var(--fd-border);
+}
+
+.flowdesk-child-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  border-bottom: 1px solid var(--fd-border);
+  background: transparent;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.flowdesk-child-row:last-child {
+  border-bottom: 0;
+}
+
+.flowdesk-child-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.flowdesk-child-content {
+  min-width: 0;
+}
+
+.flowdesk-child-state-dot {
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.flowdesk-child-state-dot.is-healthy {
+  background: var(--fd-green);
+}
+
+.flowdesk-child-state-dot.is-running {
+  background: var(--fd-blue);
+}
+
+.flowdesk-child-state-dot.is-warning {
+  background: var(--fd-yellow);
+}
+
+.flowdesk-child-state-dot.is-error {
+  background: var(--fd-red);
+}
+
+.flowdesk-child-title {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 680;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-child-summary {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.flowdesk-child-meta {
+  margin-top: 2px;
+}
+
+.flowdesk-child-status {
+  padding-top: 1px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.flowdesk-child-status.is-healthy {
+  color: var(--fd-green);
+}
+
+.flowdesk-child-status.is-running {
+  color: var(--fd-blue);
+}
+
+.flowdesk-child-status.is-warning {
+  color: var(--fd-yellow);
+}
+
+.flowdesk-child-status.is-error {
+  color: var(--fd-red);
+}
+
+.flowdesk-contract-summary {
+  border: 1px solid var(--fd-border);
+  border-radius: 8px;
+  background: var(--background-primary-alt);
+  padding: 0 10px;
+}
+
+.flowdesk-contract-summary > summary,
+.flowdesk-technical-details > summary,
+.flowdesk-machine-details > summary {
+  cursor: pointer;
+}
+
+.flowdesk-contract-summary > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  list-style: none;
+  padding: 10px 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.flowdesk-contract-summary > summary::-webkit-details-marker {
+  display: none;
+}
+
+.flowdesk-contract-summary > summary::before {
+  content: "›";
+  color: var(--text-faint);
+  font-size: 15px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 120ms ease;
+}
+
+.flowdesk-contract-summary[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.flowdesk-contract-diagnostic-count {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.flowdesk-contract-overview {
+  padding: 0 0 11px;
+}
+
+.flowdesk-contract-goal-text {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.flowdesk-contract-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 9px;
+  border-top: 1px solid var(--fd-border);
+  border-bottom: 1px solid var(--fd-border);
+  overflow: hidden;
+}
+
+.flowdesk-contract-metric {
+  min-width: 0;
+  border-right: 1px solid var(--fd-border);
+  padding: 7px 6px;
+}
+
+.flowdesk-contract-metric:last-child {
+  border-right: 0;
+}
+
+.flowdesk-contract-metric-value {
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.flowdesk-contract-metric-label {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.flowdesk-technical-details {
+  margin-top: 9px;
+  border-top: 1px solid var(--fd-border);
+}
+
+.flowdesk-technical-details > summary {
+  padding: 9px 1px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.flowdesk-detail-body {
+  display: grid;
+  min-width: 0;
+  margin: 0 -10px -11px;
+  border-top: 1px solid var(--fd-border);
+}
+
+.flowdesk-dashboard-section {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 12px 11px;
+  background: var(--background-primary);
+}
+
+.flowdesk-dashboard-section + .flowdesk-dashboard-section {
+  border-top: 1px solid var(--fd-border);
+}
+
+.flowdesk-diagnostics-section > summary {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 7px;
+  margin-bottom: 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.flowdesk-diagnostics-section[open] > summary {
+  margin-bottom: 9px;
+}
+
+.flowdesk-diagnostics-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.flowdesk-diagnostics-section > summary::before {
+  content: "›";
+  width: 11px;
+  flex: 0 0 11px;
+  color: var(--text-faint);
+  font-size: 15px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 120ms ease;
+}
+
+.flowdesk-diagnostics-section[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.flowdesk-contract-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.flowdesk-contract-section-meta {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.flowdesk-contract-scope-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-contract-scope-details {
+  margin-top: 5px;
+  border-radius: 6px;
+}
+
+.flowdesk-contract-scope-details > summary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  cursor: pointer;
+  list-style: none;
+  font-size: 12px;
+}
+
+.flowdesk-contract-scope-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.flowdesk-contract-scope-details > summary::before {
+  content: "›";
+  width: 11px;
+  flex: 0 0 11px;
+  color: var(--text-faint);
+  font-size: 15px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 120ms ease;
+}
+
+.flowdesk-contract-scope-details[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.flowdesk-contract-scope-empty {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 12px;
+}
+
+.flowdesk-contract-scope-status,
+.flowdesk-contract-scope-empty > span:last-child {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.flowdesk-contract-scope-markdown {
+  min-width: 0;
+  padding: 4px 0 2px 19px;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.flowdesk-contract-scope-markdown > :first-child {
+  margin-top: 0;
+}
+
+.flowdesk-contract-scope-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.flowdesk-contract-scope-markdown ul,
+.flowdesk-contract-scope-markdown ol {
+  padding-inline-start: 20px;
+}
+
+.flowdesk-contract-scope-markdown code {
+  white-space: break-spaces;
+}
+
+.flowdesk-contract-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.flowdesk-contract-chip {
+  border-radius: 999px;
+  background: var(--fd-soft);
+  padding: 3px 7px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 550;
+}
+
+.flowdesk-records-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--fd-border);
+  font-size: 12px;
+}
+
+.flowdesk-records-link {
+  color: var(--text-accent);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.flowdesk-records-link:hover {
+  text-decoration: underline;
+}
+
+.flowdesk-contract-list {
+  margin-top: 7px;
+  border-top: 1px solid var(--fd-border);
+  padding-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-contract-item-details {
+  margin-top: 8px;
+  border-top: 1px solid var(--fd-border);
+  font-size: 12px;
+}
+
+.flowdesk-contract-item-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 1px;
+  color: var(--text-normal);
+  font-weight: 650;
+  list-style: none;
+}
+
+.flowdesk-contract-item-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.flowdesk-contract-item-details > summary::before {
+  content: "›";
+  width: 11px;
+  color: var(--text-faint);
+  font-size: 15px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 120ms ease;
+}
+
+.flowdesk-contract-item-details[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.flowdesk-contract-item-count {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.flowdesk-contract-item-list {
+  padding-left: 18px;
+}
+
+.flowdesk-contract-item {
+  padding: 8px 0;
+  line-height: 1.5;
+}
+
+.flowdesk-contract-item + .flowdesk-contract-item {
+  border-top: 1px solid var(--fd-border);
+}
+
+.flowdesk-contract-item-head {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 5px 7px;
+  margin-bottom: 4px;
+}
+
+.flowdesk-contract-item-id {
+  color: var(--text-accent);
+  font-weight: 700;
+}
+
+.flowdesk-contract-requirement-ref {
+  border-radius: 999px;
+  background: var(--fd-soft);
+  color: var(--text-muted);
+  padding: 1px 6px;
+  font-size: 10.5px;
+}
+
+.flowdesk-dashboard .flowdesk-contract-item-source {
+  height: auto;
+  min-height: 0;
+  margin-left: auto;
+  padding: 0;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.flowdesk-dashboard .flowdesk-contract-item-source:hover {
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-accent);
+}
+
+.flowdesk-contract-item-text {
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-scenario-steps {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 3px 8px;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-scenario-step-label {
+  padding-top: 1px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+}
+
+.flowdesk-acceptance-progress {
+  height: 5px;
+  margin: 2px 0 11px;
+  border-radius: 999px;
+  background: var(--fd-soft);
+  overflow: hidden;
+}
+
+.flowdesk-acceptance-progress-value {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--fd-green);
+}
+
+.flowdesk-acceptance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 16px;
+}
+
+.flowdesk-acceptance-item {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.flowdesk-acceptance-check {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.flowdesk-acceptance-check.is-checked {
+  color: var(--fd-green);
+}
+
+.flowdesk-acceptance-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-acceptance-evidence {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+
+.flowdesk-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--fd-border);
+}
+
+.flowdesk-evidence-item {
+  min-width: 0;
+  padding: 8px;
+  background: var(--background-primary);
+}
+
+.flowdesk-evidence-title {
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.flowdesk-evidence-title.is-done {
+  color: var(--fd-green);
+}
+
+.flowdesk-evidence-title.is-blocked {
+  color: var(--fd-yellow);
+}
+
+.flowdesk-evidence-title.is-error {
+  color: var(--fd-red);
+}
+
+.flowdesk-evidence-summary {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+
+.flowdesk-evidence-fields {
+  min-width: 0;
+  margin-top: 7px;
+  border-top: 1px solid var(--fd-border);
+  padding-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-evidence-fields .flowdesk-diagnostic-row {
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 5px;
+  margin-top: 4px;
+  font-size: 10.5px;
+}
+
+.flowdesk-review-modal textarea {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+}
+
+.flowdesk-observation-summary {
+  background: color-mix(in srgb, var(--fd-green) 6%, var(--background-primary));
+}
+
+.flowdesk-observation-summary.is-warning {
+  background: color-mix(in srgb, var(--fd-yellow) 7%, var(--background-primary));
+}
+
+.flowdesk-observation-summary .flowdesk-dashboard-section-title::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--fd-green);
+  vertical-align: 1px;
+}
+
+.flowdesk-observation-summary.is-warning .flowdesk-dashboard-section-title::before {
+  background: var(--fd-yellow);
+}
+
+.flowdesk-observation-copy {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.flowdesk-observation-details {
+  margin-top: 10px;
+  border-top: 1px solid var(--fd-border);
+  padding-top: 8px;
+}
+
+.flowdesk-observation-details > summary {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.flowdesk-observation-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 8px;
+  background: var(--fd-border);
+}
+
+.flowdesk-observation-cell {
+  min-width: 0;
+  padding: 7px;
+  background: var(--background-primary);
+}
+
+.flowdesk-observation-value {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-diagnostic-issue {
+  margin: 0;
+  border-top: 1px solid var(--fd-border);
+}
+
+.flowdesk-diagnostic-task-group,
+.flowdesk-diagnostic-issue,
+.flowdesk-diagnostic-item-body {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.flowdesk-diagnostic-issue > summary {
+  cursor: pointer;
+}
+
+.flowdesk-diagnostic-task-group {
+  margin-top: 9px;
+  border-top: 1px solid var(--fd-border);
+  padding-top: 9px;
+}
+
+.flowdesk-diagnostic-task-head,
+.flowdesk-diagnostic-issue-summary {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 5px 7px;
+}
+
+.flowdesk-diagnostic-issue-summary {
+  padding: 9px 1px;
+  list-style: none;
+}
+
+.flowdesk-diagnostic-issue-summary::-webkit-details-marker {
+  display: none;
+}
+
+.flowdesk-diagnostic-issue-summary::before {
+  content: "›";
+  width: 11px;
+  flex: 0 0 11px;
+  color: var(--text-faint);
+  font-size: 15px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 120ms ease;
+}
+
+.flowdesk-diagnostic-issue[open] > .flowdesk-diagnostic-issue-summary::before {
+  transform: rotate(90deg);
+}
+
+.flowdesk-diagnostic-severity {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--fd-red);
+}
+
+.flowdesk-diagnostic-severity.is-warning {
+  background: var(--fd-yellow);
+}
+
+.flowdesk-diagnostic-task-kind {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.flowdesk-diagnostic-task-title,
+.flowdesk-dashboard .flowdesk-diagnostic-task-link {
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 120px;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flowdesk-dashboard .flowdesk-diagnostic-task-link {
+  height: auto;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-accent);
+  padding: 0;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.flowdesk-dashboard .flowdesk-diagnostic-task-link:hover {
+  background: transparent;
+  color: var(--text-accent-hover);
+  box-shadow: none;
+}
+
+.flowdesk-diagnostic-task-status {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.flowdesk-diagnostic-task-status.is-error {
+  color: var(--fd-red);
+}
+
+.flowdesk-diagnostic-task-status.is-warning {
+  color: var(--fd-yellow);
+}
+
+.flowdesk-diagnostic-task-status.is-running {
+  color: var(--fd-blue);
+}
+
+.flowdesk-diagnostic-task-status.is-healthy {
+  color: var(--fd-green);
+}
+
+.flowdesk-diagnostic-action {
+  min-width: 0;
+  flex: 1;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.flowdesk-dashboard .flowdesk-copy-problem {
+  height: 24px;
+  min-height: 24px;
+  flex: 0 0 auto;
+  border: 1px solid var(--fd-border);
+  border-radius: 6px;
+  padding: 0 8px;
+  background: var(--fd-soft);
+  color: var(--text-muted);
+  box-shadow: none;
+  font-size: 10.5px;
+}
+
+.flowdesk-dashboard .flowdesk-copy-problem:hover {
+  color: var(--text-accent);
+}
+
+.flowdesk-diagnostic-item-body {
+  margin: 0 0 10px 19px;
+  border-left: 2px solid var(--fd-red);
+  padding: 1px 0 1px 10px;
+}
+
+.flowdesk-dashboard .flowdesk-diagnostic-source {
+  display: inline-block;
+  height: auto;
+  min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+  margin-left: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0;
+  box-shadow: none;
+  appearance: none;
+  font-size: 10.5px;
+  font-weight: 550;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-dashboard .flowdesk-diagnostic-source:hover {
+  border: 0;
+  background: transparent;
+  color: var(--text-accent);
+  box-shadow: none;
+}
+
+.flowdesk-diagnostic-supporting-details {
+  margin-top: 8px;
+  border-top: 1px solid var(--fd-border);
+  padding-top: 7px;
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
+
+.flowdesk-diagnostic-supporting-details > summary {
+  font-weight: 600;
+}
+
+.flowdesk-diagnostic-supporting-details .flowdesk-diagnostic-row {
+  grid-template-columns: 34px minmax(0, 1fr);
+  font-size: 10.5px;
+}
+
+.flowdesk-status-dot {
+  display: inline-grid;
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--fd-soft);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.flowdesk-status-dot.is-done,
+.flowdesk-status-dot.is-valid {
+  color: var(--fd-green);
+}
+
+.flowdesk-status-dot.is-blocked,
+.flowdesk-status-dot.is-error,
+.flowdesk-status-dot.is-invalid {
+  color: var(--fd-red);
+}
+
+.flowdesk-muted {
+  margin-top: 7px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+@media (max-width: 360px) {
+  .flowdesk-dashboard {
+    padding-right: 11px;
+    padding-left: 11px;
+  }
+
+  .flowdesk-task-meta-row {
+    flex-wrap: wrap;
+  }
+
+  .flowdesk-task-meta-actions {
+    margin-left: auto;
+  }
+
+  .flowdesk-task-read-meta {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+
+  .flowdesk-acceptance-grid,
+  .flowdesk-evidence-grid,
+  .flowdesk-observation-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Work Case Dashboard：业务样式必须保持在 flowdesk-case 作用域内。 */
+.flowdesk-case-dashboard {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-header,
+.flowdesk-case-dashboard .flowdesk-case-section,
+.flowdesk-case-dashboard .flowdesk-case-diagnostics {
+  min-width: 0;
+  border: 1px solid var(--fd-border);
+  border-radius: 8px;
+  background: var(--background-primary-alt);
+  padding: 10px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-header-top,
+.flowdesk-case-dashboard .flowdesk-case-metadata,
+.flowdesk-case-dashboard .flowdesk-case-status-list,
+.flowdesk-case-dashboard .flowdesk-case-related-links {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-header-top {
+  justify-content: space-between;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-kicker,
+.flowdesk-case-dashboard .flowdesk-case-label {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-title {
+  min-width: 0;
+  margin: 7px 0 9px;
+  font-size: 17px;
+  font-weight: 750;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-refresh,
+.flowdesk-case-dashboard .flowdesk-case-related-link {
+  min-width: 0;
+  height: auto;
+  border: 0;
+  background: transparent;
+  color: var(--text-accent);
+  padding: 2px 0;
+  box-shadow: none;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-related .flowdesk-case-related-link {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-status,
+.flowdesk-case-dashboard .flowdesk-case-badge,
+.flowdesk-case-dashboard .flowdesk-case-status-chip,
+.flowdesk-case-dashboard .flowdesk-case-task-status {
+  display: inline-flex;
+  min-width: 0;
+  border: 1px solid var(--fd-border);
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-date,
+.flowdesk-case-dashboard .flowdesk-case-muted,
+.flowdesk-case-dashboard .flowdesk-case-task-meta {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-recovery {
+  min-width: 0;
+  margin-top: 9px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-recovery-row,
+.flowdesk-case-dashboard .flowdesk-case-related-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(64px, auto) minmax(0, 1fr);
+  gap: 8px;
+  padding-top: 6px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-long-value,
+.flowdesk-case-dashboard .flowdesk-case-current-value,
+.flowdesk-case-dashboard .flowdesk-case-task-title-text,
+.flowdesk-case-dashboard .flowdesk-case-progress-text,
+.flowdesk-case-dashboard .flowdesk-case-record-text,
+.flowdesk-case-dashboard .flowdesk-case-diagnostic-message {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-section-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-short-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 8px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-current-card,
+.flowdesk-case-dashboard .flowdesk-case-record-entry,
+.flowdesk-case-dashboard .flowdesk-case-progress-item,
+.flowdesk-case-dashboard .flowdesk-case-task-row {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  border: 1px solid var(--fd-border);
+  border-radius: 7px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  padding: 8px;
+  box-shadow: none;
+  text-align: left;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-current-card:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-current-value {
+  margin-top: 5px;
+  font-size: 12.5px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-count-value {
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-observation {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-count-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 88px), 1fr));
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-count {
+  min-width: 0;
+  border: 1px solid var(--fd-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--background-secondary) 72%, transparent);
+  padding: 6px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-count:nth-child(1) {
+  border-top-color: color-mix(in srgb, var(--fd-blue) 62%, var(--fd-border));
+}
+
+.flowdesk-case-dashboard .flowdesk-case-count:nth-child(2) {
+  border-top-color: color-mix(in srgb, var(--fd-red) 62%, var(--fd-border));
+}
+
+.flowdesk-case-dashboard .flowdesk-case-count:nth-child(3) {
+  border-top-color: color-mix(in srgb, var(--text-muted) 62%, var(--fd-border));
+}
+
+.flowdesk-case-dashboard .flowdesk-case-count .flowdesk-case-label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-status-list,
+.flowdesk-case-dashboard .flowdesk-case-task-list,
+.flowdesk-case-dashboard .flowdesk-case-task-history,
+.flowdesk-case-dashboard .flowdesk-case-drift {
+  min-width: 0;
+  margin-top: 8px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 8px;
+  align-items: start;
+  margin-top: 5px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-content {
+  min-width: 0;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-title {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 4px;
+  font-weight: 650;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-roles {
+  display: inline-flex;
+  flex: none;
+  gap: 3px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-role {
+  display: inline-flex;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--fd-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-role.is-parent {
+  border-color: color-mix(in srgb, var(--fd-parent) 48%, var(--fd-border));
+  background: color-mix(in srgb, var(--fd-parent) 12%, transparent);
+  color: var(--fd-parent);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-role.is-child {
+  border-color: color-mix(in srgb, var(--fd-child) 48%, var(--fd-border));
+  background: color-mix(in srgb, var(--fd-child) 12%, transparent);
+  color: var(--fd-child);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-status-list {
+  gap: 4px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-status-chip {
+  background: color-mix(in srgb, var(--background-secondary) 58%, transparent);
+  color: var(--text-muted);
+  padding: 1px 6px;
+  font-size: 10px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-status {
+  justify-self: end;
+  background: var(--background-secondary);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-row.is-active .flowdesk-case-task-status {
+  border-color: color-mix(in srgb, var(--fd-blue) 45%, var(--fd-border));
+  background: color-mix(in srgb, var(--fd-blue) 10%, transparent);
+  color: var(--fd-blue);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-row.is-blocked .flowdesk-case-task-status {
+  border-color: color-mix(in srgb, var(--fd-red) 45%, var(--fd-border));
+  background: color-mix(in srgb, var(--fd-red) 10%, transparent);
+  color: var(--fd-red);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-row.is-completed .flowdesk-case-task-status {
+  border-color: color-mix(in srgb, var(--fd-green) 45%, var(--fd-border));
+  background: color-mix(in srgb, var(--fd-green) 10%, transparent);
+  color: var(--fd-green);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-row.is-archived .flowdesk-case-task-status {
+  border-color: var(--fd-border);
+  background: color-mix(in srgb, var(--background-secondary) 72%, transparent);
+  color: var(--text-muted);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-task-row.is-unknown .flowdesk-case-task-status {
+  border-color: color-mix(in srgb, var(--fd-yellow) 45%, var(--fd-border));
+  background: color-mix(in srgb, var(--fd-yellow) 10%, transparent);
+  color: var(--fd-yellow);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-drift,
+.flowdesk-case-dashboard .flowdesk-case-stale-warning,
+.flowdesk-case-dashboard .flowdesk-case-error {
+  min-width: 0;
+  border-left: 3px solid var(--fd-yellow);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--fd-yellow) 10%, transparent);
+  padding: 7px 8px;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-error {
+  border-left-color: var(--fd-red);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-entry {
+  margin-top: 6px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-list {
+  position: relative;
+  min-width: 0;
+  padding-left: 17px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-list::before {
+  content: "";
+  position: absolute;
+  top: 13px;
+  bottom: 13px;
+  left: 4px;
+  width: 1px;
+  background: var(--fd-border);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-item {
+  position: relative;
+  margin-top: 7px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-item::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: -17px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--background-primary-alt);
+  border-radius: 50%;
+  background: var(--text-muted);
+  box-sizing: border-box;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-item.is-latest {
+  border-color: color-mix(in srgb, var(--fd-blue) 42%, var(--fd-border));
+  background: color-mix(in srgb, var(--fd-blue) 7%, var(--background-primary));
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-item.is-latest::before {
+  background: var(--fd-blue);
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 3px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-time {
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-progress-latest {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fd-blue) 14%, transparent);
+  color: var(--fd-blue);
+  padding: 1px 5px;
+  font-size: 9.5px;
+  font-weight: 750;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-section-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 7px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-group,
+.flowdesk-case-dashboard .flowdesk-case-record-more {
+  border: 1px solid var(--fd-border);
+  border-radius: 7px;
+  background: var(--background-primary);
+  overflow: hidden;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-group.is-primary,
+.flowdesk-case-dashboard .flowdesk-case-record-more {
+  grid-column: 1 / -1;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-group > summary,
+.flowdesk-case-dashboard .flowdesk-case-record-more > summary {
+  padding: 8px;
+  color: var(--text-normal);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-group.is-goal {
+  border-left: 3px solid var(--fd-blue);
+  background: color-mix(in srgb, var(--fd-blue) 5%, var(--background-primary));
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-group.is-blockers {
+  border-left: 3px solid var(--fd-yellow);
+  background: color-mix(in srgb, var(--fd-yellow) 6%, var(--background-primary));
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-group.is-outcome {
+  border-left: 3px solid var(--fd-parent);
+  background: color-mix(in srgb, var(--fd-parent) 6%, var(--background-primary));
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-entry {
+  border-width: 1px 0 0;
+  border-radius: 0;
+  margin-top: 0;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-more-grid {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  padding: 0 8px 8px;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-group,
+.flowdesk-case-dashboard .flowdesk-case-related-row,
+.flowdesk-case-dashboard .flowdesk-case-diagnostic {
+  min-width: 0;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-record-heading,
+.flowdesk-case-dashboard .flowdesk-case-diagnostic-code {
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-diagnostic {
+  border-top: 1px solid var(--fd-border);
+  padding: 7px 0;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-diagnostic-path {
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+
+.flowdesk-case-dashboard .flowdesk-case-empty {
+  min-width: 0;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+@container (max-width: 420px) {
+  .flowdesk-case-dashboard .flowdesk-case-short-grid,
+  .flowdesk-case-dashboard .flowdesk-case-section-grid,
+  .flowdesk-case-dashboard .flowdesk-case-task-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .flowdesk-case-dashboard .flowdesk-case-recovery-row,
+  .flowdesk-case-dashboard .flowdesk-case-related-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 320px) {
+  .flowdesk-case-dashboard .flowdesk-case-task-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .flowdesk-case-dashboard .flowdesk-case-task-status {
+    justify-self: start;
+  }
+}
+
+/* Task and Case share native disclosure semantics and existing theme tokens. */
+.flowdesk-dashboard .flowdesk-task-history > summary,
+.flowdesk-case-dashboard .flowdesk-case-task-counts > summary {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+  padding: 6px 0;
+  overflow-wrap: anywhere;
+}
+.flowdesk-dashboard .flowdesk-task-history > summary:focus-visible,
+.flowdesk-case-dashboard .flowdesk-case-task-counts > summary:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+.flowdesk-case-dashboard .flowdesk-case-task-summary {
+  display: block;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.flowdesk-case-dashboard > .flowdesk-case-observation {
+  font-size: var(--font-ui-small);
+  padding: 6px 0;
+  overflow-wrap: anywhere;
+}
+
+/* Dashboard UX preview: the same reading rhythm for Task and Case. */
+.flowdesk-dashboard {
+  container-type: inline-size;
+  --fd-reading-border: var(--background-modifier-border);
+  gap: 12px;
+  font-size: var(--font-ui-small, 13px);
+  line-height: 1.65;
+  padding: 14px 12px 24px;
+}
+.flowdesk-dashboard .flowdesk-task-header,
+.flowdesk-dashboard .flowdesk-case-header {
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--background-primary-alt);
+}
+.flowdesk-dashboard .flowdesk-task-title,
+.flowdesk-dashboard .flowdesk-case-title {
+  font-size: var(--font-ui-medium, 16px);
+  line-height: 1.5;
+  font-weight: 700;
+}
+.flowdesk-dashboard .flowdesk-task-read-meta,
+.flowdesk-dashboard .flowdesk-case-date { font-size: 12px; color: var(--text-muted); }
+.flowdesk-dashboard .flowdesk-task-meta-row,
+.flowdesk-dashboard .flowdesk-case-metadata { flex-wrap: wrap; gap: 6px 9px; }
+.flowdesk-dashboard .flowdesk-state-pill,
+.flowdesk-dashboard .flowdesk-case-status {
+  font-size: 12px;
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-weight: 600;
+}
+.flowdesk-dashboard .flowdesk-trust-summary,
+.flowdesk-dashboard .flowdesk-case-observation {
+  display: block;
+  border: 0;
+  background: transparent;
+  padding: 0 3px;
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.flowdesk-dashboard .flowdesk-trust-summary > summary,
+.flowdesk-dashboard .flowdesk-case-observation > summary {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  cursor: pointer;
+  padding: 3px 0;
+}
+.flowdesk-dashboard .flowdesk-trust-summary > summary::after,
+.flowdesk-dashboard .flowdesk-case-observation > summary::after {
+  content: '详情 ⌄';
+  margin-left: auto;
+  color: var(--text-muted);
+}
+.flowdesk-dashboard .flowdesk-core-version { font-weight: 400; color: var(--text-muted); }
+.flowdesk-dashboard .flowdesk-task-overview {
+  border: 1px solid var(--fd-reading-border);
+  border-radius: 12px;
+  background: var(--background-primary-alt);
+  padding: 14px;
+  overflow-wrap: anywhere;
+}
+.flowdesk-dashboard .flowdesk-dashboard-section-title {
+  font-size: 13px;
+  font-weight: 650;
+  margin-bottom: 9px;
+  color: var(--text-normal);
+}
+.flowdesk-dashboard .flowdesk-overview-rollup {
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.flowdesk-dashboard .flowdesk-overview-result,
+.flowdesk-dashboard .flowdesk-overview-verification,
+.flowdesk-dashboard .flowdesk-overview-next {
+  margin-top: 11px;
+}
+.flowdesk-dashboard .flowdesk-overview-excerpt p { margin: 3px 0; }
+.flowdesk-dashboard .flowdesk-overview-gap {
+  border-left: 2px solid var(--color-orange, #ca8a04);
+  padding-left: 8px;
+  margin-top: 9px;
+  color: var(--text-normal);
+  font-size: 12px;
+}
+.flowdesk-dashboard .flowdesk-overview-history {
+  margin-top: 11px;
+  border-top: 1px solid var(--fd-reading-border);
+  padding-top: 8px;
+}
+.flowdesk-dashboard .flowdesk-overview-history > summary { cursor: pointer; color: var(--text-muted); }
+.flowdesk-dashboard .flowdesk-reading-navigation,
+.flowdesk-dashboard .flowdesk-source-actions,
+.flowdesk-dashboard .flowdesk-continuation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.flowdesk-dashboard .flowdesk-reading-navigation button,
+.flowdesk-dashboard .flowdesk-content-source,
+.flowdesk-dashboard .flowdesk-case-source-action {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-accent);
+  font-size: 12px;
+  min-height: 26px;
+  padding: 3px 0;
+  height: auto;
+  white-space: normal;
+  text-align: left;
+}
+.flowdesk-dashboard .flowdesk-reading-navigation button {
+  padding: 5px 10px;
+  background: var(--background-secondary);
+  border-radius: 6px;
+}
+.flowdesk-dashboard .flowdesk-reading-navigation button:hover,
+.flowdesk-dashboard .flowdesk-content-source:hover,
+.flowdesk-dashboard .flowdesk-case-source-action:hover { color: var(--text-accent-hover, var(--text-accent)); }
+.flowdesk-dashboard .flowdesk-contract-summary {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+.flowdesk-dashboard .flowdesk-detail-body { display: block; padding: 0; }
+.flowdesk-dashboard .flowdesk-task-specification,
+.flowdesk-dashboard .flowdesk-acceptance-group,
+.flowdesk-dashboard .flowdesk-contract-item-details {
+  border: 1px solid var(--fd-reading-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  background: var(--background-primary);
+}
+.flowdesk-dashboard .flowdesk-task-specification > summary,
+.flowdesk-dashboard .flowdesk-acceptance-group > summary,
+.flowdesk-dashboard .flowdesk-contract-item-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-normal);
+  padding: 0;
+}
+.flowdesk-dashboard .flowdesk-specification-section h3,
+.flowdesk-dashboard .flowdesk-process-entry h3 {
+  font-size: 13px;
+  margin: 13px 0 5px;
+}
+.flowdesk-dashboard .flowdesk-process-entry {
+  border-bottom: 1px solid var(--fd-reading-border);
+  padding: 12px 0;
+}
+.flowdesk-dashboard .flowdesk-process-entry:last-of-type { border-bottom: 0; }
+.flowdesk-dashboard .flowdesk-process-entry h2 {
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 7px;
+  overflow-wrap: anywhere;
+}
+.flowdesk-dashboard .flowdesk-acceptance-list {
+  list-style: none;
+  margin: 10px 0;
+  padding: 0;
+}
+.flowdesk-dashboard .flowdesk-acceptance-item {
+  display: grid;
+  grid-template-columns: 19px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--fd-reading-border);
+}
+.flowdesk-dashboard .flowdesk-acceptance-item:last-child { border-bottom: 0; }
+.flowdesk-dashboard .flowdesk-acceptance-item p { margin: 0; text-decoration: none; }
+.flowdesk-dashboard .flowdesk-acceptance-marker { color: var(--text-muted); user-select: none; font-size: 15px; }
+.flowdesk-dashboard .flowdesk-acceptance-marker.is-checked { color: var(--color-green); }
+.flowdesk-dashboard .flowdesk-source-details { font-size: 11px; color: var(--text-muted); }
+.flowdesk-dashboard .flowdesk-source-details > summary { cursor: pointer; }
+.flowdesk-dashboard .flowdesk-task-technical { margin-top: 12px; color: var(--text-muted); }
+.flowdesk-dashboard .flowdesk-task-technical > summary { cursor: pointer; font-size: 12px; }
+.flowdesk-dashboard .flowdesk-case-section { border-radius: 10px; padding: 13px; }
+.flowdesk-dashboard .flowdesk-case-short-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.flowdesk-dashboard .flowdesk-case-current-card {
+  min-width: 0;
+  height: auto;
+  padding: 10px;
+  background: var(--background-primary);
+  border: 1px solid var(--fd-reading-border);
+  border-radius: 8px;
+}
+.flowdesk-dashboard .flowdesk-case-label { color: var(--text-muted); font-size: 11px; font-weight: 600; }
+.flowdesk-dashboard .flowdesk-case-current-value p { margin: 5px 0 0; }
+.flowdesk-dashboard .flowdesk-case-progress-item {
+  display: block;
+  padding: 10px 11px;
+  height: auto;
+  text-align: left;
+  background: var(--background-primary);
+  border: 1px solid var(--fd-reading-border);
+  border-radius: 8px;
+}
+.flowdesk-dashboard .flowdesk-case-progress-item.is-latest { border-color: var(--fd-reading-border); }
+.flowdesk-dashboard .flowdesk-case-progress-text { line-height: 1.65; }
+.flowdesk-dashboard .flowdesk-case-progress-text p { margin: 5px 0; }
+.flowdesk-dashboard .flowdesk-case-record-group { padding: 9px 10px; background: var(--background-primary); }
+.flowdesk-dashboard .flowdesk-continuation-preview,
+.flowdesk-dashboard .flowdesk-continuation-choices { margin: 8px 0; }
+.flowdesk-dashboard .flowdesk-continuation-preview > summary,
+.flowdesk-dashboard .flowdesk-continuation-choices > summary { cursor: pointer; color: var(--text-muted); font-size: 12px; }
+.flowdesk-dashboard .flowdesk-continuation-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  background: var(--background-secondary);
+  font-size: 12px;
+  line-height: 1.65;
+  padding: 10px;
+  border-radius: 7px;
+}
+.flowdesk-dashboard .flowdesk-continuation-choice { display: flex; gap: 8px; align-items: center; padding: 6px 0; }
+.flowdesk-dashboard .flowdesk-case-copy-continuation { background: var(--interactive-accent); color: var(--text-on-accent); }
+.flowdesk-dashboard .flowdesk-case-copy-resume { background: transparent; color: var(--text-muted); box-shadow: none; }
+.flowdesk-dashboard .flowdesk-continuation-actions { margin: 10px 0; }
+.flowdesk-dashboard .flowdesk-case-current-full > summary { font-size: 11px; cursor: pointer; color: var(--text-muted); margin: 5px 0; }
+.flowdesk-dashboard .flowdesk-contract-scope-markdown { min-width: 0; overflow-wrap: anywhere; }
+.flowdesk-dashboard .markdown-rendered pre { overflow-x: auto; max-width: 100%; }
+.flowdesk-dashboard .markdown-rendered table { display: block; overflow-x: auto; max-width: 100%; }
+.flowdesk-core-settings-status { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; color: var(--text-muted); }
+.flowdesk-advanced-settings > summary { cursor: pointer; margin: 12px 0; }
+@container (max-width: 420px) {
+  .flowdesk-dashboard .flowdesk-task-meta-actions { flex-wrap: wrap; }
+  .flowdesk-dashboard .flowdesk-observation-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@container (max-width: 320px) {
+  .flowdesk-dashboard .flowdesk-case-short-grid { grid-template-columns: minmax(0, 1fr); }
+  .flowdesk-dashboard .flowdesk-task-meta-row { display: block; }
+  .flowdesk-dashboard .flowdesk-task-read-meta { text-align: left; margin-top: 5px; }
+  .flowdesk-dashboard .flowdesk-child-row { grid-template-columns: 9px minmax(0, 1fr); }
+  .flowdesk-dashboard .flowdesk-child-status { grid-column: 2; justify-self: start; }
+}
+
+/* Confirmed reading layout: preserve Case cards; simplify Task chapters. */
+.flowdesk-dashboard { gap: 10px; padding: 16px 16px 24px; }
+.flowdesk-dashboard .flowdesk-task-header { padding: 2px 0 12px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.flowdesk-dashboard .flowdesk-task-meta-actions,
+.flowdesk-dashboard .flowdesk-header-actions { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; margin-left: auto; }
+.flowdesk-dashboard .flowdesk-task-top-row { align-items: center; }
+.flowdesk-dashboard .flowdesk-task-overview { padding: 12px; box-shadow: none; }
+.flowdesk-dashboard .flowdesk-task-specification,
+.flowdesk-dashboard .flowdesk-acceptance-group,
+.flowdesk-dashboard .flowdesk-contract-item-details {
+  border: 0; border-bottom: 1px solid var(--background-modifier-border);
+  border-radius: 0; margin: 0; padding: 12px 0; background: transparent;
+}
+.flowdesk-dashboard .flowdesk-task-specification > summary,
+.flowdesk-dashboard .flowdesk-acceptance-group > summary,
+.flowdesk-dashboard .flowdesk-contract-item-details > summary {
+  display: flex; align-items: center; gap: 7px; list-style: none;
+  font-size: 13px; line-height: 1.5; font-weight: 600; cursor: pointer;
+}
+.flowdesk-dashboard .flowdesk-task-specification > summary::-webkit-details-marker,
+.flowdesk-dashboard .flowdesk-acceptance-group > summary::-webkit-details-marker { display: none; }
+.flowdesk-dashboard .flowdesk-task-specification > summary::before,
+.flowdesk-dashboard .flowdesk-acceptance-group > summary::before,
+.flowdesk-dashboard .flowdesk-contract-item-details > summary::before {
+  content: "›"; display: inline-block; width: 9px; color: var(--text-muted);
+  font-size: 15px; line-height: 1; transform: rotate(0deg);
+}
+.flowdesk-dashboard .flowdesk-task-specification[open] > summary::before,
+.flowdesk-dashboard .flowdesk-acceptance-group[open] > summary::before,
+.flowdesk-dashboard .flowdesk-contract-item-details[open] > summary::before { transform: rotate(90deg); }
+.flowdesk-dashboard .flowdesk-specification-section { padding: 3px 0; }
+.flowdesk-dashboard .flowdesk-specification-section h3 { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+.flowdesk-dashboard .flowdesk-acceptance-list { margin: 8px 0 3px; }
+.flowdesk-dashboard .flowdesk-acceptance-item { grid-template-columns: 14px minmax(0, 1fr); gap: 6px; align-items: start; padding: 5px 0; border: 0; font-size: 13px; line-height: 1.55; }
+.flowdesk-dashboard .flowdesk-contract-reading .flowdesk-contract-scope-markdown { padding: 4px 0 2px; }
+.flowdesk-dashboard .flowdesk-acceptance-item .flowdesk-contract-scope-markdown { padding: 0; margin: 0; font-size: inherit; line-height: inherit; }
+.flowdesk-dashboard .flowdesk-acceptance-marker { width: 14px; font-size: 14px; line-height: 1.55; padding: 0; margin: 0; }
+.flowdesk-dashboard .flowdesk-acceptance-group > .flowdesk-muted { font-size: 11px; line-height: 1.5; margin: 7px 0 4px; }
+.flowdesk-dashboard .flowdesk-specification-section li:has(> input[type="checkbox"]) { list-style: none; }
+.flowdesk-dashboard .flowdesk-specification-section input[type="checkbox"] { width: 13px; height: 13px; margin: 0 6px 0 0; vertical-align: -2px; }
+.flowdesk-dashboard .flowdesk-process-entry { padding: 14px 0; }
+.flowdesk-dashboard .flowdesk-task-history { padding: 0 10px 10px; }
+.flowdesk-dashboard .flowdesk-task-history > summary { display: flex; align-items: center; gap: 7px; padding: 9px 0 2px; list-style: none; font-size: 12px; line-height: 1.5; }
+.flowdesk-dashboard .flowdesk-task-history > summary::-webkit-details-marker { display: none; }
+.flowdesk-dashboard .flowdesk-task-history > summary::before { content: "›"; width: 9px; color: var(--text-muted); font-size: 15px; }
+.flowdesk-dashboard .flowdesk-task-history[open] > summary::before { transform: rotate(90deg); }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-progress-log { padding: 15px 0 10px; border-bottom: 1px solid var(--background-modifier-border); }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 0 0 6px; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-heading h3 { margin: 0; font-size: 13px; font-weight: 650; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-count { color: var(--text-muted); font-size: 11px; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-entry { position: relative; border-left: 1px solid var(--background-modifier-border); padding: 8px 0 10px 14px; margin-left: 4px; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-entry::before { content: ""; position: absolute; left: -3px; top: 14px; width: 5px; height: 5px; border-radius: 50%; background: var(--text-muted); }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-entry:first-child::before { background: var(--text-accent); }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-date { display: block; color: var(--text-muted); font-size: 11px; line-height: 1.5; margin-bottom: 5px; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-excerpt { margin: 0; color: var(--text-normal); font-size: 13px; line-height: 1.65; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-body { font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-body p { margin: 4px 0; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-body ul { padding-left: 18px; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-body pre { overflow: auto; max-width: 100%; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-all { margin-top: 4px; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-all > summary { color: var(--text-accent); font-size: 12px; padding: 7px 0; cursor: pointer; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .flowdesk-log-full { max-height: min(60vh, 520px); overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.flowdesk-dashboard .flowdesk-log-more { margin: 8px 0; font-size: 12px; color: var(--text-accent); }
+.flowdesk-dashboard .flowdesk-process-records > summary { color: var(--text-muted); font-size: 12px; }
+.flowdesk-dashboard .flowdesk-contract-summary > .flowdesk-dashboard-section-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 650; margin: 17px 0 8px; }
+.flowdesk-dashboard .flowdesk-content-icon { display: inline-flex; color: var(--text-accent); }
+.flowdesk-dashboard .flowdesk-content-caption { margin-left: auto; font-size: 11px; font-weight: 400; color: var(--text-muted); }
+.flowdesk-case-dashboard .flowdesk-case-record-group,
+.flowdesk-case-dashboard .flowdesk-case-record-more { padding: 0; position: relative; border-left-width: 1px; }
+.flowdesk-case-dashboard .flowdesk-case-record-group.is-goal,
+.flowdesk-case-dashboard .flowdesk-case-record-group.is-blockers,
+.flowdesk-case-dashboard .flowdesk-case-record-group.is-outcome { border-left-width: 1px; }
+.flowdesk-case-dashboard .flowdesk-case-record-group > summary,
+.flowdesk-case-dashboard .flowdesk-case-record-more > summary { display: flex; align-items: center; gap: 8px; list-style: none; padding: 12px; font-size: 13px; font-weight: 600; line-height: 1.5; }
+.flowdesk-case-dashboard .flowdesk-case-record-group > summary::-webkit-details-marker,
+.flowdesk-case-dashboard .flowdesk-case-record-more > summary::-webkit-details-marker { display: none; }
+.flowdesk-case-dashboard .flowdesk-case-record-group > summary::before,
+.flowdesk-case-dashboard .flowdesk-case-record-more > summary::before { content: "›"; width: 9px; flex: 0 0 9px; color: var(--text-muted); font-size: 15px; }
+.flowdesk-case-dashboard .flowdesk-case-record-group[open] > summary::before,
+.flowdesk-case-dashboard .flowdesk-case-record-more[open] > summary::before { transform: rotate(90deg); }
+.flowdesk-case-dashboard .flowdesk-case-record-group.is-goal::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--fd-blue); pointer-events: none; }
+.flowdesk-case-dashboard .flowdesk-case-record-heading,
+.flowdesk-case-dashboard .flowdesk-case-record-text { margin: 0; padding: 0 12px 10px; }
+.flowdesk-case-dashboard .flowdesk-case-progress-history { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; margin-top: 10px; border: 0; border-radius: 4px; box-shadow: none; background: transparent; color: var(--text-accent); padding: 4px 0; font-size: 12px; }
+.flowdesk-case-dashboard .flowdesk-case-progress-history:hover { text-decoration: underline; text-underline-offset: 3px; }
+.flowdesk-dashboard .flowdesk-return-resource { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; margin-top: 13px; padding: 6px 11px; background: var(--interactive-accent); color: var(--text-on-accent); border: 0; border-radius: 6px; box-shadow: none; font-size: 12px; font-weight: 600; }
+.flowdesk-dashboard .flowdesk-return-resource:hover { filter: brightness(1.06); }
+.flowdesk-dashboard .flowdesk-return-resource:disabled { opacity: .5; }
+.flowdesk-dashboard .flowdesk-context-pause .flowdesk-subline { margin-top: 8px; overflow-wrap: anywhere; font-size: 11px; }
+.flowdesk-core-settings-status { padding: 13px; margin: 12px 0 2px; background: var(--background-secondary); border: 1px solid var(--background-modifier-border); border-radius: 8px; white-space: normal; }
+.flowdesk-core-settings-status .flowdesk-core-status-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.flowdesk-core-settings-status .flowdesk-core-version { color: var(--text-normal); font-size: 14px; font-weight: 650; }
+.flowdesk-core-settings-status .flowdesk-core-status-head button { margin-left: auto; font-size: 11px; border: 0; padding: 3px 0; background: transparent; color: var(--text-accent); box-shadow: none; }
+.flowdesk-core-settings-status .flowdesk-core-row { display: grid; grid-template-columns: 35px minmax(0, 1fr); gap: 8px; font-size: 12px; line-height: 1.6; margin: 5px 0; }
+.flowdesk-core-settings-status .flowdesk-core-label { color: var(--text-muted); font-size: 11px; }
+.flowdesk-core-settings-status .flowdesk-core-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--text-normal); overflow-wrap: anywhere; }
+.flowdesk-core-settings-status .flowdesk-core-note { font-size: 11px; line-height: 1.5; color: var(--text-muted); margin-top: 10px; }
+.flowdesk-case-dashboard .flowdesk-case-progress-item .flowdesk-case-progress-text { color: var(--text-normal); }
+.flowdesk-dashboard .flowdesk-reading-navigation { padding: 0; }
+.flowdesk-dashboard .flowdesk-more-actions { border: 0; box-shadow: none; background: transparent; padding: 0 7px; color: var(--text-muted); font-size: 21px; line-height: 1; }
+.flowdesk-dashboard .flowdesk-more-actions:hover { color: var(--text-accent); background: var(--background-secondary); }
+.flowdesk-case-dashboard .flowdesk-case-title-link { padding: 0; border: 0; background: transparent; box-shadow: none; font: inherit; color: inherit; text-align: left; }
+.flowdesk-case-dashboard .flowdesk-case-title-link:hover { color: var(--text-accent); text-decoration: underline; text-underline-offset: 3px; }
+
+.flowdesk-case-dashboard .flowdesk-case-title-link { border: 0; box-shadow: none; background: transparent; text-align: left; width: 100%; color: var(--text-normal); }
+.flowdesk-case-dashboard .flowdesk-case-related { position: relative; }
+.flowdesk-case-dashboard .flowdesk-edit-entries { position: absolute; right: 13px; top: 11px; padding: 3px 0; border: 0; box-shadow: none; background: transparent; color: var(--text-muted); font-size: 11px; }
+.flowdesk-case-dashboard .flowdesk-case-related-links { display: flex; flex-direction: column; gap: 2px; }
+.flowdesk-case-dashboard .flowdesk-case-related .flowdesk-case-related-link { display: grid; grid-template-columns: 18px minmax(0, 1fr) 14px; gap: 9px; align-items: center; width: 100%; padding: 8px 4px; border-radius: 4px; }
+.flowdesk-case-dashboard .flowdesk-case-related-link:hover { background: var(--background-secondary); }
+.flowdesk-case-dashboard .flowdesk-reference-title { display: block; color: var(--text-accent); font-size: 13px; line-height: 1.5; }
+.flowdesk-case-dashboard .flowdesk-reference-type { display: block; color: var(--text-muted); font-size: 10px; line-height: 1.5; margin-top: 2px; }
+.flowdesk-case-dashboard .flowdesk-reference-icon, .flowdesk-case-dashboard .flowdesk-reference-arrow { color: var(--text-muted); }
+.flowdesk-dialog-content .flowdesk-menu-action { display: block; width: 100%; min-height: 36px; border: 0; box-shadow: none; border-bottom: 1px solid var(--background-modifier-border); border-radius: 0; background: transparent; padding: 10px 5px; text-align: left; }
+.flowdesk-dialog-content .flowdesk-menu-action:hover { background: var(--background-secondary); color: var(--text-accent); }
+.flowdesk-dialog-content .flowdesk-dialog-text { width: 100%; height: 45vh; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
+.flowdesk-dialog-content .flowdesk-related-target { border: 0; background: transparent; padding: 0; overflow-wrap: anywhere; }
+.flowdesk-dialog-content .markdown-rendered pre, .flowdesk-dialog-content .markdown-rendered table { max-width: 100%; overflow-x: auto; }
+
+/* Approved native-host layout: semantic groups and theme-safe reading surfaces. */
+.flowdesk-dashboard { min-width:0; max-width:100%; box-sizing:border-box; }
+body .workspace-leaf .workspace-leaf-content[data-type="flowdesk-dashboard-view"] > .view-content.flowdesk-dashboard {
+  width:100%; max-width:100%; min-width:0; min-height:0; box-sizing:border-box;
+  padding:16px; gap:12px; overflow-y:auto; overflow-x:hidden;
+  color:var(--text-normal); font-size:13px; line-height:1.65;
+}
+.flowdesk-dashboard:not(.flowdesk-case-dashboard) { background:var(--background-primary); }
+.flowdesk-dashboard > * { min-width:0; max-width:100%; flex-shrink:0; }
+.flowdesk-dashboard .flowdesk-reading-card {
+  background:var(--background-primary-alt); border:1px solid var(--background-modifier-border);
+  border-radius:12px; padding:12px; min-width:0; max-width:100%; box-sizing:border-box;
+}
+.flowdesk-dashboard .flowdesk-task-process .flowdesk-progress-log { padding:0; border:0; }
+.flowdesk-dashboard .flowdesk-task-process > .flowdesk-process-records { margin-top:8px; padding-bottom:0; border-bottom:0; }
+.flowdesk-dashboard .flowdesk-task-technical.flowdesk-reading-card { margin-top:0; }
+.flowdesk-dashboard .flowdesk-task-technical > summary,
+.flowdesk-case-dashboard > .flowdesk-case-recovery > summary { font-size:13px; font-weight:600; color:var(--text-normal); line-height:1.5; cursor:pointer; }
+.flowdesk-case-dashboard > .flowdesk-case-recovery { padding:12px; border:1px solid var(--fd-border); border-radius:12px; background:var(--background-primary-alt); }
+.flowdesk-case-dashboard > .flowdesk-case-recovery .flowdesk-case-recovery-row { margin-top:9px; }
+.flowdesk-dashboard .flowdesk-case-title-link { display:block; justify-content:flex-start; align-items:normal; text-align:left; height:auto; min-height:0; padding:0; white-space:normal; }
+.flowdesk-dashboard .flowdesk-current-task-link { display:block; justify-content:flex-start; text-align:left; height:auto; }
+.flowdesk-dashboard .markdown-rendered { min-width:0; max-width:100%; overflow-wrap:anywhere; color:var(--text-normal); }
+.flowdesk-dashboard .markdown-rendered p { font-size:inherit; line-height:inherit; margin:5px 0; }
+.flowdesk-dashboard .flowdesk-task-process .flowdesk-process-entry > h2 { font-size:14px; margin:10px 0 6px; }
+.flowdesk-dashboard .flowdesk-task-process .flowdesk-process-entry > h3 { font-size:13px; margin:10px 0 6px; }
+
+/* User feedback: consistent task-reader spacing; keep settings as plain rows. */
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card { padding:12px; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card > .flowdesk-content-heading { margin:0 0 8px; min-height:24px; gap:8px; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-content-icon { display:inline-flex; flex:0 0 16px; width:16px; height:16px; align-items:center; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-detail-body { margin:0; padding:0; min-width:0; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-contract-reading { margin:0; padding:0; min-width:0; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-contract-reading > details { margin:0; padding:0; border-bottom:1px solid var(--background-modifier-border); }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-contract-reading > details:last-child { border-bottom:0; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-contract-reading > details[open] { padding-bottom:10px; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-contract-reading > details > summary { display:flex; align-items:center; gap:8px; min-height:40px; box-sizing:border-box; padding:10px 0; margin:0; line-height:20px; font-size:13px; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-contract-reading > details > summary::before { width:16px; flex:0 0 16px; font-size:15px; line-height:1; text-align:center; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-specification-section { padding:0; margin-bottom:8px; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-specification-section:last-child { margin-bottom:0; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-specification-section h3 { margin:8px 0 4px; line-height:1.5; font-size:12px; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-contract-scope-markdown { padding:0; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-contract-scope-markdown > :first-child { margin-top:0; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-contract-scope-markdown > :last-child { margin-bottom:0; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-acceptance-list { padding:0; margin-top:8px; margin-bottom:0; }
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-acceptance-item { padding:5px 0; }
+body .flowdesk-dashboard-settings .setting-item { display:flex; flex-direction:row; align-items:center; margin:0; padding:14px 0; min-width:0; border:0; border-bottom:1px solid var(--background-modifier-border); border-radius:0; background:transparent; box-shadow:none; }
+body .flowdesk-dashboard-settings .setting-item-info { min-width:0; padding:0; }
+body .flowdesk-dashboard-settings .setting-item-control { padding:0; margin-left:auto; }
+body .flowdesk-dashboard-settings .flowdesk-core-settings-status { margin:0; padding:12px 0 14px; border:0; border-bottom:1px solid var(--background-modifier-border); border-radius:0; background:transparent; box-shadow:none; }
+
+body .flowdesk-dashboard-settings .setting-item-control select,
+body .flowdesk-dashboard-settings .setting-item-control input:not([type="checkbox"]) { box-sizing:border-box; height:34px; min-height:34px; padding:6px 8px; font-size:13px; line-height:20px; }
+
+
+/* Base list spacing stays below the shared checklist marker-column rules. */
+.flowdesk-dashboard .flowdesk-contract-summary.flowdesk-reading-card .flowdesk-contract-reading > details > :not(summary) { margin-inline-start:0; margin-left:0; max-width:100%; }
+.flowdesk-dashboard :where(.flowdesk-contract-summary.flowdesk-reading-card) .markdown-rendered :is(ul,ol),
+.flowdesk-dashboard :where(.flowdesk-task-process .flowdesk-process-records) .markdown-rendered :is(ul,ol) { margin:6px 0; padding-inline-start:16px; padding-left:16px; list-style-position:outside; }
+.flowdesk-dashboard :where(.flowdesk-contract-summary.flowdesk-reading-card) .markdown-rendered ol,
+.flowdesk-dashboard :where(.flowdesk-task-process .flowdesk-process-records) .markdown-rendered ol { padding-inline-start:20px; padding-left:20px; }
+.flowdesk-dashboard :where(.flowdesk-contract-summary.flowdesk-reading-card) .markdown-rendered li,
+.flowdesk-dashboard :where(.flowdesk-task-process .flowdesk-process-records) .markdown-rendered li { margin:0; margin-inline-start:0; padding:2px 0; min-width:0; }
+.flowdesk-dashboard :where(.flowdesk-contract-summary.flowdesk-reading-card) .markdown-rendered li > p { margin:0; }
+.flowdesk-dashboard :where(.flowdesk-contract-summary.flowdesk-reading-card) .markdown-rendered :is(ul,ol):has(> li > input[type="checkbox"]) { padding-inline-start:0; padding-left:0; }
+.flowdesk-dashboard :where(.flowdesk-contract-summary.flowdesk-reading-card) .markdown-rendered :is(ul,ol) :is(ul,ol) { margin-block-start:4px; margin-block-end:4px; }
+
+/* Case reference choices are display state; raw targets and source ordering stay intact. */
+.flowdesk-case-dashboard .flowdesk-case-reference-count { color:var(--text-muted);font-size:10px;margin:8px 0; }
+.flowdesk-case-dashboard .flowdesk-case-reference-search { box-sizing:border-box;display:block;width:100%;max-width:100%;height:32px;margin:0 0 10px;padding:5px 8px;font-size:12px; }
+.flowdesk-case-dashboard .flowdesk-case-reference-group { min-width:0;border-top:1px solid var(--fd-border); }
+.flowdesk-case-dashboard .flowdesk-case-reference-group > summary { cursor:pointer;min-height:38px;padding:9px 0;line-height:20px;font-size:12px;font-weight:600; }
+.flowdesk-case-dashboard .flowdesk-case-reference-group-count { float:right;color:var(--text-muted);font-size:10px;font-weight:400;margin-inline-start:8px; }
+.flowdesk-case-dashboard .flowdesk-case-reference-group .flowdesk-case-related-link { border-top:1px solid var(--fd-border);text-align:left; }
+.flowdesk-case-dashboard .flowdesk-case-reference-group .flowdesk-case-related-link:first-child { border-top:0; }
+.flowdesk-case-dashboard .flowdesk-case-reference-more { display:block;width:100%;height:auto;min-height:28px;margin:3px 0 8px;padding:3px 0;border:0;background:transparent;box-shadow:none;text-align:left;color:var(--text-accent);font-size:11px; }
+.flowdesk-case-dashboard .flowdesk-case-reference-match-count,
+.flowdesk-case-dashboard .flowdesk-case-reference-empty { color:var(--text-muted);font-size:11px;padding:6px 0; }
+.flowdesk-case-dashboard .flowdesk-reference-type { overflow-wrap:anywhere;white-space:normal; }
+.flowdesk-dashboard .flowdesk-parent-link { white-space:normal;text-overflow:clip;overflow:visible;overflow-wrap:anywhere;line-height:1.5; }
+.flowdesk-dashboard .flowdesk-task-top-row:has(> .flowdesk-parent-link) { flex-wrap:wrap; }
+.flowdesk-dashboard .flowdesk-task-top-row > .flowdesk-parent-link { flex:1 0 100%; }
+.flowdesk-dashboard .flowdesk-task-top-row:has(> .flowdesk-parent-link) > .flowdesk-task-meta-actions { margin-left:auto; }
+
+/* Read-only Markdown checklists share one marker column in overview, body and history. */
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered :is(ul,ol):has(> li > input[type="checkbox"], > li > p > input[type="checkbox"]) {
+  padding-inline-start:0; padding-left:0;
+}
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered li:has(> input[type="checkbox"], > p > input[type="checkbox"]) {
+  position:relative; list-style:none; padding-block:2px; padding-inline-start:22px;
+}
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered li:has(> input[type="checkbox"], > p > input[type="checkbox"])::marker { content:""; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered ul:has(> li > input[type="checkbox"], > li > p > input[type="checkbox"]) > li:not(:has(> input[type="checkbox"], > p > input[type="checkbox"])) { margin-inline-start:22px; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered li:has(> input[type="checkbox"], > p > input[type="checkbox"]) > p { margin:0; }
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered li > input[type="checkbox"],
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered li > p > input[type="checkbox"] {
+  --checkbox-size:14px; position:absolute; inset-inline-start:0; left:0;
+  font-size:inherit; line-height:inherit;
+  top:calc((1lh - 14px) / 2 + 2px); margin:0; padding:0; width:14px; height:14px; opacity:1;
+}
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered li:has(> input[type="checkbox"]:checked, > p > input[type="checkbox"]:checked),
+:is(.flowdesk-dashboard, .flowdesk-dialog-content) .markdown-rendered .task-list-item.is-checked :is(p,span) {
+  text-decoration:none; color:var(--text-muted);
+}
+
+/* Reading width follows the actual Dashboard container, independently of the host leaf. */
+@container (max-width: 599px) {
+  .flowdesk-dashboard .flowdesk-reading-font-select { display: none; }
+}
+.flowdesk-dashboard .flowdesk-dashboard-layout {
+  display: flex;
+  flex-direction: column;
+  align-self: center;
+  width: 100%;
+  min-width: 0;
+  gap: 12px;
+}
+.flowdesk-dashboard .flowdesk-dashboard-layout > *,
+.flowdesk-dashboard .flowdesk-dashboard-main > *,
+.flowdesk-dashboard .flowdesk-dashboard-aside > * {
+  min-width: 0;
+  max-width: 100%;
+  flex-shrink: 0;
+}
+.flowdesk-dashboard .flowdesk-dashboard-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(260px, 27%, 300px);
+  align-self: center;
+  align-items: start;
+  gap: 24px;
+  width: 100%;
+  max-width: 1124px;
+  min-width: 0;
+}
+.flowdesk-dashboard .flowdesk-dashboard-main,
+.flowdesk-dashboard .flowdesk-dashboard-aside {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 20px;
+}
+.flowdesk-dashboard .flowdesk-dashboard-aside { gap: 16px; }
+
+/* These sections moved one level below the root when the layout layer was added. */
+.flowdesk-case-dashboard .flowdesk-dashboard-layout > .flowdesk-case-observation { padding: 6px 0; }
+.flowdesk-case-dashboard .flowdesk-dashboard-layout .flowdesk-case-recovery > summary {
+  font-size: 13px; font-weight: 600; color: var(--text-normal); line-height: 1.5; cursor: pointer;
+}
+.flowdesk-case-dashboard .flowdesk-dashboard-layout .flowdesk-case-recovery {
+  padding: 12px; border: 1px solid var(--fd-border); border-radius: 12px; background: var(--background-primary-alt);
+}
+.flowdesk-case-dashboard .flowdesk-dashboard-layout .flowdesk-case-recovery .flowdesk-case-recovery-row { margin-top: 9px; }
+
+@container (min-width: 600px) {
+  .flowdesk-dashboard .flowdesk-dashboard-layout {
+    max-width: 800px;
+    gap: 18px;
+  }
+  .flowdesk-dashboard .flowdesk-dashboard-layout.is-wide.has-auxiliary { max-width: 1200px; }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] {
+    font-size: var(--fd-reading-font-size, 16px);
+    line-height: 1.75;
+  }
+  .flowdesk-dashboard .flowdesk-dashboard-layout .flowdesk-task-title,
+  .flowdesk-dashboard .flowdesk-dashboard-layout .flowdesk-case-title {
+    font-size: calc(var(--fd-reading-font-size, 16px) + 6px);
+    line-height: 1.4;
+  }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .markdown-rendered,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-acceptance-item,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-log-excerpt,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-log-body,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-overview-gap,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-current-value,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-current-original,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-progress-text,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-record-text {
+    font-size: var(--fd-reading-font-size, 16px);
+    line-height: 1.75;
+  }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-dashboard-section-title,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-section-title,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-log-heading h3,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-process-entry > h2 {
+    font-size: calc(var(--fd-reading-font-size, 16px) + 1px);
+    line-height: 1.5;
+  }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-contract-reading > details > summary,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-record-group > summary,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-record-more > summary,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-specification-section h3,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-process-entry > h3 {
+    font-size: var(--fd-reading-font-size, 16px);
+    line-height: 1.5;
+  }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-label,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-summary-label,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-log-date,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-progress-time,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-record-heading {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"].flowdesk-reading-card,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"].flowdesk-task-overview,
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"].flowdesk-case-section { padding: 20px; }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-section-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-record-more-grid { grid-template-columns: minmax(0, 1fr); }
+  .flowdesk-dashboard .flowdesk-dashboard-layout [data-layout-region="main"] .flowdesk-case-current-card { padding: 14px; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside { font-size: 14px; line-height: 1.6; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-child-title,
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-case-task-title-text,
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-reference-title,
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-dashboard-section-title,
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-case-section-title { font-size: 14px; line-height: 1.5; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-child-summary { font-size: 13px; line-height: 1.6; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-child-meta,
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-child-status,
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-case-task-meta,
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-case-task-summary,
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-case-task-status { font-size: 12px; line-height: 1.5; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-section-heading { display: block; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-section-meta { margin-top: 4px; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-child-row { grid-template-columns: 9px minmax(0, 1fr); }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-child-status { grid-column: 2; justify-self: start; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-case-task-row { grid-template-columns: minmax(0, 1fr); }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-case-task-status { justify-self: start; }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-observation-grid { grid-template-columns: minmax(0, 1fr); }
+  .flowdesk-dashboard .flowdesk-dashboard-aside .flowdesk-case-recovery-row { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Shared reading controls stay above both reading columns. */
+.flowdesk-dashboard .flowdesk-reading-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.flowdesk-dashboard .flowdesk-reading-font-select {
+  box-sizing: border-box;
+  min-height: 30px;
+  max-width: 100%;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font: inherit;
+  line-height: 1.5;
+  padding: 4px 8px;
+}
+.flowdesk-dashboard .flowdesk-reading-font-select { width: auto; }
+
+/* Repository documents share a natural, bounded Markdown reading surface. */
+.flowdesk-repository-reader {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 24px;
+  overflow: auto;
+  color: var(--text-normal);
+  background: var(--background-primary);
+  font-family: var(--font-interface);
+  line-height: 1.7;
+}
+.flowdesk-repository-reader > h2,
+.flowdesk-repository-reader > p,
+.flowdesk-repository-reader > button {
+  max-width: 800px;
+  overflow-wrap: anywhere;
+}
+.flowdesk-repository-reader > h2 { margin: 0 0 12px; font-size: 22px; line-height: 1.4; }
+.flowdesk-repository-reader .flowdesk-repository-path,
+.flowdesk-repository-reader .flowdesk-repository-boundary {
+  margin: 8px 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.flowdesk-repository-reader .flowdesk-repository-status { color: var(--text-muted); font-size: 13px; overflow-wrap: anywhere; }
+.flowdesk-repository-reader .flowdesk-repository-refresh,
+.flowdesk-repository-reader .flowdesk-repository-open-original {
+  min-height: 30px;
+  height: auto;
+  margin: 4px 8px 4px 0;
+  padding: 4px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: normal;
+}
+.flowdesk-repository-reader button:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+.flowdesk-repository-reader .flowdesk-repository-body {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 800px;
+  min-width: 0;
+  height: auto;
+  margin: 24px auto 0;
+  padding: 0;
+  overflow: visible;
+  color: var(--text-normal);
+  font-size: 16px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.flowdesk-repository-reader .flowdesk-repository-body p,
+.flowdesk-repository-reader .flowdesk-repository-body li { font-size: inherit; line-height: inherit; }
+.flowdesk-repository-reader .flowdesk-repository-body pre,
+.flowdesk-repository-reader .flowdesk-repository-body table { display: block; max-width: 100%; overflow-x: auto; }
+.flowdesk-repository-reader .flowdesk-repository-body pre { font-size: 13px; line-height: 1.65; white-space: pre; overflow-wrap: normal; }
+.flowdesk-repository-reader .flowdesk-repository-body table { white-space: nowrap; overflow-wrap: normal; }
+.flowdesk-repository-reader .flowdesk-repository-body th,
+.flowdesk-repository-reader .flowdesk-repository-body td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--background-modifier-border); }
+
+/* Shared full-body reading surface; host colors and font remain authoritative. */
+.flowdesk-body-reader { min-width: 0; }
+.flowdesk-body-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.flowdesk-body-title { margin: 20px 0 6px; font-size: 1.35em; line-height: 1.4; overflow-wrap: anywhere; }
+.flowdesk-body-source { color: var(--text-muted); font-size: .86em; margin: 6px 0 12px; }
+.flowdesk-body-status { margin: 4px 0; }
+.flowdesk-body-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.flowdesk-body-warning { border-left: 3px solid var(--interactive-accent); padding-left: 10px; color: var(--text-muted); }
+.flowdesk-body-content { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--background-modifier-border); line-height: 1.75; overflow-wrap: anywhere; }
+.flowdesk-body-content h1, .flowdesk-body-content h2, .flowdesk-body-content h3 { line-height: 1.4; margin-top: 1.5em; }
+.flowdesk-body-content blockquote { border-left: 3px solid var(--background-modifier-border); margin: 12px 0; padding: 0 14px; color: var(--text-muted); }
+.flowdesk-body-content pre { font: .9em/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.flowdesk-body-content code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.flowdesk-body-content table { display: block; width: 100%; overflow-x: auto; border-collapse: collapse; }

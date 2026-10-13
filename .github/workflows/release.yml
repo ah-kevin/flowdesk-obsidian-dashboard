@@ -55,6 +55,9 @@ jobs:
             manifest.json
             styles.css
             versions.json
+            release/flowdesk-dashboard-ui-*.tgz
+            release/flowdesk-dashboard-ui-*.tgz.sha256
+            release/dashboard-ui-lock.json
             ${{ steps.plugin.outputs.zip }}
           if-no-files-found: error
 
@@ -81,6 +84,9 @@ jobs:
             "styles.css"
             "versions.json"
             "$ZIP_PATH"
+            release/flowdesk-dashboard-ui-*.tgz
+            release/flowdesk-dashboard-ui-*.tgz.sha256
+            "release/dashboard-ui-lock.json"
           )
 
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then

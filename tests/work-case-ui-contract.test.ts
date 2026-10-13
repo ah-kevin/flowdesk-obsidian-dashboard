@@ -1,16 +1,14 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-const renderer = readFileSync(
-  path.join(process.cwd(), "src", "work-case-renderer.ts"),
-  "utf8"
-);
-const presentation = readFileSync(
-  path.join(process.cwd(), "src", "work-case-presentation.ts"),
-  "utf8"
-);
+const readImplementation = (file: string): string => {
+  const shared = path.join(process.cwd(),"packages/dashboard-ui/src",file);
+  return readFileSync(existsSync(shared) ? shared : path.join(process.cwd(),"src",file),"utf8");
+};
+const renderer = readImplementation("work-case-renderer.ts");
+const presentation = readImplementation("work-case-presentation.ts");
 const caseUiSource = `${renderer}\n${presentation}`;
 const caseImplementation = [
   "work-case-adapter.ts",
@@ -19,7 +17,7 @@ const caseImplementation = [
   "work-case-presentation.ts",
   "work-case-renderer.ts",
 ]
-  .map((file) => readFileSync(path.join(process.cwd(), "src", file), "utf8"))
+  .map(readImplementation)
   .join("\n");
 const styles = readFileSync(path.join(process.cwd(), "styles.css"), "utf8");
 

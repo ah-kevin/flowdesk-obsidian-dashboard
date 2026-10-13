@@ -223,7 +223,7 @@ test("UX: same Case refresh replaces an ended selected Task with a newly unfinis
 });
 
 test("UX: a Markdown link restores focus after delayed rendering only for the same resource",async t=>{
-  const {fixture,plugin,view,root}=await setup(t,true);(root as any).ownerDocument={activeElement:null};
+  const {fixture,plugin,view,root}=await setup(t,true);(root as any).ownerDocument={...(root as any).ownerDocument,activeElement:null};
   await view.loadTask(fixture.tasks[0].id);await new Promise(resolve=>setImmediate(resolve));
   root.findByClass("flowdesk-overview-history")[0].open=true;
   const previous=root.findByClass("flowdesk-task-current-progress")[0].querySelectorAll("a")[0];assert.ok(previous);previous.focus();

@@ -94,6 +94,12 @@ Directory 作为发布路径。
 - 已配置的固定路径不会自动切换；需要自动跟随后，在设置中选择“跟随已安装 Core”。固定模式继续使用指定目录。
 - `workingDirectory` 是任务 snapshot 的工程目录；已有设置保留，留空时使用所选 Core 路径。Case snapshot 的工作目录仍为 vault，工程位置以 Case 中的准确 cwd 为准。
 
+## 共享 Dashboard UI
+
+packages/dashboard-ui 是 Dashboard-owned 的只读展示包，供 Obsidian 与 Codex 会话面板消费；原 src 入口保留兼容导出。纯模型可在 Node 使用，浏览器组件使用标准 DOM，宿主注入 Markdown、主题和资料导航。Obsidian 保留原导航；Codex 概览优先，资料先支持查看与复制引用。
+
+npm run build 同时生成共享包模型、浏览器 runtime、声明和 SHA-256 元数据。node scripts/package-dashboard-ui.mjs 生成本机候选 tarball、校验文件及 dashboard-ui-lock.json；状态 source-candidate 不表示已经发布。FlowDesk-Plugin 固定这份归档及每项运行资产摘要，构建时校验实际消费的内容。
+
 ## TaskNotes 鉴权配置
 
 在插件设置的 **TaskNotes token** 输入框中填写凭证，默认遮住。其他环境变量可在高级设置的 **TaskNotes 环境变量（JSON）** 中配置，例如：
@@ -153,7 +159,7 @@ Release 必需文件：
 
 脚本会生成 `release/flowdesk-dashboard-<version>/`，并在本机有 `zip` 命令时生成
 `release/flowdesk-dashboard-<version>.zip`。GitHub Release 由 CI 上传上面的四个必需文件，
-并同时上传 zip 方便手动安装。
+并同时上传 zip 方便手动安装，以及共享 UI tarball、SHA-256 和 lock 元数据供 Core 固定消费。
 
 发布一个版本（版本号以 `manifest.json` 为准）：
 

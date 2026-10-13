@@ -14,6 +14,8 @@ const canonical = JSON.parse(
 );
 
 class FakeElement {
+  ownerDocument:any={createElement:(tag:string)=>new FakeElement(tag)};
+  classList={add:(...names:string[])=>{for(const name of names)this.classes.add(name);},remove:(...names:string[])=>{for(const name of names)this.classes.delete(name);},contains:(name:string)=>this.classes.has(name)};
   children: FakeElement[] = [];
   classes = new Set<string>();
   listeners = new Map<string, Array<() => void>>();
@@ -43,6 +45,11 @@ class FakeElement {
   }
 
   setText(text: string): void { this.text = text; }
+  get textContent():string{return this.allText().join("");}
+  set textContent(text:string){this.empty();this.text=String(text);}
+  setAttribute(name:string,value:string){this.attrs[name]=String(value);}
+  replaceChildren(...children:FakeElement[]){this.empty();for(const child of children)this.appendChild(child);}
+  appendChild(child:FakeElement):FakeElement{child.ownerDocument=this.ownerDocument;return this.append(child);}
   empty(): void { this.children=[];this.text=""; }
 
   createDiv(options: { cls?: string; text?: string } = {}): FakeElement {

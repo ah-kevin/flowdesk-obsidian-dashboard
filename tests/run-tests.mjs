@@ -53,7 +53,7 @@ const originalVault = process.env.OBSIDIAN_VAULT;
 const data = {version:1, fixture_root:temporaryDirectory, original_home:originalHome,
   executables:[], interpreters:[], shells:[], scripts:[], shell_commands:[], commands:[], endpoints:[],
   protected_roots:[originalHome,"/tmp/flowdesk-mcp.log","/private/tmp/flowdesk-mcp.log","/tmp/flowdesk-session-registry.json","/tmp/flowdesk-session-registry.lock", ...(originalVault ? [originalVault] : [])],
-  readable_roots:[path.join(repositoryRoot,"src"), path.join(repositoryRoot,"tests"), path.join(repositoryRoot,"styles.css"), path.join(repositoryRoot,"node_modules"),
+  readable_roots:[path.join(repositoryRoot,"src"), path.join(repositoryRoot,"packages/dashboard-ui/src"), path.join(repositoryRoot,"packages/dashboard-ui/package.json"), path.join(repositoryRoot,"packages/dashboard-ui/tsconfig.json"), path.join(repositoryRoot,"packages/dashboard-ui/styles.css"), path.join(repositoryRoot,"scripts/build-dashboard-ui.mjs"), path.join(repositoryRoot,"tests"), path.join(repositoryRoot,"styles.css"), path.join(repositoryRoot,"node_modules"),
     path.join(core,"lib"),path.join(core,"bin"),
     // Actual Core version shown by the fixed-path consumer; these two metadata files are read-only.
     path.join(core,".claude-plugin/plugin.json"),path.join(core,".codex-plugin/plugin.json"),
