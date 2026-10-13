@@ -83,3 +83,9 @@ Candidate archive SHA256 0e0fd216b392096191729bfddfff3edb8cc232b134679fcae85f73b
 ## Local integration authorization, 2026-10-13
 
 Parent user requested “合并吧”: commit the reviewed shared-UI change and fast-forward local main, together with Core integration. No push, publication, product-version change or host installation. Fresh checks and exact main-tree comparison govern this delivery.
+
+## Main-path integration check
+
+The first main checkout regression exposed a test-isolation gap masked by the /private/tmp worktree: TypeScript enumerates the shared package directory for include resolution, but the original fixture granted reads only to leaf source/metadata paths. The main-path artifact test reproduced the guard rejection before repair.
+
+The artifact test now copies the public UI source, build script and Markdown runtime dependency closure into its own fixture, while reusing only read-only compiler/tooling dependencies. It uses its own child environment/capability manifest and explicitly protects that fixture source against writes; output is a separate owned directory. This avoids TypeScript probes into real-HOME ancestor module directories without widening the parent/global guard or original HOME/vault/API permissions. A temporary copy of the repaired test passed on the actual main path with zero guard violations and was removed. Product source and pinned UI archive bytes are unchanged.
