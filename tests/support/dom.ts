@@ -2,7 +2,7 @@
 export class TestElement {
   children: TestElement[]=[]; classes=new Set<string>(); listeners=new Map<string,Function[]>();
   text=""; open=false; disabled=false; attrs:Record<string,string>={}; style:any={setProperty(name:string,value:string){this[name]=value;},getPropertyValue(name:string){return this[name]??"";}}; parentElement:TestElement|null=null;
-  ownerDocument:any={activeElement:null,defaultView:null};scrollTop=0;scrollLeft=0;clientWidth=0;
+  ownerDocument:any={activeElement:null,defaultView:null,createElement:(tag:string)=>new TestElement(tag)};scrollTop=0;scrollLeft=0;clientWidth=0;
   classList={contains:(name:string)=>this.classes.has(name),add:(...names:string[])=>this.addClass(...names),remove:(name:string)=>this.removeClass(name)};
   constructor(readonly tag="div",options:any={}){this.text=options.text??"";this.attrs=options.attr??{};this.addClass(options.cls??"");}
   addClass(...names:string[]){for(const name of names.join(" ").split(/\s+/).filter(Boolean))this.classes.add(name);}
@@ -15,12 +15,15 @@ export class TestElement {
   setText(text:string){this.text=text;}
   focus(){if(this.ownerDocument)this.ownerDocument.activeElement=this;}
   setAttr(k:string,v:string){this.attrs[k]=v;}
+  setAttribute(k:string,v:string){this.setAttr(k,v);}
+  replaceChildren(...nodes:TestElement[]){this.empty();for(const node of nodes)this.appendChild(node);}
   addEventListener(name:string,fn:Function){this.listeners.set(name,[...(this.listeners.get(name)??[]),fn]);}
   dispatchEvent(event:Event){for(const fn of this.listeners.get(event.type)??[])fn(event);return true;}
   async click(){const target=this;let stopped=false;const event={target,stopPropagation(){stopped=true;},stopImmediatePropagation(){stopped=true;},preventDefault(){}};for(let element:TestElement|null=this;element&&!stopped;element=element.parentElement)for(const fn of element.listeners.get("click")??[])await fn(event);}
   closest(selector:string):TestElement|null {for(let element:TestElement|null=this;element;element=element.parentElement)if(element.tag===selector)return element;return null;}
   contains(node:TestElement):boolean {for(let element:TestElement|null=node;element;element=element.parentElement)if(element===this)return true;return false;}
   get textContent():string {return this.allText().join("");}
+  set textContent(text:string){this.empty();this.text=String(text);}
   getAttribute(key:string){return this.attrs[key]??null;}
   querySelectorAll(selector:string):TestElement[]{return [...this.children.filter(x=>x.tag===selector),...this.children.flatMap(x=>x.querySelectorAll(selector))];}
   remove(){if(this.ownerDocument?.activeElement&&this.contains(this.ownerDocument.activeElement))this.ownerDocument.activeElement=this.ownerDocument.body??null;if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(x=>x!==this);this.parentElement=null;}

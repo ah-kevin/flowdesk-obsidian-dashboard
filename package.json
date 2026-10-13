@@ -6,7 +6,8 @@
   "main": "main.js",
   "scripts": {
     "test": "node tests/run-tests.mjs",
-    "build": "esbuild src/main.ts --bundle --external:obsidian --platform=node --target=es2018 --format=cjs --outfile=main.js",
+    "build": "node scripts/build-reading-styles.mjs && node scripts/build-dashboard-ui.mjs && esbuild src/main.ts --bundle --external:obsidian --platform=node --target=es2018 --format=cjs --outfile=main.js",
+    "build:ui": "node scripts/build-dashboard-ui.mjs",
     "dev": "esbuild src/main.ts --bundle --external:obsidian --platform=node --target=es2018 --format=cjs --outfile=main.js --watch",
     "typecheck": "tsc --noEmit",
     "check:syntax": "node -c main.js",

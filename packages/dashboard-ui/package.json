@@ -1,0 +1,14 @@
+{
+  "name": "@flowdesk/dashboard-ui",
+  "version": "2.0.14",
+  "private": true,
+  "type": "module",
+  "description": "Shared read-only FlowDesk Dashboard presentation for Obsidian and Codex.",
+  "exports": {
+    ".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"},
+    "./model": {"types": "./dist/model.d.ts", "import": "./dist/model.js"},
+    "./styles.css": "./styles.css"
+  },
+  "files": ["dist", "styles.css", "LICENSE", "THIRD-PARTY-NOTICES.txt"],
+  "flowdesk": {"displayProtocol": "association-dashboard/1"}
+}

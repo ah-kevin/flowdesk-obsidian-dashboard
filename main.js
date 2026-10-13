@@ -562,7 +562,7 @@ var TrailingRefreshScheduler = class {
   }
 };
 
-// src/reference-text.ts
+// packages/dashboard-ui/src/reference-text.ts
 function parseReferenceText(raw) {
   const text3 = raw.trim();
   const result = (target, label, syntax, error = null) => ({ target, label, syntax, error });
@@ -583,7 +583,7 @@ function parseReferenceText(raw) {
   return result(/^[a-z][a-z0-9+.-]*:/i.test(text3) ? text3 : raw, null, "raw");
 }
 
-// src/entity-presentation.ts
+// packages/dashboard-ui/src/entity-presentation.ts
 function formatEntityStatus(kind, raw, statusIsCompleted) {
   var _a, _b;
   const value = raw != null ? raw : "";
@@ -631,7 +631,7 @@ function formatReferenceLabel(raw) {
   return (target.split("/").pop() || target).replace(/\.md$/i, "") || raw;
 }
 
-// src/dashboard-presentation.ts
+// packages/dashboard-ui/src/dashboard-presentation.ts
 var DisclosureStateCache = class {
   constructor(capacity = 20) {
     this.capacity = capacity;
@@ -1448,7 +1448,36 @@ var desktopTaskNotesRead = ({ url, headers, signal }) => {
   });
 };
 
-// src/task-content.ts
+// packages/dashboard-ui/src/dom.ts
+function fdCreateEl(parent, tag, options = {}) {
+  var _a;
+  const element = parent.ownerDocument.createElement(tag);
+  const values = typeof options === "string" ? { cls: options } : options;
+  if (values.cls) fdAddClass(element, values.cls);
+  if (values.text !== void 0) element.textContent = String(values.text);
+  for (const [name, value] of Object.entries((_a = values.attr) != null ? _a : {})) element.setAttribute(name, String(value));
+  parent.appendChild(element);
+  return element;
+}
+var fdCreateDiv = (parent, options = {}) => fdCreateEl(parent, "div", options);
+var fdCreateSpan = (parent, options = {}) => fdCreateEl(parent, "span", options);
+function fdAddClass(element, ...names) {
+  element.classList.add(...names.flatMap((name) => name.split(/\s+/).filter(Boolean)));
+}
+function fdRemoveClass(element, ...names) {
+  element.classList.remove(...names.flatMap((name) => name.split(/\s+/).filter(Boolean)));
+}
+function fdSetAttr(element, name, value) {
+  element.setAttribute(name, String(value));
+}
+function fdSetText(element, text3) {
+  element.textContent = String(text3);
+}
+function fdEmpty(element) {
+  element.replaceChildren();
+}
+
+// packages/dashboard-ui/src/task-content.ts
 var text = (value) => typeof value === "string" ? value : "";
 function createTaskContent(snapshot, taskPath) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
@@ -1511,7 +1540,7 @@ function createTaskReadingSections(content) {
   };
 }
 
-// src/reading-presentation.ts
+// packages/dashboard-ui/src/reading-presentation.ts
 var encoder = new TextEncoder();
 var utf8Bytes = (text3) => encoder.encode(text3).length;
 function excerpt(text3, maxBytes = 400) {
@@ -1539,7 +1568,7 @@ function formatDisplayTime(value, now = /* @__PURE__ */ new Date()) {
   return `${day === today ? "\u4ECA\u5929" : day === yesterday ? "\u6628\u5929" : day.replace(/-/g, "/")} ${rendered.slice(-5)}`;
 }
 
-// src/task-current-progress.ts
+// packages/dashboard-ui/src/task-current-progress.ts
 var unknown = (gap) => ({ status: "unknown", progress: null, next: null, timestamp: null, source: null, gaps: [gap] });
 function instant(value) {
   var _a;
@@ -1650,63 +1679,78 @@ function createTaskCurrentProgress(content, context) {
   return { status, progress: latest.value.progress, next, timestamp: latest.event.timestamp, source, gaps };
 }
 
-// src/task-overview.ts
+// packages/dashboard-ui/src/task-overview.ts
 function latestRecord(records) {
   var _a, _b;
-  if (!records.length) return null;
-  if (records.length === 1) return records[0];
+  if (!records.length)
+    return null;
+  if (records.length === 1)
+    return records[0];
   if (records.some((r) => {
     var _a2, _b2;
     return !Number.isInteger((_a2 = r.source) == null ? void 0 : _a2.line_start) || Number((_b2 = r.source) == null ? void 0 : _b2.line_start) < 1;
-  })) return null;
+  }))
+    return null;
   const ordered = [...records].sort((a, b) => Number(a.source.line_start) - Number(b.source.line_start));
-  if (((_a = ordered[ordered.length - 1].source) == null ? void 0 : _a.line_start) === ((_b = ordered[ordered.length - 2].source) == null ? void 0 : _b.line_start)) return null;
+  if (((_a = ordered[ordered.length - 1].source) == null ? void 0 : _a.line_start) === ((_b = ordered[ordered.length - 2].source) == null ? void 0 : _b.line_start))
+    return null;
   return ordered[ordered.length - 1];
 }
 function renderTaskOverview(container, model, dependencies) {
   const healthy = model.observation.isTrustworthy && !model.observation.isStale;
   const current = createTaskCurrentProgress(model.content, { statusIsCompleted: model.currentTask.statusIsCompleted, observedAt: model.observation.generatedAt, observationHealthy: healthy && !model.diagnostics.some((d) => /truncat|body_omitted|progress_omitted|response_too_large/i.test(d.code)) });
-  const card = container.createDiv({ cls: "flowdesk-task-overview flowdesk-dashboard-section" });
-  card.createDiv({ cls: "flowdesk-dashboard-section-title", text: model.currentTask.statusIsCompleted === true ? "\u7ED3\u679C\u6982\u89C8" : model.currentTask.isBlocked ? "\u5F53\u524D\u5DE5\u4F5C \xB7 \u6709\u963B\u585E" : "\u5F53\u524D\u5DE5\u4F5C" });
+  const card = fdCreateDiv(container, { cls: "flowdesk-task-overview flowdesk-dashboard-section" });
+  fdCreateDiv(card, { cls: "flowdesk-dashboard-section-title", text: model.currentTask.statusIsCompleted === true ? "\u7ED3\u679C\u6982\u89C8" : model.currentTask.isBlocked ? "\u5F53\u524D\u5DE5\u4F5C \xB7 \u6709\u963B\u585E" : "\u5F53\u524D\u5DE5\u4F5C" });
   const markdown = (parent, text3, cls, field) => {
-    const el = parent.createDiv({ cls: `${cls} markdown-rendered`, attr: field ? { "data-current-field": field } : {} });
-    void dependencies.renderMarkdown(text3, el, model.currentTask.id).catch(() => el.setText(text3));
+    const el = fdCreateDiv(parent, { cls: `${cls} markdown-rendered`, attr: field ? { "data-current-field": field } : {} });
+    void dependencies.renderMarkdown(text3, el, model.currentTask.id).catch(() => fdSetText(el, text3));
   };
-  if (model.currentTask.hasChildren) card.createDiv({ cls: "flowdesk-overview-rollup", text: `\u76F4\u63A5\u5B50\u4EFB\u52A1\uFF1A\u6210\u529F ${model.rollup.childrenTrustedDone}/${model.children.length} \xB7 \u5DF2\u7ED3\u675F ${model.children.filter((c) => c.subtreeTerminal === true).length}/${model.children.length}${model.children.some((c) => c.subtreeTerminal === null) ? " \xB7 \u542B\u672A\u77E5\u72B6\u6001" : ""}` });
-  if (!healthy) card.createDiv({ cls: "flowdesk-overview-gap", text: "\u5F53\u524D\u89C2\u6D4B\u4E0D\u5B8C\u6574\u6216\u5DF2\u8FC7\u671F\uFF1B\u4EE5\u4E0B\u5185\u5BB9\u4EC5\u4F9B\u67E5\u9605\uFF0C\u5237\u65B0\u540E\u518D\u5224\u65AD\u5F53\u524D\u5DE5\u4F5C\u3002" });
+  if (model.currentTask.hasChildren)
+    fdCreateDiv(card, { cls: "flowdesk-overview-rollup", text: `\u76F4\u63A5\u5B50\u4EFB\u52A1\uFF1A\u6210\u529F ${model.rollup.childrenTrustedDone}/${model.children.length} \xB7 \u5DF2\u7ED3\u675F ${model.children.filter((c) => c.subtreeTerminal === true).length}/${model.children.length}${model.children.some((c) => c.subtreeTerminal === null) ? " \xB7 \u542B\u672A\u77E5\u72B6\u6001" : ""}` });
+  if (!healthy)
+    fdCreateDiv(card, { cls: "flowdesk-overview-gap", text: "\u5F53\u524D\u89C2\u6D4B\u4E0D\u5B8C\u6574\u6216\u5DF2\u8FC7\u671F\uFF1B\u4EE5\u4E0B\u5185\u5BB9\u4EC5\u4F9B\u67E5\u9605\uFF0C\u5237\u65B0\u540E\u518D\u5224\u65AD\u5F53\u524D\u5DE5\u4F5C\u3002" });
   if (model.currentTask.statusIsCompleted === true) {
     for (const [kind, label, records] of [["result", "\u6267\u884C\u7ED3\u679C\u6458\u5F55", model.content.records.execution], ["verification", "\u9A8C\u8BC1\u8BB0\u5F55\u6458\u5F55", model.content.records.verification]]) {
-      const row = card.createDiv({ cls: `flowdesk-overview-${kind}` });
-      row.createDiv({ cls: "flowdesk-summary-label", text: label });
+      const row = fdCreateDiv(card, { cls: `flowdesk-overview-${kind}` });
+      fdCreateDiv(row, { cls: "flowdesk-summary-label", text: label });
       const record3 = latestRecord(records);
       if (record3) {
         markdown(row, excerpt(firstParagraph(record3.text)), "flowdesk-overview-excerpt");
-        if (record3.timestamp) row.createDiv({ cls: "flowdesk-muted", text: `\u8BB0\u5F55\u65F6\u95F4\uFF1A${formatDisplayTime(record3.timestamp)}`, attr: { title: record3.timestamp } });
-      } else row.createDiv({ cls: "flowdesk-muted", text: records.length ? "\u65E0\u6CD5\u786E\u8BA4\u6700\u8FD1\u4E00\u8F6E\uFF1B\u8BF7\u5C55\u5F00\u5DE5\u4F5C\u8BB0\u5F55\u3002" : "\u672A\u63D0\u4F9B\u8BB0\u5F55\uFF1B\u53EF\u8BFB\u53D6 API \u539F\u6587\u3002" });
+        if (record3.timestamp)
+          fdCreateDiv(row, { cls: "flowdesk-muted", text: `\u8BB0\u5F55\u65F6\u95F4\uFF1A${formatDisplayTime(record3.timestamp)}`, attr: { title: record3.timestamp } });
+      } else
+        fdCreateDiv(row, { cls: "flowdesk-muted", text: records.length ? "\u65E0\u6CD5\u786E\u8BA4\u6700\u8FD1\u4E00\u8F6E\uFF1B\u8BF7\u5C55\u5F00\u5DE5\u4F5C\u8BB0\u5F55\u3002" : "\u672A\u63D0\u4F9B\u8BB0\u5F55\uFF1B\u53EF\u8BFB\u53D6 API \u539F\u6587\u3002" });
     }
-    card.createDiv({ cls: "flowdesk-muted", text: "\u5B8C\u6210\u65F6\u95F4\uFF1A\u672A\u63D0\u4F9B\u51C6\u786E\u5B57\u6BB5\uFF1B\u8BB0\u5F55\u65F6\u95F4\u72EC\u7ACB\u663E\u793A\u3002\u9A8C\u8BC1\u6458\u5F55\u4E0D\u4EE3\u8868\u65B0\u589E\u9A8C\u6536\u7ED3\u8BBA\u3002" });
+    fdCreateDiv(card, { cls: "flowdesk-muted", text: "\u5B8C\u6210\u65F6\u95F4\uFF1A\u672A\u63D0\u4F9B\u51C6\u786E\u5B57\u6BB5\uFF1B\u8BB0\u5F55\u65F6\u95F4\u72EC\u7ACB\u663E\u793A\u3002\u9A8C\u8BC1\u6458\u5F55\u4E0D\u4EE3\u8868\u65B0\u589E\u9A8C\u6536\u7ED3\u8BBA\u3002" });
   } else {
-    const progress = card.createDiv({ cls: "flowdesk-overview-progress" });
-    if (current.progress) markdown(progress, excerpt(firstParagraph(current.progress)), "flowdesk-overview-excerpt");
-    else progress.createDiv({ cls: "flowdesk-muted", text: "\u5F53\u524D\u8FDB\u5C55\u672A\u786E\u8BA4\uFF0C\u8BF7\u67E5\u770B\u8BB0\u5F55\u6216\u8BFB\u53D6 API \u539F\u6587\u3002" });
+    const progress = fdCreateDiv(card, { cls: "flowdesk-overview-progress" });
+    if (current.progress)
+      markdown(progress, excerpt(firstParagraph(current.progress)), "flowdesk-overview-excerpt");
+    else
+      fdCreateDiv(progress, { cls: "flowdesk-muted", text: "\u5F53\u524D\u8FDB\u5C55\u672A\u786E\u8BA4\uFF0C\u8BF7\u67E5\u770B\u8BB0\u5F55\u6216\u8BFB\u53D6 API \u539F\u6587\u3002" });
     if (current.next !== null) {
-      const next = card.createDiv({ cls: "flowdesk-overview-next" });
-      next.createDiv({ cls: "flowdesk-summary-label", text: "\u4E0B\u4E00\u6B65" });
+      const next = fdCreateDiv(card, { cls: "flowdesk-overview-next" });
+      fdCreateDiv(next, { cls: "flowdesk-summary-label", text: "\u4E0B\u4E00\u6B65" });
       markdown(next, excerpt(current.next), "flowdesk-overview-excerpt");
     }
-    if (model.currentTask.isBlocked) card.createDiv({ cls: "flowdesk-overview-gap", text: `TaskNotes \u6807\u8BB0\u4E3A\u963B\u585E${model.currentTask.blockedBy.length ? `\uFF1B\u5173\u8054\uFF1A${model.currentTask.blockedBy.join("\u3001")}` : ""}` });
+    if (model.currentTask.isBlocked)
+      fdCreateDiv(card, { cls: "flowdesk-overview-gap", text: `TaskNotes \u6807\u8BB0\u4E3A\u963B\u585E${model.currentTask.blockedBy.length ? `\uFF1B\u5173\u8054\uFF1A${model.currentTask.blockedBy.join("\u3001")}` : ""}` });
   }
-  const progressPanel = card.createDiv({ cls: "flowdesk-task-current-progress" });
-  const record2 = progressPanel.createEl("details", { cls: "flowdesk-overview-history", attr: { "data-disclosure-key": "overview-progress" } });
-  record2.createEl("summary", { text: current.status === "historical" ? "\u6700\u8FD1 Progress\uFF08\u5386\u53F2\uFF09" : current.status === "current" ? "\u67E5\u770B\u5B8C\u6574\u8FDB\u5C55\u4E0E\u4E0B\u4E00\u6B65" : current.progress ? "Progress \u7247\u6BB5\uFF08\u5F53\u524D\u6027\u672A\u786E\u8BA4\uFF09" : "\u5F53\u524D Progress\uFF1Aunknown" });
-  if (current.timestamp) record2.createDiv({ cls: "flowdesk-muted", text: `\u4E8B\u4EF6\u65F6\u95F4\uFF1A${formatDisplayTime(current.timestamp)} \xB7 snapshot \u751F\u6210\u4E8E ${formatDisplayTime(model.observation.generatedAt)}`, attr: { title: `${current.timestamp} \xB7 ${model.observation.generatedAt}` } });
-  for (const [field, text3] of [["progress", current.progress], ["next", current.next]]) if (text3 !== null) markdown(record2, text3, "flowdesk-contract-scope-markdown", field);
+  const progressPanel = fdCreateDiv(card, { cls: "flowdesk-task-current-progress" });
+  const record2 = fdCreateEl(progressPanel, "details", { cls: "flowdesk-overview-history", attr: { "data-disclosure-key": "overview-progress" } });
+  fdCreateEl(record2, "summary", { text: current.status === "historical" ? "\u6700\u8FD1 Progress\uFF08\u5386\u53F2\uFF09" : current.status === "current" ? "\u67E5\u770B\u5B8C\u6574\u8FDB\u5C55\u4E0E\u4E0B\u4E00\u6B65" : current.progress ? "Progress \u7247\u6BB5\uFF08\u5F53\u524D\u6027\u672A\u786E\u8BA4\uFF09" : "\u5F53\u524D Progress\uFF1Aunknown" });
+  if (current.timestamp)
+    fdCreateDiv(record2, { cls: "flowdesk-muted", text: `\u4E8B\u4EF6\u65F6\u95F4\uFF1A${formatDisplayTime(current.timestamp)} \xB7 snapshot \u751F\u6210\u4E8E ${formatDisplayTime(model.observation.generatedAt)}`, attr: { title: `${current.timestamp} \xB7 ${model.observation.generatedAt}` } });
+  for (const [field, text3] of [["progress", current.progress], ["next", current.next]])
+    if (text3 !== null)
+      markdown(record2, text3, "flowdesk-contract-scope-markdown", field);
   for (const gap of current.gaps) {
-    record2.createDiv({ cls: "flowdesk-muted", text: gap });
-    if (current.status === "unknown") card.createDiv({ cls: "flowdesk-overview-gap", text: gap });
+    fdCreateDiv(record2, { cls: "flowdesk-muted", text: gap });
+    if (current.status === "unknown")
+      fdCreateDiv(card, { cls: "flowdesk-overview-gap", text: gap });
   }
   if (current.source && dependencies.showSourceActions) {
-    const source = record2.createEl("button", { cls: "flowdesk-content-source", text: "\u6253\u5F00 Progress \u539F\u6587" });
+    const source = fdCreateEl(record2, "button", { cls: "flowdesk-content-source", text: "\u6253\u5F00 Progress \u539F\u6587" });
     const original = model.content.domainSections.find((s) => s.level === 2 && s.heading === "Progress");
     source.addEventListener("click", (event) => {
       var _a;
@@ -1716,34 +1760,42 @@ function renderTaskOverview(container, model, dependencies) {
   return card;
 }
 
-// src/progress-history.ts
+// packages/dashboard-ui/src/progress-history.ts
 function parseQuotedProgress(text3) {
   var _a;
   const lines = text3.replace(/\r\n/g, "\n").split("\n");
-  while (lines.length && !lines[0].trim()) lines.shift();
-  if (lines.shift() !== "> [!faq]- \u8BE6\u7EC6\u8FC7\u7A0B\u65E5\u5FD7") return null;
+  while (lines.length && !lines[0].trim())
+    lines.shift();
+  if (lines.shift() !== "> [!faq]- \u8BE6\u7EC6\u8FC7\u7A0B\u65E5\u5FD7")
+    return null;
   const events = [];
   let fence2 = null, receipts = false;
   const scan = (line) => {
     const visible = line.replace(/^(?:进展|完成|下一步)：/, "");
     const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(visible);
-    if (!match) return;
-    if (!fence2) fence2 = { char: match[1][0], length: match[1].length };
-    else if (match[1][0] === fence2.char && match[1].length >= fence2.length && !match[2].trim()) fence2 = null;
+    if (!match)
+      return;
+    if (!fence2)
+      fence2 = { char: match[1][0], length: match[1].length };
+    else if (match[1][0] === fence2.char && match[1].length >= fence2.length && !match[2].trim())
+      fence2 = null;
   };
   for (const line of lines) {
     if (/^<!-- flowdesk\.task-update\/.* -->$/.test(line)) {
-      if (fence2) return null;
+      if (fence2)
+        return null;
       receipts = true;
       continue;
     }
     if (receipts) {
-      if (line.trim()) return null;
+      if (line.trim())
+        return null;
       continue;
     }
     const event = /^> - \[[xX ]\] (.*)$/.exec(line);
     if (event) {
-      if (fence2) return null;
+      if (fence2)
+        return null;
       const dated = /^`([^`]*)`(?: (.*))?$/.exec(event[1]);
       const body2 = dated ? (_a = dated[2]) != null ? _a : "" : event[1];
       events.push({ timestamp: dated ? dated[1] : null, lines: [body2] });
@@ -1751,53 +1803,61 @@ function parseQuotedProgress(text3) {
       continue;
     }
     if (!line.trim() || /^> *$/.test(line)) {
-      if (events.length) events[events.length - 1].lines.push("");
+      if (events.length)
+        events[events.length - 1].lines.push("");
       continue;
     }
-    if (!events.length || !line.startsWith(">   ")) return null;
+    if (!events.length || !line.startsWith(">   "))
+      return null;
     const body = line.slice(4);
     events[events.length - 1].lines.push(body);
     scan(body);
   }
-  if (fence2 || !events.length || events.some((event) => !event.lines.join("\n").trim())) return null;
+  if (fence2 || !events.length || events.some((event) => !event.lines.join("\n").trim()))
+    return null;
   return events.map((event, sourceIndex) => ({ timestamp: event.timestamp, text: event.lines.join("\n").trimEnd(), sourceIndex }));
 }
 function readProgressSection(sections) {
   const candidates = sections.filter((section3) => section3.level === 2 && section3.heading === "Progress");
-  if (candidates.length !== 1) return null;
+  if (candidates.length !== 1)
+    return null;
   const section2 = candidates[0], source = section2.source;
-  if (!Number.isInteger(source == null ? void 0 : source.line_start) || Number(source == null ? void 0 : source.line_start) < 1 || !Number.isInteger(source == null ? void 0 : source.line_end) || Number(source == null ? void 0 : source.line_end) < Number(source == null ? void 0 : source.line_start) || (source == null ? void 0 : source.truncated) === true || (source == null ? void 0 : source.omitted) === true) return null;
+  if (!Number.isInteger(source == null ? void 0 : source.line_start) || Number(source == null ? void 0 : source.line_start) < 1 || !Number.isInteger(source == null ? void 0 : source.line_end) || Number(source == null ? void 0 : source.line_end) < Number(source == null ? void 0 : source.line_start) || (source == null ? void 0 : source.truncated) === true || (source == null ? void 0 : source.omitted) === true)
+    return null;
   const events = parseQuotedProgress(section2.text);
   return events ? { section: section2, events } : null;
 }
 function historyTime(value) {
-  if (!value) return "\u65F6\u95F4\u672A\u8BB0\u5F55";
+  if (!value)
+    return "\u65F6\u95F4\u672A\u8BB0\u5F55";
   const legacy = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/.exec(value);
   if (legacy) {
     const [year, month, day, hour, minute] = legacy.slice(1).map(Number), date = /* @__PURE__ */ new Date(0);
     date.setUTCFullYear(year, month - 1, day);
-    if (date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day && hour < 24 && minute < 60) return formatDisplayTime(value.replace(" ", "T") + ":00+08:00");
+    if (date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day && hour < 24 && minute < 60)
+      return formatDisplayTime(value.replace(" ", "T") + ":00+08:00");
   }
   const iso = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/.exec(value);
   if (iso) {
     const [year, month, day, hour, minute, second] = iso.slice(1, 7).map((part) => Number(part != null ? part : 0)), date = /* @__PURE__ */ new Date(0);
     date.setUTCFullYear(year, month - 1, day);
     const zone = iso[7];
-    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day || hour > 23 || minute > 59 || second > 59 || zone !== "Z" && (Number(zone.slice(1, 3)) > 23 || Number(zone.slice(4)) > 59)) return value;
+    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day || hour > 23 || minute > 59 || second > 59 || zone !== "Z" && (Number(zone.slice(1, 3)) > 23 || Number(zone.slice(4)) > 59))
+      return value;
   }
   return formatDisplayTime(value);
 }
 function renderProgressEvents(parent, events, renderMarkdown, full) {
   var _a;
   for (const event of [...events].reverse()) {
-    const row = parent.createDiv({ cls: "flowdesk-log-entry", attr: { "data-source-index": String(event.sourceIndex) } });
-    row.createEl("time", { cls: "flowdesk-log-date", text: historyTime(event.timestamp), attr: { title: (_a = event.timestamp) != null ? _a : "\u539F\u6587\u672A\u63D0\u4F9B\u65E5\u671F" } });
-    const content = row.createDiv({ cls: full ? "flowdesk-log-body markdown-rendered" : "flowdesk-log-excerpt markdown-rendered" });
+    const row = fdCreateDiv(parent, { cls: "flowdesk-log-entry", attr: { "data-source-index": String(event.sourceIndex) } });
+    fdCreateEl(row, "time", { cls: "flowdesk-log-date", text: historyTime(event.timestamp), attr: { title: (_a = event.timestamp) != null ? _a : "\u539F\u6587\u672A\u63D0\u4F9B\u65E5\u671F" } });
+    const content = fdCreateDiv(row, { cls: full ? "flowdesk-log-body markdown-rendered" : "flowdesk-log-excerpt markdown-rendered" });
     renderMarkdown(full ? event.text : excerpt(firstParagraph(event.text).replace(/^(?:进展|完成)：/, ""), 600), content);
   }
 }
 
-// src/progress-disclosure.ts
+// packages/dashboard-ui/src/progress-disclosure.ts
 function bindProgressDisclosure(details, summary, recent, full, count, options) {
   var _a, _b;
   let expanded = details.open, animation = null, version = 0;
@@ -1813,7 +1873,8 @@ function bindProgressDisclosure(details, summary, recent, full, count, options) 
   };
   const change = (next, motion) => {
     var _a2, _b2, _c, _d, _e, _f;
-    if ((_a2 = options.signal) == null ? void 0 : _a2.aborted) return;
+    if ((_a2 = options.signal) == null ? void 0 : _a2.aborted)
+      return;
     const revision = ++version;
     const from = (_d = (_c = (_b2 = expanded ? full : recent).getBoundingClientRect) == null ? void 0 : _c.call(_b2).height) != null ? _d : 0;
     clear();
@@ -1822,8 +1883,9 @@ function bindProgressDisclosure(details, summary, recent, full, count, options) 
     recent.hidden = next;
     const ready = next ? options.ensureHistory() : void 0;
     (_e = options.onChange) == null ? void 0 : _e.call(options, next);
-    summary.setText(`${next ? "\u6536\u8D77\u5168\u90E8" : "\u67E5\u770B\u5168\u90E8"}\u8FDB\u5EA6\u8BB0\u5F55\uFF08${count} \u6761\uFF09`);
-    if (!motion || !from || !window2 || typeof full.animate !== "function" || ((_f = window2.matchMedia) == null ? void 0 : _f.call(window2, "(prefers-reduced-motion: reduce)").matches)) return;
+    fdSetText(summary, `${next ? "\u6536\u8D77\u5168\u90E8" : "\u67E5\u770B\u5168\u90E8"}\u8FDB\u5EA6\u8BB0\u5F55\uFF08${count} \u6761\uFF09`);
+    if (!motion || !from || !window2 || typeof full.animate !== "function" || ((_f = window2.matchMedia) == null ? void 0 : _f.call(window2, "(prefers-reduced-motion: reduce)").matches))
+      return;
     const target = next ? full : recent;
     const collapsedHeight = recent.scrollHeight;
     target.style.maxHeight = "none";
@@ -1831,26 +1893,31 @@ function bindProgressDisclosure(details, summary, recent, full, count, options) 
     target.style.overflow = next ? "auto" : "hidden";
     const start = () => {
       var _a3;
-      if (revision !== version || ((_a3 = options.signal) == null ? void 0 : _a3.aborted)) return;
+      if (revision !== version || ((_a3 = options.signal) == null ? void 0 : _a3.aborted))
+        return;
       target.style.height = "";
       const height = next ? Math.min(target.scrollHeight, window2.innerHeight * 0.6, 520) : collapsedHeight;
       target.style.height = `${from}px`;
       const current = target.animate([{ height: `${from}px`, opacity: 0.65 }, { height: `${height}px`, opacity: 1 }], { duration: 200, easing: "cubic-bezier(.2, 0, 0, 1)" });
       animation = current;
       current.onfinish = () => {
-        if (animation === current) clear();
+        if (animation === current)
+          clear();
       };
     };
-    if (ready) void ready.then(start, start);
-    else start();
+    if (ready)
+      void ready.then(start, start);
+    else
+      start();
   };
-  summary.setAttr("data-focus-key", "progress-history-toggle");
+  fdSetAttr(summary, "data-focus-key", "progress-history-toggle");
   summary.addEventListener("click", (event) => {
     event.preventDefault();
     change(!expanded, true);
   });
   details.addEventListener("toggle", () => {
-    if (details.open !== expanded) change(details.open, false);
+    if (details.open !== expanded)
+      change(details.open, false);
   });
   details.addEventListener("flowdesk-reading-restore", () => change(details.open, false));
   (_b = options.signal) == null ? void 0 : _b.addEventListener("abort", () => {
@@ -1860,7 +1927,7 @@ function bindProgressDisclosure(details, summary, recent, full, count, options) 
   recent.hidden = expanded;
 }
 
-// src/task-content-renderer.ts
+// packages/dashboard-ui/src/task-content-renderer.ts
 var recordTitle = (heading2) => heading2.replace(/^Execution Result/, "\u6267\u884C\u7ED3\u679C").replace(/^Verification Result/, "\u9A8C\u8BC1\u7ED3\u679C").replace(/^Delivery Record/, "\u4EA4\u4ED8\u8BB0\u5F55");
 var TaskContentRenderer = class {
   constructor(dependencies) {
@@ -1869,45 +1936,49 @@ var TaskContentRenderer = class {
   render(container, content) {
     var _a, _b, _c;
     const body = (parent, text3) => {
-      const element = parent.createDiv({ cls: "flowdesk-contract-scope-markdown markdown-rendered" });
-      void this.dependencies.renderMarkdown(text3, element, content.taskId).catch(() => element.setText(text3));
+      const element = fdCreateDiv(parent, { cls: "flowdesk-contract-scope-markdown markdown-rendered" });
+      void this.dependencies.renderMarkdown(text3, element, content.taskId).catch(() => fdSetText(element, text3));
     };
     const source = (parent, section2) => {
       var _a2, _b2;
-      if (!this.dependencies.showSourceActions) return;
-      const row = parent.createDiv({ cls: "flowdesk-source-actions" });
-      const button = row.createEl("button", { cls: "flowdesk-content-source", text: "\u5728\u539F\u6587\u67E5\u770B", attr: { "aria-label": `${section2.source ? "\u6253\u5F00\u8FD9\u4E00\u6761\u539F\u6587" : "\u6253\u5F00\u4EFB\u52A1\u539F\u6587"}\uFF1A${section2.heading}` } });
+      if (!this.dependencies.showSourceActions)
+        return;
+      const row = fdCreateDiv(parent, { cls: "flowdesk-source-actions" });
+      const button = fdCreateEl(row, "button", { cls: "flowdesk-content-source", text: "\u5728\u539F\u6587\u67E5\u770B", attr: { "aria-label": `${section2.source ? "\u6253\u5F00\u8FD9\u4E00\u6761\u539F\u6587" : "\u6253\u5F00\u4EFB\u52A1\u539F\u6587"}\uFF1A${section2.heading}` } });
       button.addEventListener("click", (event) => {
         void this.dependencies.openSource(content.taskId, section2, event);
       });
       if (section2.source) {
-        const details = row.createEl("details", { cls: "flowdesk-source-details", attr: { "data-disclosure-key": `source:${section2.heading}:${(_a2 = section2.source.line_start) != null ? _a2 : "unknown"}` } });
-        details.createEl("summary", { text: "\u6765\u6E90" });
+        const details = fdCreateEl(row, "details", { cls: "flowdesk-source-details", attr: { "data-disclosure-key": `source:${section2.heading}:${(_a2 = section2.source.line_start) != null ? _a2 : "unknown"}` } });
+        fdCreateEl(details, "summary", { text: "\u6765\u6E90" });
         const line = section2.source.line_start, reliable = typeof line === "number" && Number.isInteger(line) && line > 0;
-        details.createDiv({ cls: "flowdesk-muted", text: `${(_b2 = section2.source.section) != null ? _b2 : section2.heading}${reliable ? ` \xB7 API details \u7B2C ${line} \u884C` : " \xB7 API details \u884C\u4F4D\u7F6E\u672A\u77E5"}` });
+        fdCreateDiv(details, { cls: "flowdesk-muted", text: `${(_b2 = section2.source.section) != null ? _b2 : section2.heading}${reliable ? ` \xB7 API details \u7B2C ${line} \u884C` : " \xB7 API details \u884C\u4F4D\u7F6E\u672A\u77E5"}` });
       }
     };
     const disclosure = (parent, title, key, cls = "flowdesk-contract-item-details") => {
-      const element = parent.createEl("details", { cls, attr: { "data-disclosure-key": key } });
-      element.createEl("summary", { text: title, attr: { "data-focus-key": `disclosure:${key}` } });
+      const element = fdCreateEl(parent, "details", { cls, attr: { "data-disclosure-key": key } });
+      fdCreateEl(element, "summary", { text: title, attr: { "data-focus-key": `disclosure:${key}` } });
       return element;
     };
     const specification = disclosure(container, "\u4EFB\u52A1\u8BF4\u660E", "task-specification", "flowdesk-task-specification");
     specification.open = true;
     for (const [heading2, text3] of [["\u76EE\u6807", content.goal], ["\u80CC\u666F", content.why], ["\u8303\u56F4", content.scopeText], ["\u6267\u884C\u6E05\u5355", content.steps]]) {
-      if (!text3) continue;
-      const section2 = specification.createDiv({ cls: "flowdesk-specification-section" });
-      section2.createEl("h3", { text: heading2 });
+      if (!text3)
+        continue;
+      const section2 = fdCreateDiv(specification, { cls: "flowdesk-specification-section" });
+      fdCreateEl(section2, "h3", { text: heading2 });
       body(section2, text3);
     }
-    if (!content.goal && !content.why && !content.scopeText && !content.steps) specification.createDiv({ cls: "flowdesk-muted", text: "\u672A\u63D0\u4F9B\u4EFB\u52A1\u8BF4\u660E\uFF1B\u53EF\u4ECE\u4EFB\u52A1\u6807\u9898\u6253\u5F00\u539F\u6587\u4EF6\u3002" });
+    if (!content.goal && !content.why && !content.scopeText && !content.steps)
+      fdCreateDiv(specification, { cls: "flowdesk-muted", text: "\u672A\u63D0\u4F9B\u4EFB\u52A1\u8BF4\u660E\uFF1B\u53EF\u4ECE\u4EFB\u52A1\u6807\u9898\u6253\u5F00\u539F\u6587\u4EF6\u3002" });
     source(specification, { heading: "\u4EFB\u52A1\u8BF4\u660E", level: 2, text: content.goal });
     const items = (heading2, entries) => {
       var _a2, _b2;
-      if (!entries.length) return;
+      if (!entries.length)
+        return;
       const group = disclosure(container, `${heading2} \xB7 ${entries.length} \u6761`, `list:${heading2}`);
       for (const item of entries) {
-        const entry = group.createDiv({ cls: "flowdesk-specification-section" });
+        const entry = fdCreateDiv(group, { cls: "flowdesk-specification-section" });
         body(entry, (_b2 = (_a2 = item.text) != null ? _a2 : item.label) != null ? _b2 : "");
       }
       source(group, { heading: heading2, level: 2, text: "" });
@@ -1917,69 +1988,78 @@ var TaskContentRenderer = class {
     if (content.acceptance.length) {
       const group = disclosure(container, "\u9A8C\u6536\u6807\u51C6", "acceptance", "flowdesk-acceptance-group");
       group.open = true;
-      group.createDiv({ cls: "flowdesk-muted", text: "\u4EC5\u663E\u793A\u539F\u6587\u8BB0\u5F55\uFF1B\u52FE\u9009\u4E0D\u4EE3\u8868\u9A8C\u8BC1\u901A\u8FC7\u3002\u4FEE\u6539\u8BF7\u5728\u4EFB\u52A1\u539F\u6587\u8FDB\u884C\u3002" });
-      const list2 = group.createEl("ul", { cls: "flowdesk-acceptance-list" });
+      fdCreateDiv(group, { cls: "flowdesk-muted", text: "\u4EC5\u663E\u793A\u539F\u6587\u8BB0\u5F55\uFF1B\u52FE\u9009\u4E0D\u4EE3\u8868\u9A8C\u8BC1\u901A\u8FC7\u3002\u4FEE\u6539\u8BF7\u5728\u4EFB\u52A1\u539F\u6587\u8FDB\u884C\u3002" });
+      const list2 = fdCreateEl(group, "ul", { cls: "flowdesk-acceptance-list" });
       for (const item of content.acceptance) {
-        const row = list2.createEl("li", { cls: "flowdesk-acceptance-item" });
+        const row = fdCreateEl(list2, "li", { cls: "flowdesk-acceptance-item" });
         const marked = item.checked === true ? "\u539F\u6587\u5DF2\u52FE\u9009" : item.checked === false ? "\u539F\u6587\u672A\u52FE\u9009" : "\u539F\u6587\u65E0\u52FE\u9009\u6807\u8BB0";
-        row.createSpan({ cls: `flowdesk-acceptance-marker is-${item.checked === true ? "checked" : item.checked === false ? "unchecked" : "plain"}`, text: item.checked === true ? "\u2713" : item.checked === false ? "\u25CB" : "\u2022", attr: { "aria-label": marked, title: marked } });
+        fdCreateSpan(row, { cls: `flowdesk-acceptance-marker is-${item.checked === true ? "checked" : item.checked === false ? "unchecked" : "plain"}`, text: item.checked === true ? "\u2713" : item.checked === false ? "\u25CB" : "\u2022", attr: { "aria-label": marked, title: marked } });
         body(row, (_b = (_a = item.text) != null ? _a : item.label) != null ? _b : "");
       }
       source(group, { heading: "\u9A8C\u6536", level: 2, text: "" });
     }
     const reading = createTaskReadingSections(content);
-    if (!reading.orderComplete) container.createDiv({ cls: "flowdesk-muted", text: "\u90E8\u5206\u6BB5\u843D\u65E0\u53EF\u9760\u4F4D\u7F6E\uFF0C\u5B8C\u6574\u987A\u5E8F\u8BF7\u67E5\u770B\u539F\u6587\u4EF6\u3002" });
+    if (!reading.orderComplete)
+      fdCreateDiv(container, { cls: "flowdesk-muted", text: "\u90E8\u5206\u6BB5\u843D\u65E0\u53EF\u9760\u4F4D\u7F6E\uFF0C\u5B8C\u6574\u987A\u5E8F\u8BF7\u67E5\u770B\u539F\u6587\u4EF6\u3002" });
     for (const [kind, title] of [["execution", "\u6267\u884C\u7ED3\u679C"], ["verification", "\u9A8C\u8BC1\u7ED3\u679C"], ["delivery", "\u4EA4\u4ED8\u8BB0\u5F55"]]) {
       const records = content.records[kind];
-      if (!records.length) continue;
+      if (!records.length)
+        continue;
       const latest = latestRecord(records);
       const result = disclosure(container, latest ? `\u6700\u8FD1${title} \xB7 \u6458\u5F55` : `${title} \xB7 \u6700\u8FD1\u8BB0\u5F55\u672A\u786E\u8BA4`, `result:${kind}`, "flowdesk-contract-item-details flowdesk-record-round");
       if (latest) {
-        result.createDiv({ cls: "flowdesk-muted", text: "\u6700\u8FD1\u4E00\u6761\u7ED3\u679C\u7684\u9996\u6BB5\u6458\u5F55\uFF1B\u5168\u6587\u548C\u5386\u8F6E\u7ED3\u679C\u4FDD\u7559\u5728\u8FC7\u7A0B\u8BB0\u5F55\u3002" });
+        fdCreateDiv(result, { cls: "flowdesk-muted", text: "\u6700\u8FD1\u4E00\u6761\u7ED3\u679C\u7684\u9996\u6BB5\u6458\u5F55\uFF1B\u5168\u6587\u548C\u5386\u8F6E\u7ED3\u679C\u4FDD\u7559\u5728\u8FC7\u7A0B\u8BB0\u5F55\u3002" });
         body(result, excerpt(firstParagraph(latest.text)));
         source(result, latest);
-      } else result.createDiv({ cls: "flowdesk-muted", text: "\u65E0\u6CD5\u786E\u8BA4\u6700\u8FD1\u4E00\u8F6E\uFF1B\u5B8C\u6574\u7ED3\u679C\u4FDD\u7559\u5728\u8FC7\u7A0B\u8BB0\u5F55\u3002" });
+      } else
+        fdCreateDiv(result, { cls: "flowdesk-muted", text: "\u65E0\u6CD5\u786E\u8BA4\u6700\u8FD1\u4E00\u8F6E\uFF1B\u5B8C\u6574\u7ED3\u679C\u4FDD\u7559\u5728\u8FC7\u7A0B\u8BB0\u5F55\u3002" });
     }
     const progress = readProgressSection(content.domainSections);
     const historyContainer = (_c = this.dependencies.historyContainer) != null ? _c : container;
     if (progress) {
-      const section2 = historyContainer.createEl("section", { cls: "flowdesk-progress-log" });
-      const heading2 = section2.createDiv({ cls: "flowdesk-log-heading" });
-      heading2.createEl("h3", { text: "\u8FDB\u5EA6\u65E5\u5FD7" });
-      const count = heading2.createSpan({ cls: "flowdesk-muted", text: `\u6700\u8FD1 ${Math.min(3, progress.events.length)} \u6761 \xB7 \u6458\u5F55` });
+      const section2 = fdCreateEl(historyContainer, "section", { cls: "flowdesk-progress-log" });
+      const heading2 = fdCreateDiv(section2, { cls: "flowdesk-log-heading" });
+      fdCreateEl(heading2, "h3", { text: "\u8FDB\u5EA6\u65E5\u5FD7" });
+      const count = fdCreateSpan(heading2, { cls: "flowdesk-muted", text: `\u6700\u8FD1 ${Math.min(3, progress.events.length)} \u6761 \xB7 \u6458\u5F55` });
       const markdown = (text3, element) => {
-        void this.dependencies.renderMarkdown(text3, element, content.taskId).catch(() => element.setText(text3));
+        void this.dependencies.renderMarkdown(text3, element, content.taskId).catch(() => fdSetText(element, text3));
       };
       const all = disclosure(section2, `\u67E5\u770B\u5168\u90E8\u8FDB\u5EA6\u8BB0\u5F55\uFF08${progress.events.length} \u6761\uFF09`, "all-progress", "flowdesk-log-all");
-      const full = all.createDiv({ cls: "flowdesk-log-full", attr: { "data-reading-scroll-key": "progress-history", role: "region", "aria-label": "\u5B8C\u6574\u8FDB\u5EA6\u8BB0\u5F55", tabindex: "0" } });
-      const entries = full.createDiv({ cls: "flowdesk-log-full-entries" });
-      const more = full.createEl("button", { cls: "flowdesk-log-more", attr: { "data-focus-key": "progress-history-more" } });
+      const full = fdCreateDiv(all, { cls: "flowdesk-log-full", attr: { "data-reading-scroll-key": "progress-history", role: "region", "aria-label": "\u5B8C\u6574\u8FDB\u5EA6\u8BB0\u5F55", tabindex: "0" } });
+      const entries = fdCreateDiv(full, { cls: "flowdesk-log-full-entries" });
+      const more = fdCreateEl(full, "button", { cls: "flowdesk-log-more", attr: { "data-focus-key": "progress-history-more" } });
       let shown = 0, busy = false, loading;
-      const caption = (expanded) => count.setText(expanded ? `\u5DF2\u663E\u793A ${shown}/${progress.events.length} \u6761 \xB7 \u539F\u6587` : `\u6700\u8FD1 ${Math.min(3, progress.events.length)} \u6761 \xB7 \u6458\u5F55`);
+      const caption = (expanded) => fdSetText(count, expanded ? `\u5DF2\u663E\u793A ${shown}/${progress.events.length} \u6761 \xB7 \u539F\u6587` : `\u6700\u8FD1 ${Math.min(3, progress.events.length)} \u6761 \xB7 \u6458\u5F55`);
       const load = (desired = Math.max(12, Number(full.getAttribute("data-reading-items")) || 0)) => {
         var _a2, _b2, _c2;
-        if ((_a2 = this.dependencies.signal) == null ? void 0 : _a2.aborted) return;
-        if (busy) return loading;
-        if (shown >= progress.events.length) return;
+        if ((_a2 = this.dependencies.signal) == null ? void 0 : _a2.aborted)
+          return;
+        if (busy)
+          return loading;
+        if (shown >= progress.events.length)
+          return;
         const end = Math.min(progress.events.length, Math.max(shown, desired)), jobs = [];
-        if (end === shown) return;
+        if (end === shown)
+          return;
         renderProgressEvents(entries, progress.events.slice(progress.events.length - end, progress.events.length - shown), (text3, element) => jobs.push({ text: text3, element }), true);
         shown = end;
-        full.setAttr("data-reading-items", String(shown));
+        fdSetAttr(full, "data-reading-items", String(shown));
         busy = true;
         more.disabled = true;
         caption(all.open);
-        more.setText(`\u52A0\u8F7D\u66F4\u65E9\u8BB0\u5F55\uFF08\u5269\u4F59 ${progress.events.length - shown} \u6761\uFF09`);
+        fdSetText(more, `\u52A0\u8F7D\u66F4\u65E9\u8BB0\u5F55\uFF08\u5269\u4F59 ${progress.events.length - shown} \u6761\uFF09`);
         more.hidden = shown === progress.events.length;
         const render = (async () => {
           var _a3, _b3, _c3;
           try {
             for (const job of jobs) {
-              if ((_a3 = this.dependencies.signal) == null ? void 0 : _a3.aborted) return;
+              if ((_a3 = this.dependencies.signal) == null ? void 0 : _a3.aborted)
+                return;
               try {
                 await this.dependencies.renderMarkdown(job.text, job.element, content.taskId);
               } catch (e) {
-                if (!((_b3 = this.dependencies.signal) == null ? void 0 : _b3.aborted)) job.element.setText(job.text);
+                if (!((_b3 = this.dependencies.signal) == null ? void 0 : _b3.aborted))
+                  fdSetText(job.element, job.text);
               }
             }
           } finally {
@@ -1992,24 +2072,25 @@ var TaskContentRenderer = class {
         return render;
       };
       more.addEventListener("click", () => load(shown + 12));
-      const recent = section2.createDiv({ cls: "flowdesk-log-recent" });
+      const recent = fdCreateDiv(section2, { cls: "flowdesk-log-recent" });
       renderProgressEvents(recent, progress.events.slice(-3), markdown, false);
       bindProgressDisclosure(all, all.querySelectorAll("summary")[0], recent, full, progress.events.length, { signal: this.dependencies.signal, ensureHistory: () => load(), onChange: caption });
     }
     const remaining = reading.sections.filter((item) => item.section !== (progress == null ? void 0 : progress.section));
-    if (!remaining.length) return;
+    if (!remaining.length)
+      return;
     const history = disclosure(historyContainer, `\u5176\u4ED6\u8FC7\u7A0B\u8D44\u6599\uFF08${remaining.length} \u6BB5\uFF09`, "process-records", "flowdesk-contract-item-details flowdesk-process-records");
-    history.createDiv({ cls: "flowdesk-muted", text: "\u6309\u539F\u6587\u987A\u5E8F\u8FDE\u7EED\u4FDD\u7559\u6B63\u6587\u3001\u5386\u53F2\u8FDB\u5EA6\u4E0E\u5386\u8F6E\u7ED3\u679C\u3002" });
+    fdCreateDiv(history, { cls: "flowdesk-muted", text: "\u6309\u539F\u6587\u987A\u5E8F\u8FDE\u7EED\u4FDD\u7559\u6B63\u6587\u3001\u5386\u53F2\u8FDB\u5EA6\u4E0E\u5386\u8F6E\u7ED3\u679C\u3002" });
     for (const { kind, section: original } of remaining) {
-      const entry = history.createDiv({ cls: "flowdesk-process-entry", attr: { "data-record-kind": kind } });
-      entry.createEl(original.level === 3 ? "h3" : "h2", { text: recordTitle(original.heading) });
+      const entry = fdCreateDiv(history, { cls: "flowdesk-process-entry", attr: { "data-record-kind": kind } });
+      fdCreateEl(entry, original.level === 3 ? "h3" : "h2", { text: recordTitle(original.heading) });
       body(entry, original.text);
     }
     source(history, { heading: "\u8FC7\u7A0B\u8BB0\u5F55", level: 2, text: "" });
   }
 };
 
-// src/snapshot-model.ts
+// packages/dashboard-ui/src/snapshot-model.ts
 function createDashboardViewModel(value, options = {}) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, __, _$, _aa, _ba, _ca, _da, _ea, _fa, _ga, _ha, _ia, _ja, _ka, _la, _ma, _na;
   const snapshot = isRecord2(value) ? value : {};
@@ -2421,7 +2502,7 @@ function isRecord2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// src/task-navigation.ts
+// packages/dashboard-ui/src/task-navigation.ts
 function taskNavigationLeafType(origin, modifiers) {
   return (modifiers == null ? void 0 : modifiers.metaKey) || (modifiers == null ? void 0 : modifiers.ctrlKey) ? "tab" : false;
 }
@@ -2440,7 +2521,7 @@ function formatDiagnosticClipboard(input) {
   ].join("\n");
 }
 
-// src/resume-presentation.ts
+// packages/dashboard-ui/src/resume-presentation.ts
 function validateResumeBundle(value, casePath, items) {
   if (value === void 0 || value === null) return null;
   const fail = () => {
@@ -2522,7 +2603,7 @@ ${gaps.join("\n") || "producer\u672A\u62A5\u544A\u7F3A\u53E3"}`,
   return { summary: lines.join("\n"), gaps, tasks, history, continuationInstructions };
 }
 
-// src/work-case-model.ts
+// packages/dashboard-ui/src/work-case-model.ts
 var WorkCaseSnapshotCompatibilityError = class extends Error {
   constructor(code2, message) {
     super(message);
@@ -2958,7 +3039,7 @@ function buildWorkCaseSnapshotInvocation(input) {
   };
 }
 
-// src/continuation-card.ts
+// packages/dashboard-ui/src/continuation-card.ts
 function createContinuationCard(model, options = {}) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i;
   const full = createResumePresentation(model.resumeBundle, model), targetBytes = (_a = options.targetBytes) != null ? _a : 4096;
@@ -2966,7 +3047,8 @@ function createContinuationCard(model, options = {}) {
   const active = model.tasks.items.filter((t) => t.statusIsCompleted !== true && (!selected || selected.has(t.id)));
   const finished = model.tasks.items.filter((t) => t.statusIsCompleted === true);
   const shown = finished.slice(0, 3), gaps = [...full.gaps];
-  if (options.staleReason) gaps.unshift(`\u65E7\u89C2\u6D4B\uFF1A${options.staleReason}\uFF1B\u5F53\u524D\u6027\u672A\u786E\u8BA4\u3002`);
+  if (options.staleReason)
+    gaps.unshift(`\u65E7\u89C2\u6D4B\uFF1A${options.staleReason}\uFF1B\u5F53\u524D\u6027\u672A\u786E\u8BA4\u3002`);
   const lines = [
     "\u7EE7\u7EED\u5DE5\u4F5C\u5361\uFF08\u53EA\u8BFB\u89C2\u6D4B\uFF1B\u4F7F\u7528\u524D\u56DE\u8BFB\uFF09",
     `Case\uFF1A${model.source.path}`,
@@ -2976,21 +3058,27 @@ function createContinuationCard(model, options = {}) {
     `\u4E0B\u4E00\u6B65\uFF08\u539F\u89C2\u6D4B\u6458\u5F55\uFF09\uFF1A${excerpt((_e = model.current.next) != null ? _e : "\u672A\u8BB0\u5F55", 300)}`
   ];
   const decisions = model.sections.decisions[0];
-  if (decisions) lines.push(`\u5173\u952E\u51B3\u5B9A\uFF08\u539F\u6587\u6458\u5F55\uFF09\uFF1A${excerpt(firstParagraph(decisions.text), 220)}`);
+  if (decisions)
+    lines.push(`\u5173\u952E\u51B3\u5B9A\uFF08\u539F\u6587\u6458\u5F55\uFF09\uFF1A${excerpt(firstParagraph(decisions.text), 220)}`);
   lines.push("\n\u672A\u7ED3\u675F\u6216\u72B6\u6001\u672A\u77E5\u7684 Task\uFF1A");
-  if (!active.length) lines.push(model.tasks.observationHealth === "healthy" ? "\u672C\u6B21\u9009\u62E9\u4E2D\u6CA1\u6709\u672A\u7ED3\u675F Task\u3002" : "\u5173\u8054\u8BFB\u53D6\u4E0D\u5B8C\u6574\uFF0C\u4E0D\u80FD\u786E\u8BA4\u6CA1\u6709\u672A\u7ED3\u675F Task\u3002");
+  if (!active.length)
+    lines.push(model.tasks.observationHealth === "healthy" ? "\u672C\u6B21\u9009\u62E9\u4E2D\u6CA1\u6709\u672A\u7ED3\u675F Task\u3002" : "\u5173\u8054\u8BFB\u53D6\u4E0D\u5B8C\u6574\uFF0C\u4E0D\u80FD\u786E\u8BA4\u6CA1\u6709\u672A\u7ED3\u675F Task\u3002");
   for (const task of active) {
     const projection = full.tasks.find((t) => t.id === task.id);
     lines.push(`- ${task.id} \xB7 \u539F\u72B6\u6001 ${task.status}${task.isBlocked ? " \xB7 \u6709\u963B\u585E" : ""}${task.statusIsCompleted === null ? " \xB7 \u751F\u547D\u5468\u671F\u672A\u77E5" : ""}`);
     lines.push(`  Next\uFF08\u539F\u89C2\u6D4B\u6458\u5F55\uFF09\uFF1A${excerpt((_f = projection == null ? void 0 : projection.next) != null ? _f : "\u672A\u63D0\u4F9B\uFF1B\u56DE\u8BFB\u51C6\u786E Task \u539F\u6587", 240)}`);
-    if (projection == null ? void 0 : projection.missing.length) gaps.push(`${task.id}\uFF1A${projection.missing.join("\u3001")}`);
-    if (!projection) gaps.push(`${task.id}\uFF1A\u6CA1\u6709\u6062\u590D\u6295\u5F71\uFF0CNext \u672A\u786E\u8BA4\u3002`);
+    if (projection == null ? void 0 : projection.missing.length)
+      gaps.push(`${task.id}\uFF1A${projection.missing.join("\u3001")}`);
+    if (!projection)
+      gaps.push(`${task.id}\uFF1A\u6CA1\u6709\u6062\u590D\u6295\u5F71\uFF0CNext \u672A\u786E\u8BA4\u3002`);
     const source = projection == null ? void 0 : projection.sources.find((s) => s.field === "next");
-    if (source) lines.push(`  \u6765\u6E90\uFF1A${source.task_id} / ${source.section} / API details ${source.line_start}\u2013${source.line_end}${source.truncated ? "\uFF08\u6E90\u6295\u5F71\u622A\u65AD\uFF09" : ""}`);
+    if (source)
+      lines.push(`  \u6765\u6E90\uFF1A${source.task_id} / ${source.section} / API details ${source.line_start}\u2013${source.line_end}${source.truncated ? "\uFF08\u6E90\u6295\u5F71\u622A\u65AD\uFF09" : ""}`);
   }
   if (selected) {
     const excluded = model.tasks.items.filter((t) => t.statusIsCompleted !== true && !selected.has(t.id));
-    if (excluded.length) lines.push(`\u672C\u5361\u672A\u9009\u62E9 ${excluded.length} \u4E2A\u672A\u7ED3\u675F/\u672A\u77E5 Task\uFF1B\u5B8C\u6574\u5217\u8868\u89C1 Case\u3002`);
+    if (excluded.length)
+      lines.push(`\u672C\u5361\u672A\u9009\u62E9 ${excluded.length} \u4E2A\u672A\u7ED3\u675F/\u672A\u77E5 Task\uFF1B\u5B8C\u6574\u5217\u8868\u89C1 Case\u3002`);
   }
   lines.push(`
 \u5DF2\u7ED3\u675F\u4EFB\u52A1\u6458\u5F55\uFF08\u6765\u6E90\u987A\u5E8F ${shown.length}/${finished.length}\uFF0C\u4E0D\u4EE3\u8868\u5168\u90E8\u6210\u529F\uFF09\uFF1A`);
@@ -2999,24 +3087,24 @@ function createContinuationCard(model, options = {}) {
     lines.push(`- ${task.title} \xB7 ${task.status} \xB7 ${task.id} \xB7 ${excerpt(firstParagraph((_g = projection == null ? void 0 : projection.result) != null ? _g : "\u672A\u63D0\u4F9B\u7ED3\u679C\uFF1B\u67E5\u770B Task \u539F\u6587"), 160)}`);
   }
   const omittedCompleted = finished.length - shown.length;
-  if (omittedCompleted) lines.push(`\u7701\u7565 ${omittedCompleted} \u4E2A\u5DF2\u7ED3\u675F\u4EFB\u52A1\uFF1B\u5B8C\u6574\u7ED3\u679C\u4ECE Case/Task \u539F\u6587\u67E5\u770B\u3002`);
-  if (model.tasks.observationHealth !== "healthy" || !model.tasks.coverage.complete) gaps.push("\u5173\u8054\u4EFB\u52A1\u8BFB\u53D6\u4E0D\u5B8C\u6574\uFF0C\u5F53\u524D\u5217\u8868\u4E0D\u662F\u5168\u90E8\u4EFB\u52A1\u3002");
-  lines.push(
-    `
-\u7F3A\u53E3\uFF1A${gaps.length ? gaps.join("\uFF1B") : "\u672C\u6B21\u6765\u6E90\u672A\u62A5\u544A\u7F3A\u53E3"}`,
-    `\u6765\u6E90\uFF1A${(_i = (_h = model.resumeBundle) == null ? void 0 : _h.source) != null ? _i : model.source.path}`,
-    "\u63A5\u7EED\u524D\u56DE\u8BFB\u51C6\u786E Case \u4E0E\u6700\u65B0 TaskNotes\uFF1B\u660E\u786E\u9009\u62E9\u8981\u7EE7\u7EED\u7684 Task ID\uFF0C\u5DF2\u7ED3\u675F\u9879\u4E0D\u91CD\u505A\u3002\u6362\u8F7D\u4F53\u5148\u4FDD\u5B58\u8FDB\u5C55\u5E76\u6B63\u5E38\u7ED3\u675F\u65E7\u6267\u884C\uFF1B\u91CA\u653E\u672A\u77E5\u53EA\u8BFB\u6216\u56DE\u539F owner\u3002"
-  );
+  if (omittedCompleted)
+    lines.push(`\u7701\u7565 ${omittedCompleted} \u4E2A\u5DF2\u7ED3\u675F\u4EFB\u52A1\uFF1B\u5B8C\u6574\u7ED3\u679C\u4ECE Case/Task \u539F\u6587\u67E5\u770B\u3002`);
+  if (model.tasks.observationHealth !== "healthy" || !model.tasks.coverage.complete)
+    gaps.push("\u5173\u8054\u4EFB\u52A1\u8BFB\u53D6\u4E0D\u5B8C\u6574\uFF0C\u5F53\u524D\u5217\u8868\u4E0D\u662F\u5168\u90E8\u4EFB\u52A1\u3002");
+  lines.push(`
+\u7F3A\u53E3\uFF1A${gaps.length ? gaps.join("\uFF1B") : "\u672C\u6B21\u6765\u6E90\u672A\u62A5\u544A\u7F3A\u53E3"}`, `\u6765\u6E90\uFF1A${(_i = (_h = model.resumeBundle) == null ? void 0 : _h.source) != null ? _i : model.source.path}`, "\u63A5\u7EED\u524D\u56DE\u8BFB\u51C6\u786E Case \u4E0E\u6700\u65B0 TaskNotes\uFF1B\u660E\u786E\u9009\u62E9\u8981\u7EE7\u7EED\u7684 Task ID\uFF0C\u5DF2\u7ED3\u675F\u9879\u4E0D\u91CD\u505A\u3002\u6362\u8F7D\u4F53\u5148\u4FDD\u5B58\u8FDB\u5C55\u5E76\u6B63\u5E38\u7ED3\u675F\u65E7\u6267\u884C\uFF1B\u91CA\u653E\u672A\u77E5\u53EA\u8BFB\u6216\u56DE\u539F owner\u3002");
   let text3 = lines.join("\n");
-  if (utf8Bytes(text3) > targetBytes) text3 += `
+  if (utf8Bytes(text3) > targetBytes)
+    text3 += `
 \u672C\u5361\u8D85\u8FC7 ${targetBytes}B \u76EE\u6807\uFF1B\u51C6\u786E ID \u4E0E\u7F3A\u53E3\u4FDD\u7559\uFF0C\u53EF\u9009\u62E9\u66F4\u5C11 Task \u540E\u590D\u5236\u3002`;
   return { text: text3, bytes: utf8Bytes(text3), targetBytes, omittedCompleted, gaps };
 }
 
-// src/case-reference-list.ts
+// packages/dashboard-ui/src/case-reference-list.ts
 function referenceSubtitle(raw, group, full = false) {
   const parsed = parseReferenceText(raw), target = parsed.target.replace(/\\/g, "/");
-  if (/^https?:\/\//i.test(target)) return "\u7F51\u9875 \xB7 \u6D4F\u89C8\u5668";
+  if (/^https?:\/\//i.test(target))
+    return "\u7F51\u9875 \xB7 \u6D4F\u89C8\u5668";
   const kind = group === "Project" ? "\u9879\u76EE\u7B14\u8BB0" : group === "Sessions" ? "\u4F1A\u8BDD\u8BB0\u5F55" : /\.json(?:#.*)?$/i.test(target) ? "\u6570\u636E\u6587\u4EF6" : /\.docx(?:#.*)?$/i.test(target) ? "Word\u6587\u6863" : parsed.syntax === "wiki" ? "Obsidian\u7B14\u8BB0" : "\u539F\u6587\u4EF6";
   const display = target.replace(/^file:\/\/(?:localhost)?/i, "");
   const slash = display.lastIndexOf("/");
@@ -3042,15 +3130,21 @@ var CaseReferenceList = class {
   }
   restoreSnapshot(value) {
     this.clear();
-    if (!Array.isArray(value)) return;
+    if (!Array.isArray(value))
+      return;
     for (const item of value.slice(-this.capacity)) {
-      if (!item || typeof item !== "object" || typeof item.casePath !== "string" || !item.casePath || item.casePath.length > 4096) continue;
+      if (!item || typeof item !== "object" || typeof item.casePath !== "string" || !item.casePath || item.casePath.length > 4096)
+        continue;
       const open2 = /* @__PURE__ */ new Map(), all = /* @__PURE__ */ new Set();
       if (Array.isArray(item.open)) {
-        for (const pair of item.open.slice(0, 32)) if (Array.isArray(pair) && typeof pair[0] === "string" && typeof pair[1] === "boolean") open2.set(pair[0], pair[1]);
+        for (const pair of item.open.slice(0, 32))
+          if (Array.isArray(pair) && typeof pair[0] === "string" && typeof pair[1] === "boolean")
+            open2.set(pair[0], pair[1]);
       }
       if (Array.isArray(item.all)) {
-        for (const group of item.all.slice(0, 32)) if (typeof group === "string") all.add(group);
+        for (const group of item.all.slice(0, 32))
+          if (typeof group === "string")
+            all.add(group);
       }
       this.choices.set(item.casePath, { query: typeof item.query === "string" ? item.query.slice(0, 4096) : "", open: open2, all });
     }
@@ -3063,63 +3157,73 @@ var CaseReferenceList = class {
     }
     this.choices.delete(casePath);
     this.choices.set(casePath, choice);
-    while (this.choices.size > this.capacity) this.choices.delete(this.choices.keys().next().value);
+    while (this.choices.size > this.capacity)
+      this.choices.delete(this.choices.keys().next().value);
     const selection = choice, token = ++this.generation;
     const total = groups.reduce((sum, group) => sum + group.targets.length, 0);
     const displayGroups = groups.map((group) => ({ ...group, items: group.targets.map((raw) => ({ raw, label: formatReferenceLabel(raw), subtitle: referenceSubtitle(raw, group.label) })) }));
     const identities = /* @__PURE__ */ new Map();
-    for (const group of displayGroups) for (const item of group.items) {
-      const key = `${item.label}\0${item.subtitle}`;
-      if (!identities.has(key)) identities.set(key, /* @__PURE__ */ new Set());
-      identities.get(key).add(parseReferenceText(item.raw).target);
-    }
-    for (const group of displayGroups) for (const item of group.items) {
-      if (identities.get(`${item.label}\0${item.subtitle}`).size > 1) item.subtitle = referenceSubtitle(item.raw, group.label, true);
-    }
-    container.createDiv({ cls: "flowdesk-case-reference-count", text: `\u5171 ${total} \u9879 \xB7 \u5168\u90E8\u5F15\u7528\u4FDD\u7559` });
-    const search = container.createEl("input", { cls: "flowdesk-case-reference-search", attr: { type: "search", placeholder: "\u67E5\u627E\u5165\u53E3\u540D\u79F0\u6216\u76EE\u5F55", "aria-label": "\u67E5\u627E\u7CBE\u9009\u5165\u53E3", "data-focus-key": "case-reference-search" } });
+    for (const group of displayGroups)
+      for (const item of group.items) {
+        const key = `${item.label}\0${item.subtitle}`;
+        if (!identities.has(key))
+          identities.set(key, /* @__PURE__ */ new Set());
+        identities.get(key).add(parseReferenceText(item.raw).target);
+      }
+    for (const group of displayGroups)
+      for (const item of group.items) {
+        if (identities.get(`${item.label}\0${item.subtitle}`).size > 1)
+          item.subtitle = referenceSubtitle(item.raw, group.label, true);
+      }
+    fdCreateDiv(container, { cls: "flowdesk-case-reference-count", text: `\u5171 ${total} \u9879 \xB7 \u5168\u90E8\u5F15\u7528\u4FDD\u7559` });
+    const search = fdCreateEl(container, "input", { cls: "flowdesk-case-reference-search", attr: { type: "search", placeholder: "\u67E5\u627E\u5165\u53E3\u540D\u79F0\u6216\u76EE\u5F55", "aria-label": "\u67E5\u627E\u7CBE\u9009\u5165\u53E3", "data-focus-key": "case-reference-search" } });
     search.value = selection.query;
-    const results = container.createDiv({ cls: "flowdesk-case-reference-results" });
+    const results = fdCreateDiv(container, { cls: "flowdesk-case-reference-results" });
     const moreButtons = /* @__PURE__ */ new Map();
     let epoch = 0;
     const current = () => this.generation === token;
     const renderGroups = () => {
       var _a, _b, _c;
-      if (!current()) return;
+      if (!current())
+        return;
       const currentEpoch = ++epoch;
-      results.empty();
+      fdEmpty(results);
       moreButtons.clear();
       const query = selection.query.trim().toLowerCase();
       const filtered = displayGroups.map((group) => ({ ...group, items: group.items.filter((item) => !query || `${item.label} ${item.subtitle} ${item.raw}`.toLowerCase().includes(query)) }));
       const matched = filtered.reduce((sum, group) => sum + group.items.length, 0);
-      if (query) results.createDiv({ cls: "flowdesk-case-reference-match-count", text: `\u5339\u914D ${matched} / ${total} \u9879`, attr: { role: "status" } });
+      if (query)
+        fdCreateDiv(results, { cls: "flowdesk-case-reference-match-count", text: `\u5339\u914D ${matched} / ${total} \u9879`, attr: { role: "status" } });
       if (!matched) {
-        results.createDiv({ cls: "flowdesk-case-reference-empty", text: "\u6CA1\u6709\u5339\u914D\u7684\u5165\u53E3\uFF0C\u8BD5\u8BD5\u6587\u4EF6\u540D\u6216\u76EE\u5F55\u3002" });
+        fdCreateDiv(results, { cls: "flowdesk-case-reference-empty", text: "\u6CA1\u6709\u5339\u914D\u7684\u5165\u53E3\uFF0C\u8BD5\u8BD5\u6587\u4EF6\u540D\u6216\u76EE\u5F55\u3002" });
         return;
       }
       for (const group of filtered) {
-        if (!group.items.length) continue;
-        const details = results.createEl("details", { cls: "flowdesk-case-reference-group", attr: { "data-reference-group": group.label, "data-disclosure-key": `case-reference:${group.label}`, "data-external-disclosure": "true" } });
+        if (!group.items.length)
+          continue;
+        const details = fdCreateEl(results, "details", { cls: "flowdesk-case-reference-group", attr: { "data-reference-group": group.label, "data-disclosure-key": `case-reference:${group.label}`, "data-external-disclosure": "true" } });
         details.open = query ? true : (_a = selection.open.get(group.label)) != null ? _a : group.label === "Project";
-        const summary = details.createEl("summary");
-        summary.createSpan({ text: (_b = { Project: "\u9879\u76EE", Plans: "\u8BA1\u5212", Docs: "\u6587\u6863", Sessions: "\u539F\u4F1A\u8BDD", Related: "\u8D44\u6599" }[group.label]) != null ? _b : group.label });
-        summary.createSpan({ cls: "flowdesk-case-reference-group-count", text: query ? `${group.items.length} / ${group.targets.length}` : String(group.targets.length) });
+        const summary = fdCreateEl(details, "summary");
+        fdCreateSpan(summary, { text: (_b = { Project: "\u9879\u76EE", Plans: "\u8BA1\u5212", Docs: "\u6587\u6863", Sessions: "\u539F\u4F1A\u8BDD", Related: "\u8D44\u6599" }[group.label]) != null ? _b : group.label });
+        fdCreateSpan(summary, { cls: "flowdesk-case-reference-group-count", text: query ? `${group.items.length} / ${group.targets.length}` : String(group.targets.length) });
         details.addEventListener("toggle", () => {
-          if (current() && epoch === currentEpoch && !selection.query.trim()) selection.open.set(group.label, details.open);
+          if (current() && epoch === currentEpoch && !selection.query.trim())
+            selection.open.set(group.label, details.open);
         });
-        const links = details.createDiv({ cls: "flowdesk-case-related-links" });
+        const links = fdCreateDiv(details, { cls: "flowdesk-case-related-links" });
         const showAll = !!query || selection.all.has(group.label);
         for (const item of showAll ? group.items : group.items.slice(0, 3)) {
-          const button = links.createEl("button", { cls: "flowdesk-case-related-link", attr: { title: item.raw, "aria-label": `${item.label} \xB7 ${item.subtitle}` } });
+          const button = fdCreateEl(links, "button", { cls: "flowdesk-case-related-link", attr: { title: item.raw, "aria-label": `${item.label} \xB7 ${item.subtitle}` } });
           const web = /^https?:\/\//i.test(parseReferenceText(item.raw).target);
-          const icon = button.createSpan({ cls: "flowdesk-reference-icon", attr: { "aria-hidden": "true" } });
+          const icon = fdCreateSpan(button, { cls: "flowdesk-reference-icon", attr: { "aria-hidden": "true" } });
           (_c = dependencies.icon) == null ? void 0 : _c.call(dependencies, icon, web ? "globe" : "file-text");
-          const copy = button.createSpan({ cls: "flowdesk-reference-copy" });
-          copy.createSpan({ cls: "flowdesk-reference-title", text: item.label });
-          copy.createSpan({ cls: "flowdesk-reference-type", text: item.subtitle });
-          button.createSpan({ cls: "flowdesk-reference-arrow", text: web ? "\u2197" : "\u2192", attr: { "aria-hidden": "true" } });
+          const copy = fdCreateSpan(button, { cls: "flowdesk-reference-copy" });
+          fdCreateSpan(copy, { cls: "flowdesk-reference-title", text: item.label });
+          fdCreateSpan(copy, { cls: "flowdesk-reference-type", text: item.subtitle });
+          fdCreateSpan(button, { cls: "flowdesk-reference-arrow", text: web ? "\u2197" : "\u2192", attr: { "aria-hidden": "true" } });
           const open2 = (event) => {
-            if (current() && epoch === currentEpoch) void dependencies.open(item.raw, event);
+            if (current() && epoch === currentEpoch)
+              void dependencies.open(item.raw, event);
           };
           button.addEventListener("click", open2);
           button.addEventListener("keydown", (event) => {
@@ -3130,11 +3234,12 @@ var CaseReferenceList = class {
           });
         }
         if (group.items.length > 3 && !query) {
-          const more = details.createEl("button", { cls: "flowdesk-case-reference-more", text: showAll ? "\u6536\u8D77\u4E3A 3 \u9879" : `\u67E5\u770B\u5168\u90E8 ${group.items.length} \u9879 \xB7 \u8FD8\u6709 ${group.items.length - 3} \u9879`, attr: { "data-reference-group": group.label } });
+          const more = fdCreateEl(details, "button", { cls: "flowdesk-case-reference-more", text: showAll ? "\u6536\u8D77\u4E3A 3 \u9879" : `\u67E5\u770B\u5168\u90E8 ${group.items.length} \u9879 \xB7 \u8FD8\u6709 ${group.items.length - 3} \u9879`, attr: { "data-reference-group": group.label } });
           moreButtons.set(group.label, more);
           more.addEventListener("click", () => {
             var _a2;
-            if (!current() || epoch !== currentEpoch) return;
+            if (!current() || epoch !== currentEpoch)
+              return;
             showAll ? selection.all.delete(group.label) : selection.all.add(group.label);
             selection.open.set(group.label, details.open);
             renderGroups();
@@ -3144,7 +3249,8 @@ var CaseReferenceList = class {
       }
     };
     search.addEventListener("input", () => {
-      if (!current()) return;
+      if (!current())
+        return;
       selection.query = search.value;
       renderGroups();
     });
@@ -3152,7 +3258,7 @@ var CaseReferenceList = class {
   }
 };
 
-// src/work-case-presentation.ts
+// packages/dashboard-ui/src/work-case-presentation.ts
 function createWorkCasePresentation(model) {
   var _a, _b, _c;
   const total = model.tasks.counts.total;
@@ -3270,7 +3376,7 @@ function isClosedCaseStatus(status) {
   return ["done", "complete", "completed", "closed"].includes(status.toLowerCase());
 }
 
-// src/work-case-renderer.ts
+// packages/dashboard-ui/src/work-case-renderer.ts
 var WorkCaseDashboardRenderer = class {
   constructor(dependencies) {
     this.dependencies = dependencies;
@@ -3285,27 +3391,27 @@ var WorkCaseDashboardRenderer = class {
   }
   reset(container) {
     this.referenceList.deactivate();
-    container.removeClass("flowdesk-case-dashboard");
+    fdRemoveClass(container, "flowdesk-case-dashboard");
   }
   render(container, state) {
     this.referenceList.deactivate();
-    container.addClass("flowdesk-case-dashboard");
+    fdAddClass(container, "flowdesk-case-dashboard");
     if (!state.model) {
       this.renderShell(container, state);
       return;
     }
     const presentation = createWorkCasePresentation(state.model);
     this.renderHeader(container, state, presentation);
-    const observation = container.createEl("details", {
+    const observation = fdCreateEl(container, "details", {
       cls: `flowdesk-case-observation is-${state.staleReason ? "degraded" : presentation.tasks.health}`,
       attr: { title: state.casePath, "data-disclosure-key": "case-source" }
     });
     const core = state.coreInfo;
-    observation.createEl("summary", { text: `${state.staleReason ? "\u65E7\u6570\u636E" : presentation.tasks.health === "healthy" ? "\u6765\u6E90\u8BFB\u53D6\u5B8C\u6574" : "\u5173\u8054\u8BFB\u53D6\u4E0D\u5B8C\u6574"}${core ? ` \xB7 Core ${core.version}` : ""}` });
-    observation.createDiv({ cls: "flowdesk-muted", text: `Work Case schema 1 \xB7 ${state.loading ? "\u5237\u65B0\u4E2D \xB7 \u4E0A\u6B21\u8BFB\u53D6" : "\u8BFB\u53D6\u4E8E"} ${formatDisplayTime(state.loadedAt)} \xB7 ${state.casePath}${core ? `
+    fdCreateEl(observation, "summary", { text: `${state.staleReason ? "\u65E7\u6570\u636E" : presentation.tasks.health === "healthy" ? "\u6765\u6E90\u8BFB\u53D6\u5B8C\u6574" : "\u5173\u8054\u8BFB\u53D6\u4E0D\u5B8C\u6574"}${core ? ` \xB7 Core ${core.version}` : ""}` });
+    fdCreateDiv(observation, { cls: "flowdesk-muted", text: `Work Case schema 1 \xB7 ${state.loading ? "\u5237\u65B0\u4E2D \xB7 \u4E0A\u6B21\u8BFB\u53D6" : "\u8BFB\u53D6\u4E8E"} ${formatDisplayTime(state.loadedAt)} \xB7 ${state.casePath}${core ? `
 ${core.source} \xB7 ${core.root}` : ""}` });
     if (state.error || state.staleReason) {
-      container.createDiv({
+      fdCreateDiv(container, {
         cls: "flowdesk-case-stale-warning",
         text: state.staleReason || state.error
       });
@@ -3315,26 +3421,27 @@ ${core.source} \xB7 ${core.root}` : ""}` });
     this.renderRelated(container, state, presentation);
     this.renderProgress(container, state, presentation);
     this.renderSections(container, state, presentation);
+    if (this.dependencies.fullSections) this.renderBackgroundSections(container, state);
     this.renderTechnicalContext(container, presentation);
     this.renderDiagnostics(container, presentation);
   }
   renderShell(container, state) {
-    const header = container.createDiv({ cls: "flowdesk-case-header" });
-    header.createDiv({ cls: "flowdesk-case-kicker", text: "WORK CASE" });
-    header.createDiv({ cls: "flowdesk-case-title", text: caseTitle(state.casePath) });
-    const refresh = header.createEl("button", {
+    const header = fdCreateDiv(container, { cls: "flowdesk-case-header" });
+    fdCreateDiv(header, { cls: "flowdesk-case-kicker", text: "WORK CASE" });
+    fdCreateDiv(header, { cls: "flowdesk-case-title", text: caseTitle(state.casePath) });
+    const refresh = fdCreateEl(header, "button", {
       cls: "flowdesk-case-refresh",
       text: state.loading ? "\u8BFB\u53D6\u4E2D" : "\u5237\u65B0",
       attr: { "aria-label": state.loading ? "Work Case \u8BFB\u53D6\u4E2D" : "\u5237\u65B0 Work Case" }
     });
     refresh.disabled = state.loading;
     refresh.addEventListener("click", () => void this.dependencies.refresh());
-    container.createDiv({
+    fdCreateDiv(container, {
       cls: state.error ? "flowdesk-case-error" : "flowdesk-case-empty",
       text: state.error || (state.loading ? "\u6B63\u5728\u8BFB\u53D6 Work Case snapshot..." : "\u5C1A\u672A\u8BFB\u53D6 Work Case snapshot\u3002")
     });
     if (state.error && this.dependencies.openSettings) {
-      const button = container.createEl("button", { text: "\u6253\u5F00 Dashboard \u8BBE\u7F6E" });
+      const button = fdCreateEl(container, "button", { text: "\u6253\u5F00 Dashboard \u8BBE\u7F6E" });
       button.addEventListener("click", () => {
         var _a, _b;
         return (_b = (_a = this.dependencies).openSettings) == null ? void 0 : _b.call(_a);
@@ -3343,18 +3450,18 @@ ${core.source} \xB7 ${core.root}` : ""}` });
   }
   renderHeader(container, state, presentation) {
     var _a;
-    const header = container.createDiv({ cls: "flowdesk-case-header" });
-    const top = header.createDiv({ cls: "flowdesk-case-header-top" });
-    top.createDiv({ cls: "flowdesk-case-kicker", text: "\u5DE5\u4F5C\u6848\u5377" });
-    const actions = top.createDiv({ cls: "flowdesk-header-actions" });
-    const refresh = actions.createEl("button", {
+    const header = fdCreateDiv(container, { cls: "flowdesk-case-header" });
+    const top = fdCreateDiv(header, { cls: "flowdesk-case-header-top" });
+    fdCreateDiv(top, { cls: "flowdesk-case-kicker", text: "\u5DE5\u4F5C\u6848\u5377" });
+    const actions = fdCreateDiv(top, { cls: "flowdesk-header-actions" });
+    const refresh = fdCreateEl(actions, "button", {
       cls: "flowdesk-case-refresh",
       text: state.loading ? "\u8BFB\u53D6\u4E2D" : "\u5237\u65B0",
       attr: { "aria-label": state.loading ? "Work Case \u8BFB\u53D6\u4E2D" : "\u5237\u65B0 Work Case" }
     });
     refresh.disabled = state.loading;
     refresh.addEventListener("click", () => void this.dependencies.refresh());
-    const more = actions.createEl("button", { cls: "flowdesk-more-actions", text: "\u22EF", attr: { "aria-label": "\u66F4\u591A\u64CD\u4F5C", "data-focus-key": "case-more" } });
+    const more = fdCreateEl(actions, "button", { cls: "flowdesk-more-actions", text: "\u22EF", attr: { "aria-label": "\u66F4\u591A\u64CD\u4F5C", "data-focus-key": "case-more" } });
     more.addEventListener("click", () => {
       var _a2, _b;
       return (_b = (_a2 = this.dependencies).openActions) == null ? void 0 : _b.call(_a2, "\u66F4\u591A\u64CD\u4F5C", [
@@ -3373,114 +3480,117 @@ ${core.source} \xB7 ${core.root}` : ""}` });
         { label: "\u67E5\u770B\u539F\u6587\u4EF6", run: (event) => this.dependencies.openRelated(state.casePath, state.casePath, event) }
       ]);
     });
-    const title = header.createEl("button", { cls: "flowdesk-case-title flowdesk-case-title-link", text: presentation.header.title });
+    const title = fdCreateEl(header, "button", { cls: "flowdesk-case-title flowdesk-case-title-link", text: presentation.header.title });
     title.addEventListener("click", (event) => {
       void this.dependencies.openRelated(state.casePath, state.casePath, event);
     });
-    const metadata = header.createDiv({ cls: "flowdesk-case-metadata" });
-    metadata.createSpan({ cls: "flowdesk-case-status", text: presentation.header.status, attr: { title: ((_a = state.model) == null ? void 0 : _a.workCase.status) || "\u672A\u8BB0\u5F55" } });
+    const metadata = fdCreateDiv(header, { cls: "flowdesk-case-metadata" });
+    fdCreateSpan(metadata, { cls: "flowdesk-case-status", text: presentation.header.status, attr: { title: ((_a = state.model) == null ? void 0 : _a.workCase.status) || "\u672A\u8BB0\u5F55" } });
     if (presentation.header.project !== "\u672A\u5173\u8054 Project") {
-      const project = metadata.createEl("button", {
+      const project = fdCreateEl(metadata, "button", {
         cls: "flowdesk-case-related-link",
         text: formatReferenceLabel(presentation.header.project),
         attr: { title: presentation.header.project }
       });
-      project.addEventListener(
-        "click",
-        (event) => void this.dependencies.openRelated(presentation.header.project, state.casePath, event)
-      );
+      project.addEventListener("click", (event) => void this.dependencies.openRelated(presentation.header.project, state.casePath, event));
     } else {
-      metadata.createSpan({ cls: "flowdesk-case-muted", text: presentation.header.project });
+      fdCreateSpan(metadata, { cls: "flowdesk-case-muted", text: presentation.header.project });
     }
-    metadata.createSpan({
+    fdCreateSpan(metadata, {
       cls: "flowdesk-case-date",
       text: formatDisplayTime(presentation.header.dateTooltip),
       attr: { title: presentation.header.dateTooltip }
     });
     for (const badge of presentation.header.badges) {
-      metadata.createSpan({ cls: "flowdesk-case-badge", text: badge });
+      fdCreateSpan(metadata, { cls: "flowdesk-case-badge", text: badge });
     }
   }
   renderTechnicalContext(container, presentation) {
-    if (!presentation.header.recoveryContext.length) return;
-    const details = container.createEl("details", { cls: "flowdesk-case-recovery" });
-    details.createEl("summary", { text: "\u6280\u672F\u8BE6\u60C5" });
+    if (!presentation.header.recoveryContext.length)
+      return;
+    const details = fdCreateEl(container, "details", { cls: "flowdesk-case-recovery" });
+    fdCreateEl(details, "summary", { text: "\u6280\u672F\u8BE6\u60C5" });
     for (const item of presentation.header.recoveryContext) {
-      const row = details.createDiv({ cls: "flowdesk-case-recovery-row" });
-      row.createSpan({ cls: "flowdesk-case-label", text: item.label });
-      row.createSpan({ cls: "flowdesk-case-long-value", text: item.value });
+      const row = fdCreateDiv(details, { cls: "flowdesk-case-recovery-row" });
+      fdCreateSpan(row, { cls: "flowdesk-case-label", text: item.label });
+      fdCreateSpan(row, { cls: "flowdesk-case-long-value", text: item.value });
     }
   }
   renderCurrent(container, state, presentation) {
-    const section2 = createSection(container, "\u5F53\u524D\u8FDB\u5C55", "flowdesk-case-current");
-    const grid = section2.createDiv({ cls: "flowdesk-case-short-grid" });
+    const section2 = createSection(container, state.staleReason ? "\u4E0A\u6B21\u89C2\u6D4B\u8FDB\u5C55" : "\u5F53\u524D\u8FDB\u5C55", "flowdesk-case-current");
+    const grid = fdCreateDiv(section2, { cls: "flowdesk-case-short-grid" });
     for (const item of presentation.current) {
-      const card = grid.createDiv({ cls: `flowdesk-case-current-card is-${item.key}` });
-      card.createDiv({ cls: "flowdesk-case-label", text: item.label });
+      const card = fdCreateDiv(grid, { cls: `flowdesk-case-current-card is-${item.key}` });
+      fdCreateDiv(card, { cls: "flowdesk-case-label", text: state.staleReason && item.key === "next" ? "\u4E0A\u6B21\u8BB0\u5F55\u7684\u4E0B\u4E00\u6B65" : item.label });
       const short = excerpt(firstParagraph(item.value), 420);
       this.markdown(card, short, state.casePath, "flowdesk-case-current-value");
       if (short !== item.value.trim()) {
-        const full = card.createEl("details", { cls: "flowdesk-case-current-full", attr: { "data-disclosure-key": `current:${item.key}` } });
-        full.createEl("summary", { text: "\u5C55\u5F00\u5168\u6587" });
+        const full = fdCreateEl(card, "details", { cls: "flowdesk-case-current-full", attr: { "data-disclosure-key": `current:${item.key}` } });
+        fdCreateEl(full, "summary", { text: "\u5C55\u5F00\u5168\u6587" });
         this.markdown(full, item.value, state.casePath, "flowdesk-case-current-original");
       }
     }
   }
   markdown(parent, text3, sourcePath, cls) {
-    const body = parent.createDiv({ cls: `${cls} markdown-rendered` });
-    if (this.dependencies.renderMarkdown) void this.dependencies.renderMarkdown(text3, body, sourcePath).catch(() => body.setText(text3));
-    else body.setText(text3);
+    const body = fdCreateDiv(parent, { cls: `${cls} markdown-rendered` });
+    if (this.dependencies.renderMarkdown)
+      void this.dependencies.renderMarkdown(text3, body, sourcePath).catch(() => fdSetText(body, text3));
+    else
+      fdSetText(body, text3);
   }
   renderTasks(container, presentation) {
     const section2 = createSection(container, "\u5173\u8054\u4EFB\u52A1", "flowdesk-case-tasks");
-    section2.createDiv({ cls: "flowdesk-case-task-summary", text: presentation.tasks.health === "healthy" ? `\u5DF2\u7ED3\u675F ${presentation.tasks.completedLabel} \u4E2A\u5173\u8054\u4EFB\u52A1` : "\u5173\u8054\u4EFB\u52A1\u5C1A\u672A\u5B8C\u6574\u8BFB\u53D6\uFF1B\u4EE5\u4E0B\u4EC5\u5C55\u793A\u5DF2\u89C2\u5BDF\u6761\u76EE\u3002" });
+    fdCreateDiv(section2, { cls: "flowdesk-case-task-summary", text: presentation.tasks.health === "healthy" ? `\u5DF2\u7ED3\u675F ${presentation.tasks.completedLabel} \u4E2A\u5173\u8054\u4EFB\u52A1` : "\u5173\u8054\u4EFB\u52A1\u5C1A\u672A\u5B8C\u6574\u8BFB\u53D6\uFF1B\u4EE5\u4E0B\u4EC5\u5C55\u793A\u5DF2\u89C2\u5BDF\u6761\u76EE\u3002" });
     if (presentation.tasks.driftWarning) {
-      section2.createDiv({ cls: "flowdesk-case-drift", text: presentation.tasks.driftWarning });
+      fdCreateDiv(section2, { cls: "flowdesk-case-drift", text: presentation.tasks.driftWarning });
     }
     if (!presentation.tasks.primary.length && !presentation.tasks.history.length) {
-      section2.createDiv({
+      fdCreateDiv(section2, {
         cls: "flowdesk-case-empty",
         text: presentation.tasks.health === "healthy" ? "\u6CA1\u6709\u5173\u8054\u4EFB\u52A1\u3002" : "\u4EFB\u52A1\u6570\u636E\u6682\u4E0D\u53EF\u7528\uFF0CCase \u4E3B\u4F53\u4ECD\u53EF\u9605\u8BFB\u3002"
       });
       return;
     }
     if (presentation.tasks.primary.length) {
-      const list2 = section2.createDiv({ cls: "flowdesk-case-task-list" });
-      for (const task of presentation.tasks.primary) this.renderTask(list2, task);
+      const list2 = fdCreateDiv(section2, { cls: "flowdesk-case-task-list" });
+      for (const task of presentation.tasks.primary)
+        this.renderTask(list2, task);
     }
     if (presentation.tasks.history.length) {
-      const history = section2.createEl("details", { cls: "flowdesk-case-task-history" });
-      history.createEl("summary", { text: `\u5DF2\u7ED3\u675F / \u5DF2\u5F52\u6863 \xB7 ${presentation.tasks.history.length}` });
-      const list2 = history.createDiv({ cls: "flowdesk-case-task-list" });
-      for (const task of presentation.tasks.history) this.renderTask(list2, task);
+      const history = fdCreateEl(section2, "details", { cls: "flowdesk-case-task-history" });
+      fdCreateEl(history, "summary", { text: `\u5DF2\u7ED3\u675F / \u5DF2\u5F52\u6863 \xB7 ${presentation.tasks.history.length}` });
+      const list2 = fdCreateDiv(history, { cls: "flowdesk-case-task-list" });
+      for (const task of presentation.tasks.history)
+        this.renderTask(list2, task);
     }
-    const counts = section2.createEl("details", { cls: "flowdesk-case-task-counts" });
-    counts.createEl("summary", { text: "\u72B6\u6001\u7EDF\u8BA1" });
-    const grid = counts.createDiv({ cls: "flowdesk-case-count-grid" });
+    const counts = fdCreateEl(section2, "details", { cls: "flowdesk-case-task-counts" });
+    fdCreateEl(counts, "summary", { text: "\u72B6\u6001\u7EDF\u8BA1" });
+    const grid = fdCreateDiv(counts, { cls: "flowdesk-case-count-grid" });
     for (const count of presentation.tasks.counts) {
-      const item = grid.createDiv({ cls: "flowdesk-case-count" });
-      item.createDiv({ cls: "flowdesk-case-count-value", text: count.value });
-      item.createDiv({ cls: "flowdesk-case-label", text: count.label });
+      const item = fdCreateDiv(grid, { cls: "flowdesk-case-count" });
+      fdCreateDiv(item, { cls: "flowdesk-case-count-value", text: count.value });
+      fdCreateDiv(item, { cls: "flowdesk-case-label", text: count.label });
     }
     if (presentation.tasks.byStatus.length) {
-      const statuses = counts.createDiv({ cls: "flowdesk-case-status-list" });
-      for (const item of presentation.tasks.byStatus) statuses.createSpan({ cls: "flowdesk-case-status-chip", text: `${formatEntityStatus("task", item.status).label} ${item.count}`, attr: { title: item.status } });
+      const statuses = fdCreateDiv(counts, { cls: "flowdesk-case-status-list" });
+      for (const item of presentation.tasks.byStatus)
+        fdCreateSpan(statuses, { cls: "flowdesk-case-status-chip", text: `${formatEntityStatus("task", item.status).label} ${item.count}`, attr: { title: item.status } });
     }
   }
   renderTask(container, task) {
     const accessibleRelations = task.relationRoles.map((role) => role === "parent" ? "\u7236\u4EFB\u52A1" : "\u5B50\u4EFB\u52A1").join("\u3001");
-    const row = container.createEl("button", {
+    const row = fdCreateEl(container, "button", {
       cls: `flowdesk-case-task-row is-${task.tone}`,
       attr: {
         "aria-label": `\u6253\u5F00\u4EFB\u52A1\uFF1A${task.title}${accessibleRelations ? `\uFF1B\u5173\u7CFB\uFF1A${accessibleRelations}` : ""}`
       }
     });
-    const content = row.createDiv({ cls: "flowdesk-case-task-content" });
-    const title = content.createDiv({ cls: "flowdesk-case-task-title" });
+    const content = fdCreateDiv(row, { cls: "flowdesk-case-task-content" });
+    const title = fdCreateDiv(content, { cls: "flowdesk-case-task-title" });
     if (task.relationRoles.length) {
-      const roles = title.createSpan({ cls: "flowdesk-case-task-roles" });
+      const roles = fdCreateSpan(title, { cls: "flowdesk-case-task-roles" });
       for (const role of task.relationRoles) {
-        roles.createSpan({
+        fdCreateSpan(roles, {
           cls: `flowdesk-case-task-role is-${role}`,
           text: role === "parent" ? "\u7236" : "\u5B50",
           attr: {
@@ -3489,43 +3599,47 @@ ${core.source} \xB7 ${core.root}` : ""}` });
         });
       }
     }
-    title.createSpan({ cls: "flowdesk-case-task-title-text", text: task.title });
-    content.createDiv({
+    fdCreateSpan(title, { cls: "flowdesk-case-task-title-text", text: task.title });
+    fdCreateDiv(content, {
       cls: "flowdesk-case-task-meta",
       text: `${task.associationSource}${task.archived ? " \xB7 archived" : ""}`
     });
-    row.createSpan({ cls: "flowdesk-case-task-status", text: formatEntityStatus("task", task.status).label, attr: { title: task.status } });
-    row.addEventListener(
-      "click",
-      (event) => void this.dependencies.openTask(task.id, "work-case", event)
-    );
+    fdCreateSpan(row, { cls: "flowdesk-case-task-status", text: formatEntityStatus("task", task.status).label, attr: { title: task.status } });
+    row.addEventListener("click", (event) => void this.dependencies.openTask(task.id, "work-case", event));
   }
   renderProgress(container, state, presentation) {
+    var _a;
     const section2 = createSection(container, "\u6700\u8FD1\u8FDB\u5C55", "flowdesk-case-recent-progress");
     if (!presentation.recentProgress.length) {
-      section2.createDiv({ cls: "flowdesk-case-empty", text: "\u672A\u8BB0\u5F55\u7ED3\u6784\u5316 Progress\u3002" });
-      return;
+      fdCreateDiv(section2, { cls: "flowdesk-case-empty", text: "\u672A\u8BB0\u5F55\u7ED3\u6784\u5316 Progress\u3002" });
+      if (!this.dependencies.fullSections || !((_a = state.caseContent) == null ? void 0 : _a.sections.some((item) => item.heading === "Progress" && item.text.trim()))) return;
     }
-    const list2 = section2.createDiv({ cls: "flowdesk-case-progress-list" });
+    const list2 = fdCreateDiv(section2, { cls: "flowdesk-case-progress-list" });
     for (const [index, item] of presentation.recentProgress.slice(0, 3).entries()) {
-      const row = list2.createDiv({ cls: `flowdesk-case-progress-item${index === 0 ? " is-latest" : ""}` });
-      const meta = row.createSpan({ cls: "flowdesk-case-progress-meta" });
-      if (item.timestamp) meta.createSpan({ cls: "flowdesk-case-progress-time", text: formatDisplayTime(item.timestamp), attr: { title: item.timestamp } });
-      if (index === 0) meta.createSpan({ cls: "flowdesk-case-progress-latest", text: "\u6700\u65B0" });
+      const row = fdCreateDiv(list2, { cls: `flowdesk-case-progress-item${index === 0 ? " is-latest" : ""}` });
+      const meta = fdCreateSpan(row, { cls: "flowdesk-case-progress-meta" });
+      if (item.timestamp)
+        fdCreateSpan(meta, { cls: "flowdesk-case-progress-time", text: formatDisplayTime(item.timestamp), attr: { title: item.timestamp } });
+      if (index === 0)
+        fdCreateSpan(meta, { cls: "flowdesk-case-progress-latest", text: "\u6700\u65B0" });
       this.markdown(row, item.text, state.casePath, "flowdesk-case-progress-text");
     }
-    const history = section2.createEl("button", { cls: "flowdesk-case-progress-history", text: "\u67E5\u770B\u5168\u90E8\u8FDB\u5C55 \u2192" });
+    const history = fdCreateEl(section2, "button", { cls: "flowdesk-case-progress-history", text: "\u67E5\u770B\u5168\u90E8\u8FDB\u5C55 \u2192" });
     history.addEventListener("click", () => {
-      var _a, _b;
-      return (_b = (_a = this.dependencies).openContent) == null ? void 0 : _b.call(_a, "\u5168\u90E8\u8FDB\u5C55", (container2) => {
-        var _a2, _b2;
-        const progress = (_b2 = (_a2 = state.caseContent) == null ? void 0 : _a2.sections.filter((item) => item.heading === "Progress")) != null ? _b2 : [];
+      var _a2, _b;
+      return (_b = (_a2 = this.dependencies).openContent) == null ? void 0 : _b.call(_a2, "\u5168\u90E8\u8FDB\u5C55", (container2) => {
+        var _a3, _b2;
+        const progress = (_b2 = (_a3 = state.caseContent) == null ? void 0 : _a3.sections.filter((item) => item.heading === "Progress")) != null ? _b2 : [];
         const events = progress.length === 1 ? parseQuotedProgress(progress[0].text) : null;
-        if (events) renderProgressEvents(container2, events, (text3, element) => this.markdown(element, text3, state.casePath, ""), true);
+        if (events)
+          renderProgressEvents(container2, events, (text3, element) => this.markdown(element, text3, state.casePath, ""), true);
         else {
-          container2.createDiv({ cls: "flowdesk-muted", text: "\u5B8C\u6574\u8FDB\u5C55\u672A\u80FD\u6574\u7406\uFF1B\u4EE5\u4E0B\u4FDD\u7559\u53EF\u8BFB\u53D6\u7684\u539F\u6587\uFF0C\u4E0D\u4EE3\u8868\u5B8C\u6574\u5386\u53F2\u3002" });
-          for (const item of progress) this.markdown(container2, item.text, state.casePath, "flowdesk-log-body");
-          if (!progress.length) for (const item of state.model.recentProgress) this.markdown(container2, item.text, state.casePath, "flowdesk-log-body");
+          fdCreateDiv(container2, { cls: "flowdesk-muted", text: "\u5B8C\u6574\u8FDB\u5C55\u672A\u80FD\u6574\u7406\uFF1B\u4EE5\u4E0B\u4FDD\u7559\u53EF\u8BFB\u53D6\u7684\u539F\u6587\uFF0C\u4E0D\u4EE3\u8868\u5B8C\u6574\u5386\u53F2\u3002" });
+          for (const item of progress)
+            this.markdown(container2, item.text, state.casePath, "flowdesk-log-body");
+          if (!progress.length)
+            for (const item of state.model.recentProgress)
+              this.markdown(container2, item.text, state.casePath, "flowdesk-log-body");
         }
       });
     });
@@ -3536,17 +3650,15 @@ ${core.source} \xB7 ${core.root}` : ""}` });
     const secondaryKeys = ["decisions", "discoveries"];
     const moreKeys = ["candidatePatterns", "definitionOfDone"];
     const byKey = new Map(presentation.sections.map((group) => [group.key, group]));
-    const selectVisible = (keys) => keys.map((key) => byKey.get(key)).filter(
-      (group) => Boolean(group && group.items.length)
-    );
+    const selectVisible = (keys) => keys.map((key) => byKey.get(key)).filter((group) => Boolean(group && group.items.length));
     const primary = selectVisible(primaryKeys);
     const secondary = selectVisible(secondaryKeys);
     const moreGroups = selectVisible(moreKeys);
     if (!primary.length && !secondary.length && !moreGroups.length) {
-      section2.createDiv({ cls: "flowdesk-case-empty", text: "\u6682\u65E0\u6848\u5377\u5185\u5BB9\u3002" });
+      fdCreateDiv(section2, { cls: "flowdesk-case-empty", text: "\u6682\u65E0\u6848\u5377\u5185\u5BB9\u3002" });
       return;
     }
-    const grid = section2.createDiv({ cls: "flowdesk-case-section-grid" });
+    const grid = fdCreateDiv(section2, { cls: "flowdesk-case-section-grid" });
     for (const group of primary) {
       this.renderRecordGroup(grid, state, group, false, true);
     }
@@ -3554,30 +3666,51 @@ ${core.source} \xB7 ${core.root}` : ""}` });
       this.renderRecordGroup(grid, state, group, false, false);
     }
     if (moreGroups.length) {
-      const more = grid.createEl("details", { cls: "flowdesk-case-record-more" });
+      const more = fdCreateEl(grid, "details", { cls: "flowdesk-case-record-more" });
       const itemCount = moreGroups.reduce((total, group) => total + group.items.length, 0);
-      more.createEl("summary", { text: `\u66F4\u591A\u6848\u5377\u5185\u5BB9 \xB7 ${itemCount}` });
-      const moreGrid = more.createDiv({ cls: "flowdesk-case-record-more-grid" });
+      fdCreateEl(more, "summary", { text: `\u66F4\u591A\u6848\u5377\u5185\u5BB9 \xB7 ${itemCount}` });
+      const moreGrid = fdCreateDiv(more, { cls: "flowdesk-case-record-more-grid" });
       for (const group of moreGroups) {
         this.renderRecordGroup(moreGrid, state, group, false, false);
       }
     }
   }
+  renderBackgroundSections(container, state) {
+    var _a, _b;
+    const entries = ((_b = (_a = state.caseContent) == null ? void 0 : _a.sections) != null ? _b : []).filter((item) => ["Summary", "Context", "Current"].includes(item.heading)).sort((a, b) => a.source.lineStart - b.source.lineStart);
+    if (!entries.length) return;
+    const section2 = createSection(container, "\u80CC\u666F\u4E0E\u5F53\u524D\u539F\u6587", "flowdesk-case-background");
+    for (const [index, item] of entries.entries()) {
+      const details = fdCreateEl(section2, "details", { cls: "flowdesk-case-record-group", attr: { "data-disclosure-key": "case-background:" + item.heading + ":" + index } });
+      fdCreateEl(details, "summary", { text: item.heading + " \xB7 \u5B8C\u6574\u539F\u6587" });
+      this.markdown(details, item.text, state.casePath, "flowdesk-case-record-text");
+    }
+  }
   renderRecordGroup(container, state, group, open2, primary) {
     var _a;
     const labels = { goal: "\u76EE\u6807", decisions: "\u5173\u952E\u51B3\u5B9A", discoveries: "\u53D1\u73B0", blockers: "\u98CE\u9669\u4E0E\u963B\u585E\u8BB0\u5F55", outcome: "\u7ED3\u679C", candidatePatterns: "\u7ECF\u9A8C\u5019\u9009", definitionOfDone: "\u5B8C\u6210\u6761\u4EF6" };
-    const details = container.createEl("details", { cls: `flowdesk-case-record-group is-${group.key}${primary ? " is-primary" : ""}`, attr: { "data-disclosure-key": `case-record:${group.key}` } });
+    const details = fdCreateEl(container, "details", { cls: `flowdesk-case-record-group is-${group.key}${primary ? " is-primary" : ""}`, attr: { "data-disclosure-key": `case-record:${group.key}` } });
     details.open = open2;
-    details.createEl("summary", { text: `${(_a = labels[group.key]) != null ? _a : group.label} \xB7 ${group.items.length}` });
+    fdCreateEl(details, "summary", { text: `${(_a = labels[group.key]) != null ? _a : group.label} \xB7 ${group.items.length}` });
+    if (this.dependencies.fullSections) {
+      for (const item2 of group.items) {
+        const part = fdCreateDiv(details, { cls: "flowdesk-case-record-entry" });
+        fdCreateDiv(part, { cls: "flowdesk-case-record-heading", text: item2.heading });
+        this.markdown(part, item2.text, state.casePath, "flowdesk-case-record-text");
+      }
+      return;
+    }
     const item = group.items[0];
-    if (!item) return;
-    details.createDiv({ cls: "flowdesk-case-record-heading", text: "\u539F\u6587\u6458\u5F55" });
+    if (!item)
+      return;
+    fdCreateDiv(details, { cls: "flowdesk-case-record-heading", text: "\u539F\u6587\u6458\u5F55" });
     this.markdown(details, excerpt(firstParagraph(item.text), 480), state.casePath, "flowdesk-case-record-text");
   }
   renderRelated(container, state, presentation) {
-    if (!presentation.related.length) return;
+    if (!presentation.related.length)
+      return;
     const section2 = createSection(container, "\u7CBE\u9009\u5165\u53E3", "flowdesk-case-related");
-    const edit = section2.createEl("button", { cls: "flowdesk-edit-entries", text: "\u7F16\u8F91\u5165\u53E3", attr: { "aria-label": "\u7F16\u8F91\u7CBE\u9009\u5165\u53E3" } });
+    const edit = fdCreateEl(section2, "button", { cls: "flowdesk-edit-entries", text: "\u7F16\u8F91\u5165\u53E3", attr: { "aria-label": "\u7F16\u8F91\u7CBE\u9009\u5165\u53E3" } });
     edit.addEventListener("click", (event) => {
       var _a, _b;
       void ((_b = (_a = this.dependencies).editCase) == null ? void 0 : _b.call(_a, state.casePath, event));
@@ -3590,9 +3723,12 @@ ${core.source} \xB7 ${core.root}` : ""}` });
   selectedTasks(state) {
     const ids = new Set(state.model.tasks.items.filter((task) => task.statusIsCompleted !== true).map((task) => task.id)), previous = this.taskChoices.get(state.casePath);
     const selected = new Set(previous ? [...previous.selected].filter((id) => ids.has(id)) : ids);
-    for (const id of ids) if (!(previous == null ? void 0 : previous.known.has(id))) selected.add(id);
+    for (const id of ids)
+      if (!(previous == null ? void 0 : previous.known.has(id)))
+        selected.add(id);
     this.taskChoices.set(state.casePath, { selected, known: ids });
-    while (this.taskChoices.size > 20) this.taskChoices.delete(this.taskChoices.keys().next().value);
+    while (this.taskChoices.size > 20)
+      this.taskChoices.delete(this.taskChoices.keys().next().value);
     return selected;
   }
   fullResumeText(state) {
@@ -3602,72 +3738,74 @@ ${section2.text}`)] : ["Case\u72EC\u7ACB\u539F\u6587\u672A\u8BFB\u53D6\uFF1BCont
     return [presentation.summary, `\u672C\u5730snapshot\u8BFB\u53D6\u65F6\u95F4\uFF1A${state.loadedAt}`, state.staleReason ? `\u65E7\u89C2\u6D4B\uFF1A${state.staleReason}` : "", ...caseLines].filter(Boolean).join("\n\n");
   }
   renderResume(container, state) {
-    if (!state.model) return;
-    container.addClass("flowdesk-case-dashboard");
+    if (!state.model)
+      return;
+    fdAddClass(container, "flowdesk-case-dashboard");
     const presentation = createResumePresentation(state.model.resumeBundle, state.model);
     const section2 = createSection(container, "\u4EA4\u63A5\u4E0A\u4E0B\u6587", "flowdesk-case-resume");
     const summary = this.fullResumeText(state);
     const active = state.model.tasks.items.filter((t) => t.statusIsCompleted !== true);
     const selected = this.selectedTasks(state);
-    const short = section2.createEl("details", { cls: "flowdesk-continuation-preview", attr: { "data-disclosure-key": "continuation-preview" } });
-    short.createEl("summary", { text: "\u67E5\u770B\u4EA4\u63A5\u4E0A\u4E0B\u6587" });
-    const content = short.createEl("pre", { cls: "flowdesk-continuation-text" });
-    const size = section2.createDiv({ cls: "flowdesk-muted" });
+    const short = fdCreateEl(section2, "details", { cls: "flowdesk-continuation-preview", attr: { "data-disclosure-key": "continuation-preview" } });
+    fdCreateEl(short, "summary", { text: "\u67E5\u770B\u4EA4\u63A5\u4E0A\u4E0B\u6587" });
+    const content = fdCreateEl(short, "pre", { cls: "flowdesk-continuation-text" });
+    const size = fdCreateDiv(section2, { cls: "flowdesk-muted" });
     const update = () => {
       const card = createContinuationCard(state.model, { staleReason: state.staleReason, selectedTaskIds: [...selected] });
-      content.setText(card.text);
-      size.setText(`${(card.bytes / 1024).toFixed(1)} KB \xB7 ${card.bytes > card.targetBytes ? "\u8D85\u8FC7\u76EE\u6807\uFF0C\u51C6\u786E ID \u548C\u7F3A\u53E3\u4FDD\u7559" : "\u6458\u5F55\u7248"} \xB7 \u5B8C\u6574\u6570\u636E\u4FDD\u7559`);
+      fdSetText(content, card.text);
+      fdSetText(size, `${(card.bytes / 1024).toFixed(1)} KB \xB7 ${card.bytes > card.targetBytes ? "\u8D85\u8FC7\u76EE\u6807\uFF0C\u51C6\u786E ID \u548C\u7F3A\u53E3\u4FDD\u7559" : "\u6458\u5F55\u7248"} \xB7 \u5B8C\u6574\u6570\u636E\u4FDD\u7559`);
       return card;
     };
     update();
     if (active.length) {
-      const choices = section2.createEl("details", { cls: "flowdesk-continuation-choices", attr: { "data-disclosure-key": "continuation-choices" } });
-      choices.createEl("summary", { text: `\u9009\u62E9\u63A5\u7EED Task \xB7 ${active.length}` });
+      const choices = fdCreateEl(section2, "details", { cls: "flowdesk-continuation-choices", attr: { "data-disclosure-key": "continuation-choices" } });
+      fdCreateEl(choices, "summary", { text: `\u9009\u62E9\u63A5\u7EED Task \xB7 ${active.length}` });
       for (const task of active) {
-        const label = choices.createEl("label", { cls: "flowdesk-continuation-choice" });
-        const input = label.createEl("input", { attr: { type: "checkbox", "aria-label": `\u63A5\u7EED\u6750\u6599\u5305\u542B\uFF1A${task.title}` } });
+        const label = fdCreateEl(choices, "label", { cls: "flowdesk-continuation-choice" });
+        const input = fdCreateEl(label, "input", { attr: { type: "checkbox", "aria-label": `\u63A5\u7EED\u6750\u6599\u5305\u542B\uFF1A${task.title}` } });
         input.checked = selected.has(task.id);
-        label.createSpan({ text: task.title });
+        fdCreateSpan(label, { text: task.title });
         input.addEventListener("change", () => {
           input.checked ? selected.add(task.id) : selected.delete(task.id);
           update();
         });
       }
     }
-    const actions = section2.createDiv({ cls: "flowdesk-continuation-actions" });
-    const copyShort = actions.createEl("button", { cls: "flowdesk-case-copy-continuation mod-cta", text: "\u590D\u5236\u7EE7\u7EED\u5DE5\u4F5C\u5361" });
+    const actions = fdCreateDiv(section2, { cls: "flowdesk-continuation-actions" });
+    const copyShort = fdCreateEl(actions, "button", { cls: "flowdesk-case-copy-continuation mod-cta", text: "\u590D\u5236\u7EE7\u7EED\u5DE5\u4F5C\u5361" });
     copyShort.addEventListener("click", () => {
       var _a, _b;
       void ((_b = (_a = this.dependencies).copyText) == null ? void 0 : _b.call(_a, update().text));
     });
-    const full = section2.createEl("details", { cls: "flowdesk-case-recovery", attr: { "data-disclosure-key": "full-resume" } });
-    full.createEl("summary", { text: "\u5B8C\u6574\u6062\u590D\u8D44\u6599\u4E0E\u6765\u6E90" });
-    full.createDiv({ cls: "flowdesk-muted", text: `\u672C\u5730 snapshot \u8BFB\u53D6\u65F6\u95F4\uFF1A${formatDisplayTime(state.loadedAt)}\uFF1B\u5B8C\u6574\u6062\u590D\u8D44\u6599\u4E0D\u66FF\u4EE3 Case/Task \u539F\u6587\u3002` });
-    const fullText = full.createEl("pre", { cls: "flowdesk-continuation-text" });
+    const full = fdCreateEl(section2, "details", { cls: "flowdesk-case-recovery", attr: { "data-disclosure-key": "full-resume" } });
+    fdCreateEl(full, "summary", { text: "\u5B8C\u6574\u6062\u590D\u8D44\u6599\u4E0E\u6765\u6E90" });
+    fdCreateDiv(full, { cls: "flowdesk-muted", text: `\u672C\u5730 snapshot \u8BFB\u53D6\u65F6\u95F4\uFF1A${formatDisplayTime(state.loadedAt)}\uFF1B\u5B8C\u6574\u6062\u590D\u8D44\u6599\u4E0D\u66FF\u4EE3 Case/Task \u539F\u6587\u3002` });
+    const fullText = fdCreateEl(full, "pre", { cls: "flowdesk-continuation-text" });
     full.addEventListener("toggle", () => {
-      if (full.open) fullText.setText(summary);
+      if (full.open)
+        fdSetText(fullText, summary);
     });
     for (const task of presentation.tasks) {
-      const sources = full.createEl("details", { cls: "flowdesk-case-recovery" });
-      sources.createEl("summary", { text: `Task\u6765\u6E90\u4E0E\u5B8C\u6574\u539F\u6587\uFF1A${task.title} \xB7 ${task.status}` });
-      const taskOriginal = sources.createEl("button", { text: "\u6253\u5F00\u5B8C\u6574Task\u539F\u6587" });
+      const sources = fdCreateEl(full, "details", { cls: "flowdesk-case-recovery" });
+      fdCreateEl(sources, "summary", { text: `Task\u6765\u6E90\u4E0E\u5B8C\u6574\u539F\u6587\uFF1A${task.title} \xB7 ${task.status}` });
+      const taskOriginal = fdCreateEl(sources, "button", { text: "\u6253\u5F00\u5B8C\u6574Task\u539F\u6587" });
       taskOriginal.addEventListener("click", (event) => {
         void this.dependencies.openTask(task.id, "child", event);
       });
       for (const source of task.sources) {
-        const button = sources.createEl("button", { text: `\u67E5\u770B\u6765\u6E90\u4EFB\u52A1\uFF1A${source.field} \xB7 API details ${source.line_start}\u2013${source.line_end}` });
+        const button = fdCreateEl(sources, "button", { text: `\u67E5\u770B\u6765\u6E90\u4EFB\u52A1\uFF1A${source.field} \xB7 API details ${source.line_start}\u2013${source.line_end}` });
         button.addEventListener("click", (event) => {
           var _a, _b;
           void ((_b = (_a = this.dependencies).openTaskSource) == null ? void 0 : _b.call(_a, task.id, { ...source }, event));
         });
       }
     }
-    const copy = actions.createEl("button", { cls: "flowdesk-case-copy-resume", text: "\u590D\u5236\u5B8C\u6574\u6062\u590D\u8D44\u6599" });
+    const copy = fdCreateEl(actions, "button", { cls: "flowdesk-case-copy-resume", text: "\u590D\u5236\u5B8C\u6574\u6062\u590D\u8D44\u6599" });
     copy.addEventListener("click", () => {
       var _a, _b;
       void ((_b = (_a = this.dependencies).copyText) == null ? void 0 : _b.call(_a, summary));
     });
-    const instructions = full.createEl("button", { text: "\u590D\u5236\u7EE7\u7EED\u5DE5\u4F5C\u6B65\u9AA4" });
+    const instructions = fdCreateEl(full, "button", { text: "\u590D\u5236\u7EE7\u7EED\u5DE5\u4F5C\u6B65\u9AA4" });
     instructions.addEventListener("click", () => {
       var _a, _b;
       void ((_b = (_a = this.dependencies).copyText) == null ? void 0 : _b.call(_a, `\u7EE7\u7EED\u5DE5\u4F5C\u4E0A\u4E0B\u6587\uFF08\u53EA\u8BFB\uFF0C\u4E0D\u81EA\u52A8\u6267\u884C\u4EFB\u4F55Task\uFF09
@@ -3675,7 +3813,7 @@ ${summary}
 
 \u660E\u786E\u9009\u62E9\u8981\u7EE7\u7EED\u7684\u51C6\u786ETask ID\uFF1B\u5DF2\u5B8C\u6210\u9879\u4FDD\u7559\u7ED3\u679C\uFF0C\u4E0D\u91CD\u65B0\u6267\u884C\u3002`));
     });
-    const history = full.createEl("button", { text: "\u590D\u5236\u539F\u4F1A\u8BDD\u6807\u8BC6\u4E0E\u67E5\u770B\u6B65\u9AA4" });
+    const history = fdCreateEl(full, "button", { text: "\u590D\u5236\u539F\u4F1A\u8BDD\u6807\u8BC6\u4E0E\u67E5\u770B\u6B65\u9AA4" });
     history.addEventListener("click", () => {
       var _a, _b;
       void ((_b = (_a = this.dependencies).copyText) == null ? void 0 : _b.call(_a, `\u539F\u751F\u5386\u53F2\u6307\u9488\uFF1A${JSON.stringify(presentation.history)}
@@ -3683,20 +3821,21 @@ ${summary}
     });
   }
   renderDiagnostics(container, presentation) {
-    if (!presentation.diagnostics.length) return;
-    const details = container.createEl("details", { cls: "flowdesk-case-diagnostics" });
-    details.createEl("summary", { text: `\u89E3\u6790\u4E0E\u89C2\u5BDF\u8BCA\u65AD \xB7 ${presentation.diagnostics.length}` });
+    if (!presentation.diagnostics.length)
+      return;
+    const details = fdCreateEl(container, "details", { cls: "flowdesk-case-diagnostics" });
+    fdCreateEl(details, "summary", { text: `\u89E3\u6790\u4E0E\u89C2\u5BDF\u8BCA\u65AD \xB7 ${presentation.diagnostics.length}` });
     for (const diagnostic of presentation.diagnostics) {
-      const row = details.createDiv({ cls: `flowdesk-case-diagnostic is-${diagnostic.severity}` });
-      row.createDiv({ cls: "flowdesk-case-diagnostic-code", text: diagnostic.code });
-      row.createDiv({ cls: "flowdesk-case-diagnostic-message", text: diagnostic.message });
-      row.createDiv({ cls: "flowdesk-case-diagnostic-path", text: diagnostic.path });
+      const row = fdCreateDiv(details, { cls: `flowdesk-case-diagnostic is-${diagnostic.severity}` });
+      fdCreateDiv(row, { cls: "flowdesk-case-diagnostic-code", text: diagnostic.code });
+      fdCreateDiv(row, { cls: "flowdesk-case-diagnostic-message", text: diagnostic.message });
+      fdCreateDiv(row, { cls: "flowdesk-case-diagnostic-path", text: diagnostic.path });
     }
   }
 };
 function createSection(container, title, className) {
-  const section2 = container.createDiv({ cls: `flowdesk-case-section ${className}` });
-  section2.createDiv({ cls: "flowdesk-case-section-title", text: title });
+  const section2 = fdCreateDiv(container, { cls: `flowdesk-case-section ${className}` });
+  fdCreateDiv(section2, { cls: "flowdesk-case-section-title", text: title });
   return section2;
 }
 function caseTitle(casePath) {
@@ -3979,7 +4118,7 @@ function renderedLinkSource(sources, rendered, index, complete) {
   return source && source.label === visibleLabel(clicked.label) ? source.kind : null;
 }
 
-// src/case-content.ts
+// packages/dashboard-ui/src/case-content.ts
 function createCaseContent(casePath, details, readAt) {
   const lines = details.replace(/\r\n/g, "\n").replace(/^\ufeff/, "").split("\n");
   const headings = [];
@@ -3987,13 +4126,17 @@ function createCaseContent(casePath, details, readAt) {
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index], match = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
     if (match) {
-      if (!fence2) fence2 = { marker: match[1][0], size: match[1].length };
-      else if (match[1][0] === fence2.marker && match[1].length >= fence2.size && !match[2].trim()) fence2 = null;
+      if (!fence2)
+        fence2 = { marker: match[1][0], size: match[1].length };
+      else if (match[1][0] === fence2.marker && match[1].length >= fence2.size && !match[2].trim())
+        fence2 = null;
       continue;
     }
-    if (fence2) continue;
+    if (fence2)
+      continue;
     const heading2 = line.match(/^(#{1,6})\s+(.+?)\s*#*$/);
-    if (heading2) headings.push({ heading: heading2[2], level: heading2[1].length, index });
+    if (heading2)
+      headings.push({ heading: heading2[2], level: heading2[1].length, index });
   }
   const selected = /* @__PURE__ */ new Set(["Goal", "Current", "Context", "Summary", "Decisions", "Progress", "\u76EE\u6807", "\u51B3\u7B56", "\u80CC\u666F", "\u6458\u8981"]);
   const sections = headings.filter((h) => selected.has(h.heading)).map((h) => {
@@ -4075,15 +4218,16 @@ function resolveCore(options) {
   throw Error(`\u672A\u627E\u5230\u6709\u6548 Core\u3002${notices.join("\uFF1B")}\uFF1BCodex \u7F13\u5B58\u6CA1\u6709\u5B8C\u6574\u7248\u672C\u3002\u8BF7\u6253\u5F00\u8BBE\u7F6E\u9009\u62E9\u56FA\u5B9A\u8DEF\u5F84\u3002`);
 }
 
-// src/reading-state.ts
+// packages/dashboard-ui/src/reading-state.ts
 var get = (el, key) => {
   var _a, _b;
   return (_b = (_a = el.getAttribute) == null ? void 0 : _a.call(el, key)) != null ? _b : null;
 };
 var set = (el, key, value) => {
-  var _a;
-  if (el.setAttribute) el.setAttribute(key, value);
-  else (_a = el.setAttr) == null ? void 0 : _a.call(el, key, value);
+  if (el.setAttribute)
+    el.setAttribute(key, value);
+  else
+    fdSetAttr(el, key, value);
 };
 function disclosures(container) {
   const occurrences = /* @__PURE__ */ new Map();
@@ -4120,59 +4264,77 @@ var ReadingStateCache = class {
   }
   restoreSnapshot(value) {
     this.clear();
-    if (!Array.isArray(value)) return;
+    if (!Array.isArray(value))
+      return;
     for (const item of value.slice(-this.capacity)) {
-      if (!item || typeof item !== "object" || typeof item.key !== "string" || !item.key || item.key.length > 4096) continue;
+      if (!item || typeof item !== "object" || typeof item.key !== "string" || !item.key || item.key.length > 4096)
+        continue;
       const open2 = /* @__PURE__ */ new Map(), nested = /* @__PURE__ */ new Map();
       if (Array.isArray(item.open)) {
-        for (const pair of item.open.slice(0, 1e3)) if (Array.isArray(pair) && typeof pair[0] === "string" && typeof pair[1] === "boolean") open2.set(pair[0], pair[1]);
+        for (const pair of item.open.slice(0, 1e3))
+          if (Array.isArray(pair) && typeof pair[0] === "string" && typeof pair[1] === "boolean")
+            open2.set(pair[0], pair[1]);
       }
       if (Array.isArray(item.nested)) {
-        for (const pair of item.nested.slice(0, 1e3)) if (Array.isArray(pair) && typeof pair[0] === "string" && pair[1] && typeof pair[1] === "object") nested.set(pair[0], { scroll: Number.isFinite(pair[1].scroll) ? Math.max(0, pair[1].scroll) : 0, items: typeof pair[1].items === "string" ? pair[1].items : null });
+        for (const pair of item.nested.slice(0, 1e3))
+          if (Array.isArray(pair) && typeof pair[0] === "string" && pair[1] && typeof pair[1] === "object")
+            nested.set(pair[0], { scroll: Number.isFinite(pair[1].scroll) ? Math.max(0, pair[1].scroll) : 0, items: typeof pair[1].items === "string" ? pair[1].items : null });
       }
       this.entries.set(item.key, { open: open2, nested, scroll: Number.isFinite(item.scroll) ? Math.max(0, item.scroll) : 0, focus: typeof item.focus === "string" ? item.focus : null });
     }
   }
   capture(key, container, options = {}) {
-    var _a, _b, _c, _d, _e, _f;
-    if (!key) return;
+    var _a, _b, _c, _d, _e, _f, _g;
+    if (!key)
+      return;
     const list2 = disclosures(container);
-    if (!list2.length) return;
+    if (!list2.length && !options.scrollElement)
+      return;
     const previous = this.entries.get(key);
-    const state = { open: (_a = previous == null ? void 0 : previous.open) != null ? _a : /* @__PURE__ */ new Map(), scroll: options.position === false ? (_b = previous == null ? void 0 : previous.scroll) != null ? _b : 0 : container.scrollTop || 0, nested: (_c = previous == null ? void 0 : previous.nested) != null ? _c : /* @__PURE__ */ new Map(), focus: (_d = previous == null ? void 0 : previous.focus) != null ? _d : null };
-    for (const [id, el] of list2) state.open.set(id, el.open);
+    const state = { open: (_a = previous == null ? void 0 : previous.open) != null ? _a : /* @__PURE__ */ new Map(), scroll: options.position === false ? (_b = previous == null ? void 0 : previous.scroll) != null ? _b : 0 : ((_c = options.scrollElement) != null ? _c : container).scrollTop || 0, nested: (_d = previous == null ? void 0 : previous.nested) != null ? _d : /* @__PURE__ */ new Map(), focus: (_e = previous == null ? void 0 : previous.focus) != null ? _e : null };
+    for (const [id, el] of list2)
+      state.open.set(id, el.open);
     focusTargets(container);
-    const active = (_e = container.ownerDocument) == null ? void 0 : _e.activeElement;
+    const active = (_f = container.ownerDocument) == null ? void 0 : _f.activeElement;
     if (options.position !== false) {
-      for (const [id, element] of scrollTargets(container)) state.nested.set(id, { scroll: element.scrollTop || 0, items: get(element, "data-reading-items") });
-      if (active && container.contains(active)) state.focus = get(active, "data-reading-focus");
-      else if (active && active !== ((_f = container.ownerDocument) == null ? void 0 : _f.body)) state.focus = null;
+      for (const [id, element] of scrollTargets(container))
+        state.nested.set(id, { scroll: element.scrollTop || 0, items: get(element, "data-reading-items") });
+      if (active && container.contains(active))
+        state.focus = get(active, "data-reading-focus");
+      else if (active && active !== ((_g = container.ownerDocument) == null ? void 0 : _g.body))
+        state.focus = null;
     }
     this.entries.delete(key);
     this.entries.set(key, state);
-    while (this.entries.size > this.capacity) this.entries.delete(this.entries.keys().next().value);
+    while (this.entries.size > this.capacity)
+      this.entries.delete(this.entries.keys().next().value);
   }
   restore(key, container, options = {}) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
     const state = this.entries.get(key);
     if (options.disclosures !== false) {
       for (const [id, el] of scrollTargets(container)) {
         const items = (_a = state == null ? void 0 : state.nested.get(id)) == null ? void 0 : _a.items;
-        if (items) set(el, "data-reading-items", items);
+        if (items)
+          set(el, "data-reading-items", items);
       }
-      for (const [id, el] of disclosures(container)) if (state == null ? void 0 : state.open.has(id)) {
-        el.open = state.open.get(id);
-        (_b = el.dispatchEvent) == null ? void 0 : _b.call(el, new Event("flowdesk-reading-restore"));
-      }
+      for (const [id, el] of disclosures(container))
+        if (state == null ? void 0 : state.open.has(id)) {
+          el.open = state.open.get(id);
+          (_b = el.dispatchEvent) == null ? void 0 : _b.call(el, new Event("flowdesk-reading-restore"));
+        }
     }
     const targets = focusTargets(container);
-    if (options.position === false) return;
-    container.scrollTop = (_c = state == null ? void 0 : state.scroll) != null ? _c : 0;
-    for (const [id, element] of scrollTargets(container)) element.scrollTop = (_e = (_d = state == null ? void 0 : state.nested.get(id)) == null ? void 0 : _d.scroll) != null ? _e : 0;
-    const active = (_f = container.ownerDocument) == null ? void 0 : _f.activeElement;
-    if ((state == null ? void 0 : state.focus) && (!active || active === ((_g = container.ownerDocument) == null ? void 0 : _g.body) || container.contains(active))) {
+    if (options.position === false)
+      return;
+    ((_c = options.scrollElement) != null ? _c : container).scrollTop = (_d = state == null ? void 0 : state.scroll) != null ? _d : 0;
+    for (const [id, element] of scrollTargets(container))
+      element.scrollTop = (_f = (_e = state == null ? void 0 : state.nested.get(id)) == null ? void 0 : _e.scroll) != null ? _f : 0;
+    const active = (_g = container.ownerDocument) == null ? void 0 : _g.activeElement;
+    if ((state == null ? void 0 : state.focus) && (!active || active === ((_h = container.ownerDocument) == null ? void 0 : _h.body) || container.contains(active))) {
       const target = targets.find((el) => get(el, "data-reading-focus") === state.focus);
-      if (target && !target.disabled && (!target.getClientRects || target.getClientRects().length)) (_h = target.focus) == null ? void 0 : _h.call(target, { preventScroll: true });
+      if (target && !target.disabled && (!target.getClientRects || target.getClientRects().length))
+        (_i = target.focus) == null ? void 0 : _i.call(target, { preventScroll: true });
     }
   }
   clear() {
@@ -4247,7 +4409,7 @@ function createReadOnlyTextModal(app, title, text3) {
   });
 }
 
-// src/dashboard-layout.ts
+// packages/dashboard-ui/src/dashboard-layout.ts
 var activeLayouts = /* @__PURE__ */ new WeakMap();
 var wideContentWidth = 960;
 function applyDashboardLayout(container, kind) {
@@ -4257,12 +4419,14 @@ function applyDashboardLayout(container, kind) {
   previous == null ? void 0 : previous.cleanup();
   const focused = (_a = container.ownerDocument) == null ? void 0 : _a.activeElement;
   const scrollTop = container.scrollTop, scrollLeft = container.scrollLeft;
-  const wrapper = container.createDiv({ cls: "flowdesk-dashboard-layout" });
-  for (const node of nodes) wrapper.appendChild(node);
+  const wrapper = fdCreateDiv(container, { cls: "flowdesk-dashboard-layout" });
+  for (const node of nodes)
+    wrapper.appendChild(node);
   previous == null ? void 0 : previous.wrapper.remove();
   const hasChildren = kind === "task" && nodes.some((node) => node.classList.contains("flowdesk-child-section"));
   const regions = new Map(nodes.map((node) => [node, regionFor(node, kind, hasChildren)]));
-  for (const node of nodes) node.setAttr("data-layout-region", regions.get(node));
+  for (const node of nodes)
+    fdSetAttr(node, "data-layout-region", regions.get(node));
   const mainNodes = nodes.filter((node) => regions.get(node) === "main");
   const auxiliaryNodes = nodes.filter((node) => regions.get(node) === "auxiliary");
   const hasColumns = mainNodes.length > 0 && auxiliaryNodes.length > 0;
@@ -4277,26 +4441,34 @@ function applyDashboardLayout(container, kind) {
     container.scrollLeft = left;
   };
   const updateWidth = (width) => {
-    if (disposed || wrapper.parentElement !== container) return;
+    if (disposed || wrapper.parentElement !== container)
+      return;
     const nextWide = width >= wideContentWidth;
-    if (nextWide === wide) return;
+    if (nextWide === wide)
+      return;
     const currentFocus = container.ownerDocument.activeElement;
     const top = container.scrollTop, left = container.scrollLeft;
     wide = nextWide;
-    if (wide) wrapper.addClass("is-wide");
-    else wrapper.removeClass("is-wide");
+    if (wide)
+      fdAddClass(wrapper, "is-wide");
+    else
+      fdRemoveClass(wrapper, "is-wide");
     if (wide && hasColumns) {
-      wrapper.addClass("has-auxiliary");
-      columns = wrapper.createDiv({ cls: "flowdesk-dashboard-columns" });
-      const main = columns.createDiv({ cls: "flowdesk-dashboard-main" });
-      const aside = columns.createEl("aside", { cls: "flowdesk-dashboard-aside", attr: { "aria-label": "\u8F85\u52A9\u8D44\u6599" } });
-      for (const node of nodes.filter((node2) => regions.get(node2) === "full")) wrapper.appendChild(node);
+      fdAddClass(wrapper, "has-auxiliary");
+      columns = fdCreateDiv(wrapper, { cls: "flowdesk-dashboard-columns" });
+      const main = fdCreateDiv(columns, { cls: "flowdesk-dashboard-main" });
+      const aside = fdCreateEl(columns, "aside", { cls: "flowdesk-dashboard-aside", attr: { "aria-label": "\u8F85\u52A9\u8D44\u6599" } });
+      for (const node of nodes.filter((node2) => regions.get(node2) === "full"))
+        wrapper.appendChild(node);
       wrapper.appendChild(columns);
-      for (const node of mainNodes) main.appendChild(node);
-      for (const node of auxiliaryNodes) aside.appendChild(node);
+      for (const node of mainNodes)
+        main.appendChild(node);
+      for (const node of auxiliaryNodes)
+        aside.appendChild(node);
     } else {
-      wrapper.removeClass("has-auxiliary");
-      for (const node of nodes) wrapper.appendChild(node);
+      fdRemoveClass(wrapper, "has-auxiliary");
+      for (const node of nodes)
+        wrapper.appendChild(node);
       columns == null ? void 0 : columns.remove();
       columns = null;
     }
@@ -4308,14 +4480,16 @@ function applyDashboardLayout(container, kind) {
   preserveInteraction(focused, scrollTop, scrollLeft);
   const Observer = (_b = view == null ? void 0 : view.ResizeObserver) != null ? _b : globalThis.ResizeObserver;
   const observer = typeof Observer === "function" ? new Observer((entries) => {
-    if (entries[0]) updateWidth(entries[0].contentRect.width);
+    if (entries[0])
+      updateWidth(entries[0].contentRect.width);
   }) : null;
   observer == null ? void 0 : observer.observe(container);
   const state = {
     wrapper,
     nodes,
     cleanup: () => {
-      if (disposed) return;
+      if (disposed)
+        return;
       disposed = true;
       observer == null ? void 0 : observer.disconnect();
     }
@@ -4325,12 +4499,17 @@ function applyDashboardLayout(container, kind) {
 }
 function regionFor(node, kind, hasChildren) {
   if (kind === "task") {
-    if (node.classList.contains("flowdesk-child-section")) return "auxiliary";
-    if (node.classList.contains("flowdesk-task-technical")) return hasChildren ? "auxiliary" : "main";
-    if (["flowdesk-task-overview", "flowdesk-reading-navigation", "flowdesk-contract-summary", "flowdesk-task-process"].some((name) => node.classList.contains(name))) return "main";
+    if (node.classList.contains("flowdesk-child-section"))
+      return "auxiliary";
+    if (node.classList.contains("flowdesk-task-technical"))
+      return hasChildren ? "auxiliary" : "main";
+    if (["flowdesk-task-overview", "flowdesk-reading-navigation", "flowdesk-contract-summary", "flowdesk-task-process"].some((name) => node.classList.contains(name)))
+      return "main";
   } else {
-    if (["flowdesk-case-current", "flowdesk-case-recent-progress", "flowdesk-case-record"].some((name) => node.classList.contains(name))) return "main";
-    if (["flowdesk-case-tasks", "flowdesk-case-related", "flowdesk-case-recovery", "flowdesk-case-diagnostics"].some((name) => node.classList.contains(name))) return "auxiliary";
+    if (["flowdesk-case-current", "flowdesk-case-recent-progress", "flowdesk-case-record"].some((name) => node.classList.contains(name)))
+      return "main";
+    if (["flowdesk-case-tasks", "flowdesk-case-related", "flowdesk-case-recovery", "flowdesk-case-diagnostics"].some((name) => node.classList.contains(name)))
+      return "auxiliary";
   }
   return "full";
 }

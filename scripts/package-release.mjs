@@ -3,6 +3,7 @@ import { copyFileSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { REQUIRED_RELEASE_FILES, verifyRelease } from "./verify-release.mjs";
+import { packageDashboardUi } from "./dashboard-ui-package.mjs";
 
 const SUPPORT_FILES = ["README.md", "LICENSE"];
 
@@ -18,6 +19,7 @@ export function packageRelease(options = {}) {
   rmSync(packageDir, { recursive: true, force: true });
   rmSync(zipPath, { force: true });
   mkdirSync(packageDir, { recursive: true });
+  const ui=packageDashboardUi({root,output:releaseRoot,log:options.log});
 
   for (const file of REQUIRED_RELEASE_FILES) {
     copyFileSync(path.join(root, file), path.join(packageDir, file));
@@ -45,7 +47,7 @@ export function packageRelease(options = {}) {
     }
   }
 
-  return { packageDir, zipPath: zipCreated ? zipPath : null };
+  return { packageDir, zipPath: zipCreated ? zipPath : null, uiArchive:ui.archive };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

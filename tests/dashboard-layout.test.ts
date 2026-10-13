@@ -7,7 +7,7 @@ class LayoutElement extends TestElement {
   clientWidth = 420;
   scrollTop = 0;
   scrollLeft = 0;
-  classList = { contains: (name: string) => this.classes.has(name) };
+  classList = { contains: (name: string) => this.classes.has(name), add:(...names:string[])=>{for(const name of names)this.classes.add(name);}, remove:(...names:string[])=>{for(const name of names)this.classes.delete(name);} };
   createEl(tag: string, options: any = {}): LayoutElement {
     return this.appendChild(new LayoutElement(tag, options)) as LayoutElement;
   }
@@ -26,6 +26,7 @@ function fixture(classes: string[], width = 1040) {
   const root = new LayoutElement();
   root.clientWidth = width;
   root.ownerDocument = {
+    createElement:(tag:string)=>new LayoutElement(tag),
     activeElement: null,
     defaultView: {
       getComputedStyle: () => ({ paddingLeft: "0px", paddingRight: "0px" }),
