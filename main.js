@@ -9814,7 +9814,7 @@ function isHidden(doc) {
 }
 function filterDocs(docs, filter) {
   const query = filter.query.trim().toLowerCase();
-  return docs.filter((doc) => (filter.showSuperseded || !isHidden(doc)) && (filter.kind === "all" || doc.kind === filter.kind) && (!query || `${doc.title} ${doc.summary} ${doc.projects.join(" ")} ${doc.path}`.toLowerCase().includes(query)));
+  return docs.filter((doc) => (filter.showSuperseded || !isHidden(doc)) && (filter.kind === "all" || doc.kind === filter.kind) && (!filter.project || (doc.projects.length ? doc.projects : [UNLINKED_PROJECT]).includes(filter.project)) && (!query || `${doc.title} ${doc.summary} ${doc.projects.join(" ")} ${doc.path}`.toLowerCase().includes(query)));
 }
 var DAY = 864e5;
 function groupRecent(docs, now) {
@@ -9935,6 +9935,7 @@ var DocHubView = class extends import_obsidian3.ItemView {
     this.docs = [];
     this.summaries = /* @__PURE__ */ new Map();
     this.filter = { kind: "all", query: "", showSuperseded: false };
+    this.projectMenuOpen = false;
     this.tab = "recent";
     this.showAllRecent = false;
     this.projectOpen = /* @__PURE__ */ new Map();
@@ -10092,16 +10093,19 @@ var DocHubView = class extends import_obsidian3.ItemView {
     const list2 = root.createDiv({ cls: "fd-dochub-list" });
     this.els = { root, sub, tabs, filters, list: list2, searchBox, theme, preset, presetName, menu, full, search };
     this.registerDomEvent(root, "keydown", (event) => {
+      var _a;
       const target = event.target;
-      const action = resolveKey(event.key, ["INPUT", "TEXTAREA"].includes(target.tagName) || target.isContentEditable, event.metaKey || event.ctrlKey || event.altKey);
+      const action = resolveKey(event.key, ["INPUT", "TEXTAREA"].includes(target.tagName) || target.isContentEditable || !!((_a = target.closest) == null ? void 0 : _a.call(target, ".fd-dochub-project-wrap")), event.metaKey || event.ctrlKey || event.altKey);
       if (action) {
         event.preventDefault();
         this.act(action);
       }
     });
     this.registerDomEvent(root.ownerDocument, "click", (event) => {
+      var _a;
       const target = event.target;
       if (!this.els.menu.contains(target) && !this.els.preset.contains(target)) this.closeMenu(false);
+      if (this.projectMenuOpen && !((_a = target.closest) == null ? void 0 : _a.call(target, ".fd-dochub-project-wrap"))) this.closeProjectMenu(false);
     });
     this.registerDomEvent(root.ownerDocument, "fullscreenchange", () => this.syncChrome());
     this.renderAll();
@@ -10158,6 +10162,87 @@ var DocHubView = class extends import_obsidian3.ItemView {
     full.setAttr("aria-label", fullscreen ? "\u9000\u51FA\u5168\u5C4F" : "\u8FDB\u5165\u5168\u5C4F");
     full.title = fullscreen ? "\u9000\u51FA\u5168\u5C4F\uFF08F / Esc\uFF09" : "\u5168\u5C4F\uFF08F\uFF09";
   }
+  /** 项目筛选菜单：沿用视觉风格菜单的外观与键盘交互；筛选行每次重绘，所以展开状态单独记在 projectMenuOpen 里。 */
+  renderProjectMenu(parent, projects, total) {
+    const wrap = parent.createDiv({ cls: "fd-dochub-project-wrap" });
+    const current = this.filter.project;
+    const trigger = wrap.createEl("button", { cls: `fd-dochub-chip fd-dochub-project-trigger${current ? " is-on" : ""}`, attr: { type: "button", title: "\u6309\u9879\u76EE\u7B5B\u9009", "aria-haspopup": "menu", "aria-expanded": String(this.projectMenuOpen) } });
+    trigger.createSpan({ cls: "fd-dochub-project-label", text: current != null ? current : `\u5168\u90E8\u9879\u76EE\uFF08${projects.length}\uFF09` });
+    trigger.createSpan({ cls: "fd-dochub-ticon fd-dochub-chevron", attr: { "aria-hidden": "true" } });
+    const menu = wrap.createDiv({ cls: `fd-dochub-menu is-project${this.projectMenuOpen ? " is-open" : ""}`, attr: { role: "menu", "aria-label": "\u6309\u9879\u76EE\u7B5B\u9009" } });
+    const heading2 = menu.createDiv({ cls: "fd-dochub-menu-heading", attr: { role: "presentation" } });
+    heading2.createSpan({ text: "\u6309\u9879\u76EE\u7B5B\u9009" });
+    heading2.createSpan({ text: `${projects.length} \u4E2A\u9879\u76EE` });
+    const entries = [["", "\u5168\u90E8\u9879\u76EE", total], ...projects.map((group) => [group.name, group.name, group.docs.length])];
+    for (const [value, name, count] of entries) {
+      const on = (current != null ? current : "") === value;
+      const option = menu.createEl("button", { cls: "fd-dochub-option", attr: { type: "button", role: "menuitemradio", "aria-checked": String(on), tabindex: "-1", "data-project": value } });
+      option.createEl("strong", { cls: "fd-dochub-option-name", text: name });
+      option.createSpan({ cls: "fd-dochub-option-count", text: String(count) });
+      option.createSpan({ cls: "fd-dochub-check", attr: { "aria-hidden": "true" } });
+    }
+    trigger.addEventListener("click", () => this.projectMenuOpen ? this.closeProjectMenu(false) : this.openProjectMenu(false));
+    trigger.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!this.projectMenuOpen) this.openProjectMenu(event.key === "ArrowUp");
+      }
+    });
+    menu.addEventListener("click", (event) => {
+      var _a;
+      const option = event.target.closest("[data-project]");
+      if (!option) return;
+      this.filter.project = option.dataset.project || void 0;
+      this.projectMenuOpen = false;
+      this.renderBody();
+      (_a = this.els.filters.querySelector(".fd-dochub-project-trigger")) == null ? void 0 : _a.focus();
+    });
+    menu.addEventListener("keydown", (event) => this.onProjectMenuKey(event));
+  }
+  projectMenuEls() {
+    var _a, _b;
+    const wrap = this.els.filters.querySelector(".fd-dochub-project-wrap");
+    const menu = (_a = wrap == null ? void 0 : wrap.querySelector(".fd-dochub-menu")) != null ? _a : null;
+    return { trigger: (_b = wrap == null ? void 0 : wrap.querySelector(".fd-dochub-project-trigger")) != null ? _b : null, menu, options: menu ? Array.from(menu.querySelectorAll("[data-project]")) : [] };
+  }
+  openProjectMenu(focusLast) {
+    var _a;
+    const { trigger, menu, options } = this.projectMenuEls();
+    if (!trigger || !menu) return;
+    this.closeMenu(false);
+    this.projectMenuOpen = true;
+    menu.addClass("is-open");
+    trigger.setAttr("aria-expanded", "true");
+    const selected = options.find((option) => option.getAttr("aria-checked") === "true");
+    (_a = focusLast ? options[options.length - 1] : selected != null ? selected : options[0]) == null ? void 0 : _a.focus();
+    selected == null ? void 0 : selected.scrollIntoView({ block: "nearest" });
+  }
+  closeProjectMenu(focusTrigger) {
+    if (!this.projectMenuOpen) return;
+    const { trigger, menu } = this.projectMenuEls();
+    this.projectMenuOpen = false;
+    menu == null ? void 0 : menu.removeClass("is-open");
+    trigger == null ? void 0 : trigger.setAttr("aria-expanded", "false");
+    if (focusTrigger) trigger == null ? void 0 : trigger.focus();
+  }
+  onProjectMenuKey(event) {
+    if (event.key === "Tab") {
+      this.closeProjectMenu(false);
+      return;
+    }
+    const { options } = this.projectMenuEls(), active = options.indexOf(event.target), last = options.length - 1;
+    const target = event.key === "ArrowDown" ? options[(active + 1) % options.length] : event.key === "ArrowUp" ? options[(active - 1 + options.length) % options.length] : event.key === "Home" ? options[0] : event.key === "End" ? options[last] : null;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeProjectMenu(true);
+    } else if (target) {
+      event.preventDefault();
+      event.stopPropagation();
+      target.focus();
+    }
+  }
   menuOpen() {
     return this.els.menu.hasClass("is-open");
   }
@@ -10166,6 +10251,7 @@ var DocHubView = class extends import_obsidian3.ItemView {
   }
   openMenu(focusLast) {
     var _a, _b;
+    this.closeProjectMenu(false);
     this.els.menu.addClass("is-open");
     this.els.preset.setAttr("aria-expanded", "true");
     const options = this.menuOptions();
@@ -10207,6 +10293,9 @@ var DocHubView = class extends import_obsidian3.ItemView {
   }
   renderBody() {
     const { sub, tabs, filters, list: list2 } = this.els, now = Date.now();
+    const base = filterDocs(this.docs, { ...this.filter, project: void 0 });
+    const projects = groupByProject(base);
+    if (this.filter.project && !projects.some((group) => group.name === this.filter.project)) this.filter.project = void 0;
     const visible = filterDocs(this.docs, this.filter), hidden = this.docs.filter(isHidden).length;
     sub.setText(`${this.docs.length} \u4EFD\u6587\u6863 \xB7 Notes/Docs\u3001Plans\u3001Research \xB7 \u5B9E\u65F6\u8BFB\u53D6 frontmatter`);
     tabs.empty();
@@ -10230,6 +10319,7 @@ var DocHubView = class extends import_obsidian3.ItemView {
       this.filter.kind = kind;
       this.renderBody();
     });
+    this.renderProjectMenu(filters, projects, base.length);
     filters.createSpan({ cls: "fd-dochub-spacer" });
     chip(`\u663E\u793A\u5DF2\u53D6\u4EE3/\u5F52\u6863\uFF08${hidden}\uFF09`, this.filter.showSuperseded, () => {
       this.filter.showSuperseded = !this.filter.showSuperseded;
@@ -10262,7 +10352,7 @@ var DocHubView = class extends import_obsidian3.ItemView {
     groups.forEach((group, index) => {
       var _a;
       const details = this.els.list.createEl("details", { cls: "fd-dochub-project" });
-      details.open = (_a = this.projectOpen.get(group.name)) != null ? _a : index < 3 || !!this.filter.query;
+      details.open = (_a = this.projectOpen.get(group.name)) != null ? _a : index < 3 || !!this.filter.query || !!this.filter.project;
       details.addEventListener("toggle", () => this.projectOpen.set(group.name, details.open));
       const summary = details.createEl("summary");
       summary.createSpan({ cls: "fd-dochub-project-name", text: group.name });
@@ -10288,14 +10378,10 @@ var DocHubView = class extends import_obsidian3.ItemView {
   renderCard(grid, doc, now, showFreshness) {
     const marked = doc.pinned && !showFreshness;
     const card = grid.createDiv({ cls: `fd-dochub-card is-${doc.kind}${isHidden(doc) ? " is-dim" : ""}${marked ? " is-pinned" : ""}`, attr: { role: "link", tabindex: "0", title: doc.path } });
+    if (marked) (0, import_obsidian3.setIcon)(card.createDiv({ cls: "fd-dochub-pinbadge", attr: { "aria-label": "\u5DF2\u7F6E\u9876", title: "\u5DF2\u7F6E\u9876" } }), "pin");
     card.createDiv({ cls: "fd-dochub-title", text: doc.title });
     card.createDiv({ cls: "fd-dochub-desc", text: doc.summary });
     const meta = card.createDiv({ cls: "fd-dochub-meta" });
-    if (marked) {
-      const pinMark = meta.createSpan({ cls: "fd-dochub-pill is-pinned", attr: { "aria-label": "\u5DF2\u7F6E\u9876" } });
-      (0, import_obsidian3.setIcon)(pinMark.createSpan({ cls: "fd-dochub-pin-icon" }), "pin");
-      pinMark.createSpan({ text: "\u7F6E\u9876" });
-    }
     meta.createSpan({ cls: "fd-dochub-pill is-kind", text: DOC_HUB_KIND_LABELS[doc.kind] });
     if (doc.status) meta.createSpan({ cls: `fd-dochub-pill is-status-${doc.status.toLowerCase().replace(/[^a-z-]/g, "")}`, text: doc.status });
     for (const name of doc.projects.slice(0, 2)) meta.createSpan({ cls: "fd-dochub-pill is-project", text: name });

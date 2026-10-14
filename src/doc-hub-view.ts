@@ -2,7 +2,7 @@ import { ItemView, Notice, TFile, TFolder, Workspace, WorkspaceLeaf, setIcon } f
 import { selectContentLeaf } from './dashboard-placement';
 import {
   DOC_HUB_FOLDERS, DOC_HUB_KIND_LABELS, SUMMARY_LIMIT, agoText, buildDoc, filterDocs, freshness, groupByProject, groupRecent, isHidden, kindOfPath,
-  markReviewed, pinnedDocs, resolveKey, reviewBadge, setPinned, stripFrontmatter, summaryOfBody, type DocHubDoc, type DocHubFilter, type DocHubKeyAction, type DocHubTab,
+  markReviewed, pinnedDocs, resolveKey, reviewBadge, setPinned, stripFrontmatter, summaryOfBody, type DocHubDoc, type DocHubFilter, type DocHubKeyAction, type DocHubTab, type ProjectGroup,
 } from './doc-hub-data';
 import { DOC_HUB_STYLES, effectiveTheme, nextStyle, normalizePrefs, styleLabel, toggleTheme, type DocHubPrefs, type DocHubStyleId, type DocHubTheme } from './doc-hub-style';
 
@@ -26,6 +26,7 @@ export class DocHubView extends ItemView {
   private docs: DocHubDoc[] = [];
   private summaries = new Map<string, { mtime: number; text: string }>();
   private filter: DocHubFilter = { kind: 'all', query: '', showSuperseded: false };
+  private projectMenuOpen = false;
   private tab: DocHubTab = 'recent';
   private showAllRecent = false;
   private projectOpen = new Map<string, boolean>();
@@ -141,13 +142,14 @@ export class DocHubView extends ItemView {
     this.els = { root, sub, tabs, filters, list, searchBox, theme, preset, presetName, menu, full, search };
     this.registerDomEvent(root, 'keydown', event => {
       const target = event.target as HTMLElement;
-      const action = resolveKey(event.key, ['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable, event.metaKey || event.ctrlKey || event.altKey);
+      const action = resolveKey(event.key, ['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable || !!target.closest?.('.fd-dochub-project-wrap'), event.metaKey || event.ctrlKey || event.altKey);
       if (action) { event.preventDefault(); this.act(action); }
     });
     // 点击菜单与触发按钮之外的位置关闭风格菜单；全屏状态变化时同步按钮。
     this.registerDomEvent(root.ownerDocument, 'click', event => {
       const target = event.target as Node;
       if (!this.els.menu.contains(target) && !this.els.preset.contains(target)) this.closeMenu(false);
+      if (this.projectMenuOpen && !(target as HTMLElement).closest?.('.fd-dochub-project-wrap')) this.closeProjectMenu(false);
     });
     this.registerDomEvent(root.ownerDocument, 'fullscreenchange', () => this.syncChrome());
     this.renderAll();
@@ -183,9 +185,68 @@ export class DocHubView extends ItemView {
     full.setAttr('aria-pressed', String(fullscreen)); full.setAttr('aria-label', fullscreen ? '退出全屏' : '进入全屏'); full.title = fullscreen ? '退出全屏（F / Esc）' : '全屏（F）';
   }
 
+  /** 项目筛选菜单：沿用视觉风格菜单的外观与键盘交互；筛选行每次重绘，所以展开状态单独记在 projectMenuOpen 里。 */
+  private renderProjectMenu(parent: HTMLElement, projects: ProjectGroup[], total: number): void {
+    const wrap = parent.createDiv({ cls: 'fd-dochub-project-wrap' });
+    const current = this.filter.project;
+    const trigger = wrap.createEl('button', { cls: `fd-dochub-chip fd-dochub-project-trigger${current ? ' is-on' : ''}`, attr: { type: 'button', title: '按项目筛选', 'aria-haspopup': 'menu', 'aria-expanded': String(this.projectMenuOpen) } });
+    trigger.createSpan({ cls: 'fd-dochub-project-label', text: current ?? `全部项目（${projects.length}）` });
+    trigger.createSpan({ cls: 'fd-dochub-ticon fd-dochub-chevron', attr: { 'aria-hidden': 'true' } });
+    const menu = wrap.createDiv({ cls: `fd-dochub-menu is-project${this.projectMenuOpen ? ' is-open' : ''}`, attr: { role: 'menu', 'aria-label': '按项目筛选' } });
+    const heading = menu.createDiv({ cls: 'fd-dochub-menu-heading', attr: { role: 'presentation' } });
+    heading.createSpan({ text: '按项目筛选' }); heading.createSpan({ text: `${projects.length} 个项目` });
+    const entries: Array<[string, string, number]> = [['', '全部项目', total], ...projects.map((group): [string, string, number] => [group.name, group.name, group.docs.length])];
+    for (const [value, name, count] of entries) {
+      const on = (current ?? '') === value;
+      const option = menu.createEl('button', { cls: 'fd-dochub-option', attr: { type: 'button', role: 'menuitemradio', 'aria-checked': String(on), tabindex: '-1', 'data-project': value } });
+      option.createEl('strong', { cls: 'fd-dochub-option-name', text: name });
+      option.createSpan({ cls: 'fd-dochub-option-count', text: String(count) });
+      option.createSpan({ cls: 'fd-dochub-check', attr: { 'aria-hidden': 'true' } });
+    }
+    trigger.addEventListener('click', () => (this.projectMenuOpen ? this.closeProjectMenu(false) : this.openProjectMenu(false)));
+    trigger.addEventListener('keydown', event => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); event.stopPropagation(); if (!this.projectMenuOpen) this.openProjectMenu(event.key === 'ArrowUp'); } });
+    menu.addEventListener('click', event => {
+      const option = (event.target as HTMLElement).closest<HTMLElement>('[data-project]');
+      if (!option) return;
+      this.filter.project = option.dataset.project || undefined;
+      this.projectMenuOpen = false;
+      this.renderBody();
+      this.els.filters.querySelector<HTMLElement>('.fd-dochub-project-trigger')?.focus();
+    });
+    menu.addEventListener('keydown', event => this.onProjectMenuKey(event));
+  }
+  private projectMenuEls(): { trigger: HTMLElement | null; menu: HTMLElement | null; options: HTMLElement[] } {
+    const wrap = this.els.filters.querySelector<HTMLElement>('.fd-dochub-project-wrap');
+    const menu = wrap?.querySelector<HTMLElement>('.fd-dochub-menu') ?? null;
+    return { trigger: wrap?.querySelector<HTMLElement>('.fd-dochub-project-trigger') ?? null, menu, options: menu ? Array.from(menu.querySelectorAll<HTMLElement>('[data-project]')) : [] };
+  }
+  private openProjectMenu(focusLast: boolean): void {
+    const { trigger, menu, options } = this.projectMenuEls();
+    if (!trigger || !menu) return;
+    this.closeMenu(false);
+    this.projectMenuOpen = true; menu.addClass('is-open'); trigger.setAttr('aria-expanded', 'true');
+    const selected = options.find(option => option.getAttr('aria-checked') === 'true');
+    (focusLast ? options[options.length - 1] : selected ?? options[0])?.focus();
+    selected?.scrollIntoView({ block: 'nearest' });
+  }
+  private closeProjectMenu(focusTrigger: boolean): void {
+    if (!this.projectMenuOpen) return;
+    const { trigger, menu } = this.projectMenuEls();
+    this.projectMenuOpen = false; menu?.removeClass('is-open'); trigger?.setAttr('aria-expanded', 'false');
+    if (focusTrigger) trigger?.focus();
+  }
+  private onProjectMenuKey(event: KeyboardEvent): void {
+    if (event.key === 'Tab') { this.closeProjectMenu(false); return; }
+    const { options } = this.projectMenuEls(), active = options.indexOf(event.target as HTMLElement), last = options.length - 1;
+    const target = event.key === 'ArrowDown' ? options[(active + 1) % options.length] : event.key === 'ArrowUp' ? options[(active - 1 + options.length) % options.length]
+      : event.key === 'Home' ? options[0] : event.key === 'End' ? options[last] : null;
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.closeProjectMenu(true); }
+    else if (target) { event.preventDefault(); event.stopPropagation(); target.focus(); }
+  }
   private menuOpen(): boolean { return this.els.menu.hasClass('is-open'); }
   private menuOptions(): HTMLElement[] { return Array.from(this.els.menu.querySelectorAll<HTMLElement>('[data-style-id]')); }
   private openMenu(focusLast: boolean): void {
+    this.closeProjectMenu(false);
     this.els.menu.addClass('is-open'); this.els.preset.setAttr('aria-expanded', 'true');
     const options = this.menuOptions();
     (focusLast ? options[options.length - 1] : options.find(option => option.dataset.styleId === this.prefs.style) ?? options[0])?.focus();
@@ -214,6 +275,10 @@ export class DocHubView extends ItemView {
   }
   private renderBody(): void {
     const { sub, tabs, filters, list } = this.els, now = Date.now();
+    // 项目下拉的候选与篇数按“除项目外的其他条件”统计；已选项目不再存在时回到全部项目。
+    const base = filterDocs(this.docs, { ...this.filter, project: undefined });
+    const projects = groupByProject(base);
+    if (this.filter.project && !projects.some(group => group.name === this.filter.project)) this.filter.project = undefined;
     const visible = filterDocs(this.docs, this.filter), hidden = this.docs.filter(isHidden).length;
     sub.setText(`${this.docs.length} 份文档 · Notes/Docs、Plans、Research · 实时读取 frontmatter`);
     tabs.empty();
@@ -230,6 +295,7 @@ export class DocHubView extends ItemView {
     };
     chip('全部', this.filter.kind === 'all', () => { this.filter.kind = 'all'; this.renderBody(); });
     for (const [kind, label] of Object.entries(DOC_HUB_KIND_LABELS)) chip(label, this.filter.kind === kind, () => { this.filter.kind = kind as DocHubDoc['kind']; this.renderBody(); });
+    this.renderProjectMenu(filters, projects, base.length);
     filters.createSpan({ cls: 'fd-dochub-spacer' });
     chip(`显示已取代/归档（${hidden}）`, this.filter.showSuperseded, () => { this.filter.showSuperseded = !this.filter.showSuperseded; this.renderBody(); });
     list.empty();
@@ -256,7 +322,7 @@ export class DocHubView extends ItemView {
     const groups = groupByProject(docs);
     groups.forEach((group, index) => {
       const details = this.els.list.createEl('details', { cls: 'fd-dochub-project' });
-      details.open = this.projectOpen.get(group.name) ?? (index < 3 || !!this.filter.query);
+      details.open = this.projectOpen.get(group.name) ?? (index < 3 || !!this.filter.query || !!this.filter.project);
       details.addEventListener('toggle', () => this.projectOpen.set(group.name, details.open));
       const summary = details.createEl('summary');
       summary.createSpan({ cls: 'fd-dochub-project-name', text: group.name });
@@ -282,14 +348,11 @@ export class DocHubView extends ItemView {
     // 常驻视角里全部都是置顶，标记没有信息量；其余视角里置顶状态不能只靠 hover 才出现的按钮文字来表达。
     const marked = doc.pinned && !showFreshness;
     const card = grid.createDiv({ cls: `fd-dochub-card is-${doc.kind}${isHidden(doc) ? ' is-dim' : ''}${marked ? ' is-pinned' : ''}`, attr: { role: 'link', tabindex: '0', title: doc.path } });
+    // 置顶角标放右上角（左侧已有类型色条），常驻可见，不依赖悬停。
+    if (marked) setIcon(card.createDiv({ cls: 'fd-dochub-pinbadge', attr: { 'aria-label': '已置顶', title: '已置顶' } }), 'pin');
     card.createDiv({ cls: 'fd-dochub-title', text: doc.title });
     card.createDiv({ cls: 'fd-dochub-desc', text: doc.summary });
     const meta = card.createDiv({ cls: 'fd-dochub-meta' });
-    if (marked) {
-      const pinMark = meta.createSpan({ cls: 'fd-dochub-pill is-pinned', attr: { 'aria-label': '已置顶' } });
-      setIcon(pinMark.createSpan({ cls: 'fd-dochub-pin-icon' }), 'pin');
-      pinMark.createSpan({ text: '置顶' });
-    }
     meta.createSpan({ cls: 'fd-dochub-pill is-kind', text: DOC_HUB_KIND_LABELS[doc.kind] });
     if (doc.status) meta.createSpan({ cls: `fd-dochub-pill is-status-${doc.status.toLowerCase().replace(/[^a-z-]/g, '')}`, text: doc.status });
     for (const name of doc.projects.slice(0, 2)) meta.createSpan({ cls: 'fd-dochub-pill is-project', text: name });

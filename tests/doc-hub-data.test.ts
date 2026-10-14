@@ -84,6 +84,17 @@ test("superseded / archived 默认隐藏，开关后显示；类型与搜索叠�
   assert.deepEqual(filterDocs(docs, { ...base, query: "alpha" }).map(d => d.path), ["a"]);
 });
 
+test("项目筛选：按项目名精确过滤，多项目文档在每个项目下都出现，无项目归未关联项目，并与其他条件叠加", () => {
+  const docs = [doc("a", { projects: ["P"] }), doc("b", { projects: ["P", "Q"] }), doc("c"), doc("d", { projects: ["Q"], status: "superseded" })];
+  const base = { kind: "all" as const, query: "", showSuperseded: false };
+  assert.deepEqual(filterDocs(docs, { ...base, project: "P" }).map(d => d.path), ["a", "b"]);
+  assert.deepEqual(filterDocs(docs, { ...base, project: "Q" }).map(d => d.path), ["b"], "隐藏状态仍按原规则排除");
+  assert.deepEqual(filterDocs(docs, { ...base, project: "Q", showSuperseded: true }).map(d => d.path), ["b", "d"]);
+  assert.deepEqual(filterDocs(docs, { ...base, project: "未关联项目" }).map(d => d.path), ["c"]);
+  assert.deepEqual(filterDocs(docs, { ...base, project: "" }).map(d => d.path), ["a", "b", "c"], "空串等同于全部项目");
+  assert.deepEqual(filterDocs(docs, { ...base, project: "P", query: "b" }).map(d => d.path), ["b"]);
+});
+
 test("常驻视角：只收 pinned === true；从未回看的排最前，其余按距上次回看最久排前，mtime 不参与", () => {
   const reviewed = (y: number, m: number, d: number) => new Date(y, m, d).getTime();
   const docs = [

@@ -20,7 +20,8 @@ export interface DocHubDoc {
   reviewedAt: number | null;
   summary: string;
 }
-export interface DocHubFilter { kind: DocHubKind | 'all'; query: string; showSuperseded: boolean }
+/** project 缺省或 undefined 表示全部项目；取值与 `groupByProject` 的组名一致（含“未关联项目”）。 */
+export interface DocHubFilter { kind: DocHubKind | 'all'; query: string; showSuperseded: boolean; project?: string }
 
 /** 目录决定类型；只认三个目录的顶层 *.md，嵌套（如 Archive）返回 null。 */
 export function kindOfPath(path: string): DocHubKind | null {
@@ -94,6 +95,7 @@ export function isHidden(doc: DocHubDoc): boolean { return HIDDEN_STATUSES.has(d
 export function filterDocs(docs: DocHubDoc[], filter: DocHubFilter): DocHubDoc[] {
   const query = filter.query.trim().toLowerCase();
   return docs.filter(doc => (filter.showSuperseded || !isHidden(doc)) && (filter.kind === 'all' || doc.kind === filter.kind)
+    && (!filter.project || (doc.projects.length ? doc.projects : [UNLINKED_PROJECT]).includes(filter.project))
     && (!query || `${doc.title} ${doc.summary} ${doc.projects.join(' ')} ${doc.path}`.toLowerCase().includes(query)));
 }
 
