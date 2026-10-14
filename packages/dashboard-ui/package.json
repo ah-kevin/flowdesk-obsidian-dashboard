@@ -1,6 +1,6 @@
 {
   "name": "@flowdesk/dashboard-ui",
-  "version": "2.0.15",
+  "version": "2.0.16",
   "private": true,
   "type": "module",
   "description": "Shared read-only FlowDesk Dashboard presentation for Obsidian and Codex.",
