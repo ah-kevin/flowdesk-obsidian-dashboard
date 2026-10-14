@@ -1,4 +1,4 @@
-import { ItemView, Notice, TFile, TFolder, Workspace, WorkspaceLeaf } from 'obsidian';
+import { ItemView, Notice, TFile, TFolder, Workspace, WorkspaceLeaf, setIcon } from 'obsidian';
 import { selectContentLeaf } from './dashboard-placement';
 import {
   DOC_HUB_FOLDERS, DOC_HUB_KIND_LABELS, SUMMARY_LIMIT, agoText, buildDoc, filterDocs, freshness, groupByProject, groupRecent, isHidden, kindOfPath,
@@ -279,10 +279,17 @@ export class DocHubView extends ItemView {
     for (const doc of docs) this.renderCard(grid, doc, now, showFreshness);
   }
   private renderCard(grid: HTMLElement, doc: DocHubDoc, now: number, showFreshness: boolean): void {
-    const card = grid.createDiv({ cls: `fd-dochub-card is-${doc.kind}${isHidden(doc) ? ' is-dim' : ''}`, attr: { role: 'link', tabindex: '0', title: doc.path } });
+    // 常驻视角里全部都是置顶，标记没有信息量；其余视角里置顶状态不能只靠 hover 才出现的按钮文字来表达。
+    const marked = doc.pinned && !showFreshness;
+    const card = grid.createDiv({ cls: `fd-dochub-card is-${doc.kind}${isHidden(doc) ? ' is-dim' : ''}${marked ? ' is-pinned' : ''}`, attr: { role: 'link', tabindex: '0', title: doc.path } });
     card.createDiv({ cls: 'fd-dochub-title', text: doc.title });
     card.createDiv({ cls: 'fd-dochub-desc', text: doc.summary });
     const meta = card.createDiv({ cls: 'fd-dochub-meta' });
+    if (marked) {
+      const pinMark = meta.createSpan({ cls: 'fd-dochub-pill is-pinned', attr: { 'aria-label': '已置顶' } });
+      setIcon(pinMark.createSpan({ cls: 'fd-dochub-pin-icon' }), 'pin');
+      pinMark.createSpan({ text: '置顶' });
+    }
     meta.createSpan({ cls: 'fd-dochub-pill is-kind', text: DOC_HUB_KIND_LABELS[doc.kind] });
     if (doc.status) meta.createSpan({ cls: `fd-dochub-pill is-status-${doc.status.toLowerCase().replace(/[^a-z-]/g, '')}`, text: doc.status });
     for (const name of doc.projects.slice(0, 2)) meta.createSpan({ cls: 'fd-dochub-pill is-project', text: name });

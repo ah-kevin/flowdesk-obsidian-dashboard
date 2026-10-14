@@ -146,6 +146,9 @@
 .fd-dochub[data-style="blueprint"] .fd-dochub-pill, .fd-dochub[data-style="editorial"] .fd-dochub-pill { border-radius:var(--dh-radius); }
 .fd-dochub-pill.is-kind { color:var(--k); border-color:color-mix(in srgb,var(--k) 55%,transparent); background:color-mix(in srgb,var(--k) 12%,transparent); }
 .fd-dochub-pill.is-project { color:var(--dh-text); }
+.fd-dochub-pill.is-pinned { display:inline-flex; align-items:center; gap:4px; color:var(--dh-accent); border-color:color-mix(in srgb,var(--dh-accent) 55%,transparent); background:color-mix(in srgb,var(--dh-accent) 12%,transparent); }
+.fd-dochub-pin-icon { display:inline-flex; } .fd-dochub-pin-icon svg { width:12px; height:12px; }
+.fd-dochub-card.is-pinned { border-color:color-mix(in srgb,var(--dh-accent) 45%,var(--dh-border)); }
 .fd-dochub-pill.is-status-active, .fd-dochub-pill.is-status-approved, .fd-dochub-pill.is-status-implemented { color:var(--dh-good); border-color:color-mix(in srgb,var(--dh-good) 45%,transparent); }
 .fd-dochub-pill.is-status-draft, .fd-dochub-pill.is-status-in-progress, .fd-dochub-pill.is-status-parked { color:var(--dh-warn); border-color:color-mix(in srgb,var(--dh-warn) 45%,transparent); }
 .fd-dochub-pill.is-status-superseded, .fd-dochub-pill.is-status-archived { color:var(--dh-bad); border-color:color-mix(in srgb,var(--dh-bad) 45%,transparent); }

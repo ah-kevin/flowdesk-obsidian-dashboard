@@ -10286,10 +10286,16 @@ var DocHubView = class extends import_obsidian3.ItemView {
     for (const doc of docs) this.renderCard(grid, doc, now, showFreshness);
   }
   renderCard(grid, doc, now, showFreshness) {
-    const card = grid.createDiv({ cls: `fd-dochub-card is-${doc.kind}${isHidden(doc) ? " is-dim" : ""}`, attr: { role: "link", tabindex: "0", title: doc.path } });
+    const marked = doc.pinned && !showFreshness;
+    const card = grid.createDiv({ cls: `fd-dochub-card is-${doc.kind}${isHidden(doc) ? " is-dim" : ""}${marked ? " is-pinned" : ""}`, attr: { role: "link", tabindex: "0", title: doc.path } });
     card.createDiv({ cls: "fd-dochub-title", text: doc.title });
     card.createDiv({ cls: "fd-dochub-desc", text: doc.summary });
     const meta = card.createDiv({ cls: "fd-dochub-meta" });
+    if (marked) {
+      const pinMark = meta.createSpan({ cls: "fd-dochub-pill is-pinned", attr: { "aria-label": "\u5DF2\u7F6E\u9876" } });
+      (0, import_obsidian3.setIcon)(pinMark.createSpan({ cls: "fd-dochub-pin-icon" }), "pin");
+      pinMark.createSpan({ text: "\u7F6E\u9876" });
+    }
     meta.createSpan({ cls: "fd-dochub-pill is-kind", text: DOC_HUB_KIND_LABELS[doc.kind] });
     if (doc.status) meta.createSpan({ cls: `fd-dochub-pill is-status-${doc.status.toLowerCase().replace(/[^a-z-]/g, "")}`, text: doc.status });
     for (const name of doc.projects.slice(0, 2)) meta.createSpan({ cls: "fd-dochub-pill is-project", text: name });
