@@ -1,3 +1,4 @@
+import {readProgressTime} from "./progress-time.js";
 import type {TaskContent} from "./task-content.js";
 import type {SnapshotSource} from "./snapshot-model.js";
 
@@ -72,7 +73,9 @@ export function createTaskCurrentProgress(content:TaskContent,context:{statusIsC
     if(match){
       // A checked legacy row is its own event even when its date is absent or incomparable.
       const dated=/^`([^`]*)`(?: (.*))?$/.exec(match[1]);
-      events.push({timestamp:dated?dated[1]:null,lines:[dated?(dated[2]??""):match[1]]});continue;
+      const parsed=dated?readProgressTime(dated[1],dated[2]??""):{timestamp:null,content:match[1]};
+      if(!parsed)return unknown("Progress 时间元数据不匹配；当前进展 unknown。");
+      events.push({timestamp:parsed.timestamp,lines:[parsed.content]});continue;
     }
     if(!line.trim()||(!events.length&&/^> *$/.test(line))){
       let following=index+1;while(following<lines.length&&(!lines[following].trim()||/^> *$/.test(lines[following])))following++;

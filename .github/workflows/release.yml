@@ -12,14 +12,22 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: dashboard-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Build release assets
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -28,10 +36,22 @@ jobs:
           cache: npm
           registry-url: "https://registry.npmjs.org"
 
+      - name: Test release lifecycle without private Core dependencies
+        run: npm run test:release
+
+      - name: Prepare main release version
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        id: prepare
+        env:
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: node scripts/auto-release.mjs prepare > "$RUNNER_TEMP/dashboard-release-plan.json"
+
       - name: Install dependencies
+        if: steps.prepare.outputs.release != 'false'
         run: npm ci --registry=https://registry.npmjs.org
 
       - name: Build and verify release package
+        if: steps.prepare.outputs.release != 'false'
         run: |
           npm run build
           npm run typecheck
@@ -40,6 +60,7 @@ jobs:
           npm run release:package
 
       - name: Read plugin version
+        if: steps.prepare.outputs.release != 'false'
         id: plugin
         run: |
           version="$(node -p "require('./manifest.json').version")"
@@ -47,6 +68,7 @@ jobs:
           echo "zip=release/flowdesk-dashboard-$version.zip" >> "$GITHUB_OUTPUT"
 
       - name: Upload workflow artifact
+        if: steps.prepare.outputs.release != 'false'
         uses: actions/upload-artifact@v4
         with:
           name: flowdesk-dashboard-${{ steps.plugin.outputs.version }}
@@ -61,6 +83,13 @@ jobs:
             ${{ steps.plugin.outputs.zip }}
           if-no-files-found: error
 
+      - name: Commit version and push main/tag atomically
+        if: github.ref == 'refs/heads/main' && steps.prepare.outputs.release == 'true'
+        id: finalize
+        run: |
+          export RELEASE_PLAN="$(cat "$RUNNER_TEMP/dashboard-release-plan.json")"
+          node scripts/auto-release.mjs finalize
+
       - name: Validate release tag
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -70,14 +99,24 @@ jobs:
             exit 1
           fi
 
+      # GITHUB_TOKEN pushes do not trigger another push/tag workflow. Publish here.
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && steps.finalize.outputs.release == 'true')
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ github.ref_name }}
+          TAG_NAME: ${{ steps.finalize.outputs.tag || github.ref_name }}
           VERSION: ${{ steps.plugin.outputs.version }}
           ZIP_PATH: ${{ steps.plugin.outputs.zip }}
         run: |
+          set -euo pipefail
+          test "$(git rev-parse "${TAG_NAME}^{commit}")" = "$(git rev-parse HEAD)"
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+            if [ "$(git rev-parse origin/main)" != "$(git rev-parse HEAD)" ]; then
+              echo "A newer main is available; skip this Release publication."
+              exit 0
+            fi
+          fi
           assets=(
             "main.js"
             "manifest.json"
@@ -88,11 +127,10 @@ jobs:
             release/flowdesk-dashboard-ui-*.tgz.sha256
             "release/dashboard-ui-lock.json"
           )
-
-          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" "${assets[@]}" --clobber
-          else
-            gh release create "$TAG_NAME" "${assets[@]}" \
+          if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release create "$TAG_NAME" --verify-tag --draft \
               --title "FlowDesk Dashboard $VERSION" \
               --notes "Third-party Obsidian plugin release for FlowDesk Dashboard $VERSION."
           fi
+          gh release upload "$TAG_NAME" "${assets[@]}" --clobber
+          gh release edit "$TAG_NAME" --draft=false
