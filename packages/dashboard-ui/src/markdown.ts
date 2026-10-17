@@ -1,8 +1,15 @@
 import MarkdownIt from "markdown-it";
+import {readProgressTime} from "./progress-time.js";
 
 /** Read-only browser markup. Raw HTML/resources and automatic navigation are never emitted. */
 const markdown=new MarkdownIt({html:false,linkify:false,typographer:false});
 const escape=(value:unknown):string=>markdown.utils.escapeHtml(String(value??""));
+markdown.inline.ruler.before("html_inline","flowdesk_progress_time",(state)=>{
+  const prefix=/`(\d{4}-\d{2}-\d{2} \d{2}:\d{2})`[ \t]+$/.exec(state.src.slice(0,state.pos));
+  const marker=/^<!-- flowdesk\.progress-time\/1 [^ ]+ -->/.exec(state.src.slice(state.pos));
+  if(!prefix||!marker||state.tokens[state.tokens.length-1]?.type!=="code_inline"||!readProgressTime(prefix[1],marker[0]))return false;
+  state.pos+=marker[0].length;return true;
+});
 markdown.inline.ruler.before("link","flowdesk_wiki",(state,silent)=>{
   const start=state.pos;
   if(state.src.slice(start,start+2)!=="[["||state.src[start-1]==="!")return false;

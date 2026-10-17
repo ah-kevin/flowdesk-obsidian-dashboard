@@ -1,5 +1,6 @@
 import { fdCreateDiv, fdCreateEl } from "./dom.js";
 import type { SnapshotBodySection } from "./snapshot-model.js";
+import {readProgressTime} from "./progress-time.js";
 import { excerpt, firstParagraph, formatDisplayTime } from "./reading-presentation.js";
 export interface ProgressEvent {
     timestamp: string | null;
@@ -48,8 +49,10 @@ export function parseQuotedProgress(text: string): ProgressEvent[] | null {
             if (fence)
                 return null;
             const dated = /^`([^`]*)`(?: (.*))?$/.exec(event[1]);
-            const body = dated ? (dated[2] ?? "") : event[1];
-            events.push({ timestamp: dated ? dated[1] : null, lines: [body] });
+            const parsed = dated ? readProgressTime(dated[1],dated[2] ?? "") : {timestamp:null,content:event[1]};
+            if(!parsed)return null;
+            const body=parsed.content;
+            events.push({ timestamp: parsed.timestamp, lines: [body] });
             scan(body);
             continue;
         }

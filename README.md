@@ -96,6 +96,8 @@ Directory 作为发布路径。
 
 ## 共享 Dashboard UI
 
+Core 的 Task / Case Progress 写入北京时间 `YYYY-MM-DD HH:mm`，Dashboard 保留原有日期展示样式。共享解析器仅补充识别 `flowdesk.progress-time/1` 隐藏元数据，沿原始时刻精确排序；显示与原始时刻不匹配时保留 unknown。内部元数据不出现在正文展示中，普通清单、代码和源文件保持原样。
+
 packages/dashboard-ui 是 Dashboard-owned 的只读展示包，供 Obsidian 与 Codex 会话面板消费；原 src 入口保留兼容导出。纯模型可在 Node 使用，浏览器组件使用标准 DOM，宿主注入 Markdown、主题和资料导航。Obsidian 保留原导航；Codex 概览优先，资料先支持查看与复制引用。
 
 npm run build 同时生成共享包模型、浏览器 runtime、声明和 SHA-256 元数据。node scripts/package-dashboard-ui.mjs 生成本机候选 tarball、校验文件及 dashboard-ui-lock.json；状态 source-candidate 不表示已经发布。FlowDesk-Plugin 固定这份归档及每项运行资产摘要，构建时校验实际消费的内容。

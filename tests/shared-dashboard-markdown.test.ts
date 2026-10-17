@@ -38,3 +38,22 @@ test("untrusted HTML and resources cannot create executable or external navigati
   assert.match(html,/data-reference="https:\/\/example.invalid\/a"/);
   assert.match(html,/&lt;img/);
 });
+
+
+test("Progress time metadata is hidden only for a matching code date, with raw HTML still escaped",async t=>{
+  const render=await adapter(t),marker="<!-- flowdesk.progress-time/1 2026-10-17T06:21:32Z -->";
+  const html=render("> - [x] `2026-10-17 14:21` "+marker+" 实测 <script>bad()</script>");
+  assert.match(html,/<code>2026-10-17 14:21<\/code>/);
+  assert.doesNotMatch(html,/flowdesk.progress-time/);assert.doesNotMatch(html,/<script>/);
+  assert.match(render("`"+marker+"`"),/flowdesk.progress-time/);
+  assert.match(render("```text\n"+marker+"\n```"),/flowdesk.progress-time/);
+  assert.match(render("`2026-10-17 14:22` "+marker),/flowdesk.progress-time/);
+});
+
+
+test("legacy Progress source dates and ordinary code remain unchanged",async t=>{
+  const render=await adapter(t),source="> [!faq]- 详细过程日志\n> - [x] `2026-10-17T06:21:32Z` 原始历史";
+  assert.match(render(source),/<code>2026-10-17T06:21:32Z<\/code>/);
+  for(const mark of ["x"," "])assert.match(render("- ["+mark+"] `2026-10-17T06:21:32Z` API原始时间"),/2026-10-17T06:21:32Z/);
+  assert.match(render("`2026-10-17T06:21:32Z` 代码原文"),/2026-10-17T06:21:32Z/);
+});
