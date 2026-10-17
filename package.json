@@ -13,7 +13,8 @@
     "check:syntax": "node -c main.js",
     "release:verify": "node scripts/verify-release.mjs",
     "release:package": "node scripts/package-release.mjs",
-    "release:prepare": "node scripts/prepare-release.mjs"
+    "release:prepare": "node scripts/prepare-release.mjs",
+    "test:release": "node --test tests/auto-release.test.mjs"
   },
   "devDependencies": {
     "@types/markdown-it": "14.1.2",

@@ -130,9 +130,16 @@ npm run build 同时生成共享包模型、浏览器 runtime、声明和 SHA-25
 
 CI 触发规则：
 
-- Pull request：安装依赖、构建、类型检查、语法检查、release 校验和打包。
-- Push 到 `main`：同上，并上传 workflow artifact 便于检查。
-- Push `v*` tag：同上，然后创建或更新 GitHub Release 并上传 release assets。
+- Pull request：执行独立的发布生命周期测试，然后安装依赖、构建、类型检查、语法检查、release 校验和打包；只上传构建产物。
+- Push 到 `main`：普通变更自动准备下一个 patch，完整构建校验通过后，将版本提交和 tag 原子推送，再发布 GitHub Release。PR 已显式升版时保留该版本，版本倒退或元数据错配拒绝发布。
+- Push `v*` tag：兼容已有手动 tag 发布，不额外升版；tag 必须匹配 manifest 版本。
+- 手动运行：在 `main` 上可恢复未完成的发布；已经生成的版本提交和 tag 被复用，不重复升 patch。其他分支只构建。
+
+自动升版同步 `manifest.json`、根 `package.json`、`package-lock.json` 的两处根版本、`versions.json` 和共享 UI 的 `packages/dashboard-ui/package.json`，保留旧兼容映射。版本只在 CI checkout 中准备，构建失败不会推送版本或 tag。成功后用带 `Release-Source` 的版本提交识别重跑；过期 main 事件跳过；发布前重核 main，观察到推进即跳过该次发布，已有 tag 不会被移动。main 核对与 GitHub Release API 不在同一事务中；发布开始后的新 main 由后续串行运行发布新版，不回写或移动既有版本。
+
+升版、打 tag 和上传 Release 在同一次运行中完成，不依赖 `GITHUB_TOKEN` 推送触发下一工作流，见 [GitHub 触发规则](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)。Release 先以草稿上传完整资产，再公开；上传失败后的重跑沿原 tag 续传。
+
+CI 的 `npm run test:release` 仅使用 Node、Git、Bash 和临时本地仓库，不需要私有 Core checkout 或跨仓库凭据；Dashboard 完整业务测试仍沿本地验证入口执行。
 
 本地完整发布前检查需要真实 Core checkout（含已安装的 `mcp` 依赖）、Python 3 和支持
 `--test-isolation=none` 的 Node（当前验证 Node 24）。可运行：
@@ -145,6 +152,7 @@ FLOWDESK_TEST_PYTHON="/path/to/python3" npm run release:prepare
 
 `release:prepare` 会依次执行：
 
+- `npm run test:release`
 - `npm test`
 - `npm run build`
 - `npm run typecheck`
@@ -163,19 +171,11 @@ Release 必需文件：
 `release/flowdesk-dashboard-<version>.zip`。GitHub Release 由 CI 上传上面的四个必需文件，
 并同时上传 zip 方便手动安装，以及共享 UI tarball、SHA-256 和 lock 元数据供 Core 固定消费。
 
-发布一个版本（版本号以 `manifest.json` 为准）：
-
-```bash
-git tag "v2.0.6"
-git push origin "v2.0.6"
-```
-
-CI 会校验 tag 必须等于 `v<manifest.version>`。例如 `manifest.json` 版本为 `2.0.6`
-时，release tag 必须是 `v2.0.6`。推送标签前，先将同一份已验证提交推送到 `main`。
+日常发布只需合并到 `main`，无需手动升 patch 或打 tag。手动 tag 入口只保留兼容用途；人工准备 minor/major 时，需要先同步下列版本元数据。
 
 版本要求：
 
-- `package.json` 的 `version` 必须和 `manifest.json` 的 `version` 一致。
+- 根 `package.json`、`manifest.json`、`package-lock.json` 的两处根版本和 `packages/dashboard-ui/package.json` 的 `version` 必须一致。
 - `versions.json` 必须把当前版本映射到 `manifest.json` 的 `minAppVersion`。
 - 本插件当前为本机工作站插件，不需要 npm publish。
 
