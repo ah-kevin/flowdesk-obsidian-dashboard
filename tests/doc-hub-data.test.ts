@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  buildDoc, filterDocs, formatLocalDate, groupByProject, groupRecent, kindOfPath, markReviewed, parseReviewed, pinnedDocs, projectsOf, resolveKey, reviewBadge, setPinned,
+  buildAtlasDoc, buildDoc, filterDocs, formatLocalDate, groupByProject, groupRecent, kindOfPath, markReviewed, parseReviewed, pinnedDocs, projectsOf, resolveKey, reviewBadge, setPinned,
   stripFrontmatter, summaryOfBody, type DocHubDoc, type Frontmatter,
 } from "../src/doc-hub-data.ts";
 import { DOC_HUB_STYLES, effectiveTheme, nextStyle, normalizePrefs, toggleTheme } from "../src/doc-hub-style.ts";
@@ -183,4 +183,25 @@ test("生效明暗：theme 缺省跟随 Obsidian，显式值优先", () => {
   assert.equal(effectiveTheme({ style: "classic" }, "light"), "light");
   assert.equal(effectiveTheme({ theme: "light", style: "classic" }, "dark"), "light");
   assert.equal(effectiveTheme({ theme: "dark", style: "classic" }, "light"), "dark");
+});
+
+test("图集卡：路径指向入口（无入口取第一页），不置顶、无状态；内容检索走 searchText，项目筛选照常", () => {
+  const base = { collection: "niubu-iam", project: "NiuBu", title: "IAM 技术文档", entryPath: null, pages: [{ title: "登录", path: "Attachments/archify/niubu-iam/pages/a.html", haystack: "登录 device_model" }], mtime: NOW, searchText: "niubu-iam 登录 device_model" };
+  const atlas = buildAtlasDoc(base);
+  assert.equal(atlas.kind, "atlas");
+  assert.equal(atlas.path, "Attachments/archify/niubu-iam/pages/a.html");
+  assert.deepEqual([atlas.pinned, atlas.status, atlas.projects], [false, "", ["NiuBu"]]);
+  assert.equal(buildAtlasDoc({ ...base, entryPath: "Attachments/archify/niubu-iam/index.html" }).path, "Attachments/archify/niubu-iam/index.html");
+  assert.deepEqual(buildAtlasDoc({ ...base, project: "未关联项目" }).projects, []);
+  const docs = [atlas, doc("Notes/Docs/x.md", { title: "别的" })];
+  const all = { kind: "all" as const, query: "", showSuperseded: false };
+  assert.deepEqual(filterDocs(docs, { ...all, query: "DEVICE_MODEL" }).map(item => item.kind), ["atlas"], "图里的内容能搜到");
+  assert.deepEqual(filterDocs(docs, { ...all, kind: "atlas" }).length, 1);
+  assert.deepEqual(filterDocs(docs, { ...all, project: "NiuBu" }).length, 1);
+});
+
+test("图集置顶只记在设置里：保留去重后的非空字符串，空列表不写字段", () => {
+  assert.deepEqual(normalizePrefs({ style: "blueprint", atlasPinned: ["a", "a", "", 3, "b"] }), { style: "blueprint", atlasPinned: ["a", "b"] });
+  assert.deepEqual(normalizePrefs({ theme: "dark", style: "classic", atlasPinned: [] }), { theme: "dark", style: "classic" });
+  assert.deepEqual(normalizePrefs({ style: "classic", atlasPinned: "oops" }), { style: "classic" });
 });

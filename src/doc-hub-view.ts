@@ -1,7 +1,9 @@
 import { ItemView, Notice, TFile, TFolder, Workspace, WorkspaceLeaf, setIcon } from 'obsidian';
 import { selectContentLeaf } from './dashboard-placement';
+import { AtlasIndex, confirmAndTrashCollection, openInBrowser } from './atlas-index';
+import { buildAtlasPrompt, pageMatches } from './atlas-data';
 import {
-  DOC_HUB_FOLDERS, DOC_HUB_KIND_LABELS, SUMMARY_LIMIT, agoText, buildDoc, filterDocs, freshness, groupByProject, groupRecent, isHidden, kindOfPath,
+  DOC_HUB_FOLDERS, DOC_HUB_KIND_LABELS, SUMMARY_LIMIT, agoText, buildAtlasDoc, buildDoc, filterDocs, freshness, groupByProject, groupRecent, isHidden, kindOfPath,
   markReviewed, pinnedDocs, resolveKey, reviewBadge, setPinned, stripFrontmatter, summaryOfBody, type DocHubDoc, type DocHubFilter, type DocHubKeyAction, type DocHubTab, type ProjectGroup,
 } from './doc-hub-data';
 import { DOC_HUB_STYLES, effectiveTheme, nextStyle, normalizePrefs, styleLabel, toggleTheme, type DocHubPrefs, type DocHubStyleId, type DocHubTheme } from './doc-hub-style';
@@ -35,6 +37,7 @@ export class DocHubView extends ItemView {
   private timer: number | null = null;
   private hoverTimer: number | null = null;
   private closed = false;
+  private readonly atlasIndex = new AtlasIndex();
   private els!: Record<'root' | 'sub' | 'tabs' | 'filters' | 'list' | 'searchBox' | 'theme' | 'preset' | 'presetName' | 'menu' | 'full', HTMLElement> & { search: HTMLInputElement };
   constructor(leaf: WorkspaceLeaf, private readonly host: DocHubHost) { super(leaf); this.prefs = normalizePrefs(host.prefs()); }
   getViewType(): string { return DOC_HUB_VIEW_TYPE; }
@@ -44,13 +47,15 @@ export class DocHubView extends ItemView {
   async onOpen(): Promise<void> {
     this.closed = false;
     this.buildShell();
-    const touch = (path: string) => { if (kindOfPath(path)) this.scheduleReload(); };
+    const touch = (path: string) => { if (kindOfPath(path) || path.startsWith('Attachments/archify/')) this.scheduleReload(); };
     this.registerEvent(this.app.metadataCache.on('changed', file => touch(file.path)));
     this.registerEvent(this.app.vault.on('create', file => touch(file.path)));
     this.registerEvent(this.app.vault.on('delete', file => touch(file.path)));
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => { touch(file.path); touch(oldPath); }));
     // 未显式选择明暗时跟随 Obsidian：主题切换后同步开关与 data-theme，不需要重开视图。
     this.registerEvent(this.app.workspace.on('css-change', () => this.syncChrome()));
+    // 图集是 HTML，Obsidian 不一定为它发文件事件；回到文档中心时顺带按 mtime 增量刷新。
+    this.registerEvent(this.app.workspace.on('active-leaf-change', leaf => { if (leaf === this.leaf) this.scheduleReload(); }));
     await this.reload();
   }
   async onClose(): Promise<void> { this.closed = true; this.generation++; if (this.timer !== null) window.clearTimeout(this.timer); this.timer = null; this.cancelHover(); }
@@ -71,6 +76,10 @@ export class DocHubView extends ItemView {
       if (dir instanceof TFolder) for (const child of dir.children) if (child instanceof TFile && child.extension === 'md') files.push(child);
     }
     const docs = (await Promise.all(files.map(file => this.toDoc(file)))).filter((doc): doc is DocHubDoc => !!doc);
+    try { docs.push(...(await this.atlasIndex.load(this.app)).map(buildAtlasDoc)); }
+    catch (error) { new Notice(`图集读取失败：${error instanceof Error ? error.message : String(error)}`); }
+    const atlasPinned = new Set(this.prefs.atlasPinned ?? []);
+    for (const doc of docs) if (doc.atlas) doc.pinned = atlasPinned.has(doc.atlas.collection);
     if (this.closed || generation !== this.generation) return;
     this.docs = docs;
     this.renderAll();
@@ -100,7 +109,7 @@ export class DocHubView extends ItemView {
     const tabs = tools.createDiv({ cls: 'fd-dochub-tabs', attr: { role: 'tablist' } });
     const searchBox = tools.createDiv({ cls: 'fd-dochub-searchbox' });
     searchBox.createSpan({ cls: 'fd-dochub-ticon fd-dochub-search-icon', attr: { 'aria-hidden': 'true' } });
-    const search = searchBox.createEl('input', { cls: 'fd-dochub-search', attr: { type: 'search', placeholder: '搜索标题 / 摘要 / 项目…', 'aria-label': '搜索文档', 'aria-keyshortcuts': '/', spellcheck: 'false' } });
+    const search = searchBox.createEl('input', { cls: 'fd-dochub-search', attr: { type: 'search', placeholder: '搜索标题 / 摘要 / 项目 / 图集内容…', 'aria-label': '搜索文档', 'aria-keyshortcuts': '/', spellcheck: 'false' } });
     searchBox.createEl('kbd', { cls: 'fd-dochub-search-kbd', text: '/', attr: { 'aria-hidden': 'true' } });
     const clear = searchBox.createEl('button', { cls: 'fd-dochub-search-clear', attr: { type: 'button', title: '清除搜索（Esc）', 'aria-label': '清除搜索' } });
     clear.createSpan({ cls: 'fd-dochub-ticon', attr: { 'aria-hidden': 'true' } });
@@ -280,7 +289,8 @@ export class DocHubView extends ItemView {
     const projects = groupByProject(base);
     if (this.filter.project && !projects.some(group => group.name === this.filter.project)) this.filter.project = undefined;
     const visible = filterDocs(this.docs, this.filter), hidden = this.docs.filter(isHidden).length;
-    sub.setText(`${this.docs.length} 份文档 · Notes/Docs、Plans、Research · 实时读取 frontmatter`);
+    const atlasCount = this.docs.filter(doc => doc.atlas).length;
+    sub.setText(`${this.docs.length - atlasCount} 份文档 · ${atlasCount} 个图集 · Notes/Docs、Plans、Research、Attachments/archify`);
     tabs.empty();
     const counts: Record<DocHubTab, number> = { recent: visible.length, project: groupByProject(visible).length, pinned: visible.filter(doc => doc.pinned).length };
     for (const [id, label] of TABS) {
@@ -345,6 +355,7 @@ export class DocHubView extends ItemView {
     for (const doc of docs) this.renderCard(grid, doc, now, showFreshness);
   }
   private renderCard(grid: HTMLElement, doc: DocHubDoc, now: number, showFreshness: boolean): void {
+    if (doc.atlas) { this.renderAtlasCard(grid, doc, now); return; }
     // 常驻视角里全部都是置顶，标记没有信息量；其余视角里置顶状态不能只靠 hover 才出现的按钮文字来表达。
     const marked = doc.pinned && !showFreshness;
     const card = grid.createDiv({ cls: `fd-dochub-card is-${doc.kind}${isHidden(doc) ? ' is-dim' : ''}${marked ? ' is-pinned' : ''}`, attr: { role: 'link', tabindex: '0', title: doc.path } });
@@ -371,6 +382,67 @@ export class DocHubView extends ItemView {
     card.addEventListener('keydown', event => { if (event.key === 'Enter' && event.target === card) { event.preventDefault(); event.stopPropagation(); open(event); } });
     card.addEventListener('mouseenter', event => this.scheduleHover(card, doc, event));
     card.addEventListener('mouseleave', () => this.cancelHover());
+  }
+
+  /** 图集卡：一个图集一张卡。卡内列出各页，点页面用浏览器打开；有总览页（或只有一页）的卡左下角带标识，点卡片直接打开它。搜索时命中的页排前并高亮。 */
+  private renderAtlasCard(grid: HTMLElement, doc: DocHubDoc, now: number): void {
+    const atlas = doc.atlas!;
+    const entry = atlas.entryPath ?? (atlas.pages.length === 1 ? atlas.pages[0].path : null);
+    const card = grid.createDiv({ cls: `fd-dochub-card is-atlas${entry ? '' : ' is-static'}${doc.pinned ? ' is-pinned' : ''}`, attr: entry ? { role: 'link', tabindex: '0', title: entry } : { title: doc.title } });
+    if (doc.pinned) setIcon(card.createDiv({ cls: 'fd-dochub-pinbadge', attr: { 'aria-label': '已置顶', title: '已置顶' } }), 'pin');
+    card.createDiv({ cls: 'fd-dochub-title', text: doc.title });
+    const query = this.filter.query.trim();
+    const hits = query ? atlas.pages.filter(page => pageMatches(page, query)) : [];
+    const ordered = [...hits, ...atlas.pages.filter(page => !hits.includes(page))];
+    // 页面区固定高度，页面再多也在区内滚动，所有图集卡一样高。
+    const pages = card.createDiv({ cls: 'fd-dochub-pages' });
+    for (const page of ordered) {
+      const chip = pages.createEl('button', { cls: `fd-dochub-page${hits.includes(page) ? ' is-hit' : ''}`, text: page.title, attr: { type: 'button', title: page.path } });
+      chip.addEventListener('click', event => { event.stopPropagation(); openInBrowser(this.app, page.path); });
+    }
+    const meta = card.createDiv({ cls: 'fd-dochub-meta' });
+    if (entry) setIcon(meta.createSpan({ cls: 'fd-dochub-entrymark', attr: { 'aria-label': '点卡片打开总览页', title: '点卡片打开总览页' } }), 'layout-dashboard');
+    meta.createSpan({ cls: 'fd-dochub-pill is-kind', text: DOC_HUB_KIND_LABELS.atlas });
+    for (const name of doc.projects.slice(0, 2)) meta.createSpan({ cls: 'fd-dochub-pill is-project', text: name });
+    meta.createSpan({ cls: 'fd-dochub-pill', text: `${atlas.pages.length} 页` });
+    meta.createSpan({ cls: 'fd-dochub-when', text: agoText(doc.mtime, now) });
+    const actions = card.createDiv({ cls: 'fd-dochub-actions' });
+    const prompt = actions.createEl('button', { cls: 'fd-dochub-action', text: '复制提示词', attr: { type: 'button', title: '复制给 agent 的提示词：评估并优化这个图集的组织方式' } });
+    prompt.addEventListener('click', event => { event.stopPropagation(); void this.copyAtlasPrompt(doc); });
+    const pin = actions.createEl('button', { cls: `fd-dochub-action${doc.pinned ? ' is-on' : ''}`, text: doc.pinned ? '取消置顶' : '置顶', attr: { type: 'button', 'aria-pressed': String(doc.pinned) } });
+    pin.addEventListener('click', event => { event.stopPropagation(); this.setAtlasPinned(atlas.collection, !doc.pinned); });
+    const remove = actions.createEl('button', { cls: 'fd-dochub-action is-danger', text: '删除', attr: { type: 'button', title: '整个图集目录移到废纸篓（先确认）' } });
+    remove.addEventListener('click', event => { event.stopPropagation(); void this.deleteAtlas(doc); });
+    if (entry) {
+      const open = (event: Event) => { event.preventDefault(); openInBrowser(this.app, entry); };
+      card.addEventListener('click', event => { if (!(event.target as HTMLElement).closest('button')) open(event); });
+      card.addEventListener('keydown', event => { if (event.key === 'Enter' && event.target === card) { event.stopPropagation(); open(event); } });
+    }
+  }
+  private async copyAtlasPrompt(doc: DocHubDoc): Promise<void> {
+    const atlas = doc.atlas!;
+    try {
+      await navigator.clipboard.writeText(buildAtlasPrompt({ collection: atlas.collection, project: doc.projects[0] ?? '未关联项目', title: doc.title, documentPath: atlas.documentPath, entryPath: atlas.entryPath, pages: atlas.pages }));
+      new Notice('提示词已复制，粘贴给 agent 即可');
+    } catch (error) { new Notice(`复制失败：${error instanceof Error ? error.message : String(error)}`); }
+  }
+
+  private setAtlasPinned(collection: string, pinned: boolean): void {
+    const current = new Set(this.prefs.atlasPinned ?? []);
+    if (pinned) current.add(collection); else current.delete(collection);
+    this.prefs = normalizePrefs({ ...this.prefs, atlasPinned: [...current] });
+    for (const doc of this.docs) if (doc.atlas?.collection === collection) doc.pinned = pinned;
+    this.persistPrefs();
+    this.renderBody();
+  }
+  private async deleteAtlas(doc: DocHubDoc): Promise<void> {
+    const atlas = doc.atlas!;
+    try {
+      if (!(await confirmAndTrashCollection(this.app, atlas.collection, doc.title))) return;
+      if (this.prefs.atlasPinned?.includes(atlas.collection)) this.setAtlasPinned(atlas.collection, false);
+      new Notice(`已移到废纸篓：${doc.title}`);
+      await this.reload();
+    } catch (error) { new Notice(`删除失败：${error instanceof Error ? error.message : String(error)}`); }
   }
 
   /** 悬停预览防抖：停留满 HOVER_DELAY 才触发，划过不弹；同一时间只保留一个待触发。 */

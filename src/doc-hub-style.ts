@@ -1,7 +1,8 @@
 // 文档中心视觉 token：明暗默认跟随 Obsidian（theme 缺省），用户切换后写入显式值；四种风格的形状 / 强调色在 styles.css 的 data-style 变量里。
 export type DocHubTheme = 'dark' | 'light';
 export type DocHubStyleId = 'classic' | 'signal' | 'blueprint' | 'editorial';
-export interface DocHubPrefs { theme?: DocHubTheme; style: DocHubStyleId }
+/** atlasPinned：置顶的图集目录名。图集不是 Markdown、没有 frontmatter，置顶只能记在插件设置里。 */
+export interface DocHubPrefs { theme?: DocHubTheme; style: DocHubStyleId; atlasPinned?: string[] }
 
 export const DOC_HUB_STYLES: ReadonlyArray<{ id: DocHubStyleId; label: string; hint: string }> = [
   { id: 'classic', label: '经典', hint: '稳定的技术默认风格' },
@@ -14,7 +15,9 @@ export const DOC_HUB_STYLES: ReadonlyArray<{ id: DocHubStyleId; label: string; h
 export function normalizePrefs(value: unknown): DocHubPrefs {
   const raw = (value ?? {}) as Partial<Record<keyof DocHubPrefs, unknown>>;
   const style = DOC_HUB_STYLES.find(item => item.id === raw.style)?.id ?? 'classic';
-  return raw.theme === 'dark' || raw.theme === 'light' ? { theme: raw.theme, style } : { style };
+  const atlasPinned = Array.isArray(raw.atlasPinned) ? [...new Set(raw.atlasPinned.filter((item): item is string => typeof item === 'string' && item.length > 0))] : [];
+  const prefs: DocHubPrefs = raw.theme === 'dark' || raw.theme === 'light' ? { theme: raw.theme, style } : { style };
+  return atlasPinned.length ? { ...prefs, atlasPinned } : prefs;
 }
 /** 生效明暗：用户显式选择优先，否则跟随 Obsidian 当前明暗。 */
 export function effectiveTheme(prefs: DocHubPrefs, obsidian: DocHubTheme): DocHubTheme { return prefs.theme ?? obsidian; }

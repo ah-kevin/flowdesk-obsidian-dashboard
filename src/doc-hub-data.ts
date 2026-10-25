@@ -1,9 +1,9 @@
 // 文档中心纯函数数据层：不依赖 Obsidian 运行时，便于隔离测试。
-export type DocHubKind = 'doc' | 'plan' | 'research';
+export type DocHubKind = 'doc' | 'plan' | 'research' | 'atlas';
 export type DocHubTab = 'recent' | 'project' | 'pinned';
 export type Frontmatter = Record<string, unknown>;
 
-export const DOC_HUB_KIND_LABELS: Record<DocHubKind, string> = { doc: '文档', plan: '方案', research: '调研' };
+export const DOC_HUB_KIND_LABELS: Record<DocHubKind, string> = { doc: '文档', plan: '方案', research: '调研', atlas: '图集' };
 export const DOC_HUB_FOLDERS: Record<string, DocHubKind> = { 'Notes/Docs': 'doc', 'Notes/Plans': 'plan', 'Notes/Research': 'research' };
 export const UNLINKED_PROJECT = '未关联项目';
 export const HIDDEN_STATUSES = new Set(['superseded', 'archived']);
@@ -19,6 +19,8 @@ export interface DocHubDoc {
   pinned: boolean;
   reviewedAt: number | null;
   summary: string;
+  /** 图集卡（Archify 页面合集）：不是 Markdown，用浏览器打开；pages 供卡内逐页打开与内容搜索。 */
+  atlas?: { collection: string; documentPath: string | null; entryPath: string | null; pages: Array<{ title: string; path: string; haystack: string }>; searchText: string };
 }
 /** project 缺省或 undefined 表示全部项目；取值与 `groupByProject` 的组名一致（含“未关联项目”）。 */
 export interface DocHubFilter { kind: DocHubKind | 'all'; query: string; showSuperseded: boolean; project?: string }
@@ -90,13 +92,21 @@ export function buildDoc(path: string, basename: string, mtime: number, meta: Fr
   return { path, title, kind, status, projects: projectsOf(fm), mtime, pinned: fm.pinned === true, reviewedAt: parseReviewed(fm.reviewed), summary };
 }
 
+/** 图集卡：路径指向统一入口（没有则第一页）；不参与置顶/回看，也没有状态。 */
+export function buildAtlasDoc(c: { collection: string; project: string; title: string; documentPath?: string | null; entryPath: string | null; pages: Array<{ title: string; path: string; haystack: string }>; mtime: number; searchText: string }): DocHubDoc {
+  return {
+    path: c.entryPath ?? c.pages[0]?.path ?? c.collection, title: c.title, kind: 'atlas', status: '', projects: c.project === UNLINKED_PROJECT ? [] : [c.project],
+    mtime: c.mtime, pinned: false, reviewedAt: null, summary: '', atlas: { collection: c.collection, documentPath: c.documentPath ?? null, entryPath: c.entryPath, pages: c.pages, searchText: c.searchText },
+  };
+}
+
 export function isHidden(doc: DocHubDoc): boolean { return HIDDEN_STATUSES.has(doc.status.toLowerCase()); }
 
 export function filterDocs(docs: DocHubDoc[], filter: DocHubFilter): DocHubDoc[] {
   const query = filter.query.trim().toLowerCase();
   return docs.filter(doc => (filter.showSuperseded || !isHidden(doc)) && (filter.kind === 'all' || doc.kind === filter.kind)
     && (!filter.project || (doc.projects.length ? doc.projects : [UNLINKED_PROJECT]).includes(filter.project))
-    && (!query || `${doc.title} ${doc.summary} ${doc.projects.join(' ')} ${doc.path}`.toLowerCase().includes(query)));
+    && (!query || `${doc.title} ${doc.summary} ${doc.projects.join(' ')} ${doc.path}`.toLowerCase().includes(query) || !!doc.atlas?.searchText.includes(query)));
 }
 
 const DAY = 86400000;

@@ -9,9 +9,9 @@ var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { en
 var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
+var __export = (target, all2) => {
+  for (var name in all2)
+    __defProp(target, name, { get: all2[name], enumerable: true });
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
@@ -124,7 +124,7 @@ var require_punycode = __commonJS({
       }
       return floor(k + (baseMinusTMin + 1) * delta / (delta + skew));
     };
-    var decode2 = function(input) {
+    var decode3 = function(input) {
       const output = [];
       const inputLength = input.length;
       let i = 0;
@@ -236,7 +236,7 @@ var require_punycode = __commonJS({
     };
     var toUnicode = function(input) {
       return mapDomain(input, function(string2) {
-        return regexPunycode.test(string2) ? decode2(string2.slice(4).toLowerCase()) : string2;
+        return regexPunycode.test(string2) ? decode3(string2.slice(4).toLowerCase()) : string2;
       });
     };
     var toASCII = function(input) {
@@ -262,7 +262,7 @@ var require_punycode = __commonJS({
         "decode": ucs2decode,
         "encode": ucs2encode
       },
-      "decode": decode2,
+      "decode": decode3,
       "encode": encode2,
       "toASCII": toASCII,
       "toUnicode": toUnicode
@@ -278,7 +278,7 @@ __export(main_exports, {
   default: () => FlowDeskDashboardPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian4 = require("obsidian");
+var import_obsidian5 = require("obsidian");
 var import_child_process3 = require("child_process");
 
 // src/tasknotes-auth.ts
@@ -2045,8 +2045,8 @@ var TaskContentRenderer = class {
       const markdown = (text3, element) => {
         void this.dependencies.renderMarkdown(text3, element, content.taskId).catch(() => fdSetText(element, text3));
       };
-      const all = disclosure(section2, `\u67E5\u770B\u5168\u90E8\u8FDB\u5EA6\u8BB0\u5F55\uFF08${progress.events.length} \u6761\uFF09`, "all-progress", "flowdesk-log-all");
-      const full = fdCreateDiv(all, { cls: "flowdesk-log-full", attr: { "data-reading-scroll-key": "progress-history", role: "region", "aria-label": "\u5B8C\u6574\u8FDB\u5EA6\u8BB0\u5F55", tabindex: "0" } });
+      const all2 = disclosure(section2, `\u67E5\u770B\u5168\u90E8\u8FDB\u5EA6\u8BB0\u5F55\uFF08${progress.events.length} \u6761\uFF09`, "all-progress", "flowdesk-log-all");
+      const full = fdCreateDiv(all2, { cls: "flowdesk-log-full", attr: { "data-reading-scroll-key": "progress-history", role: "region", "aria-label": "\u5B8C\u6574\u8FDB\u5EA6\u8BB0\u5F55", tabindex: "0" } });
       const entries = fdCreateDiv(full, { cls: "flowdesk-log-full-entries" });
       const more = fdCreateEl(full, "button", { cls: "flowdesk-log-more", attr: { "data-focus-key": "progress-history-more" } });
       let shown = 0, busy = false, loading;
@@ -2067,7 +2067,7 @@ var TaskContentRenderer = class {
         fdSetAttr(full, "data-reading-items", String(shown));
         busy = true;
         more.disabled = true;
-        caption(all.open);
+        caption(all2.open);
         fdSetText(more, `\u52A0\u8F7D\u66F4\u65E9\u8BB0\u5F55\uFF08\u5269\u4F59 ${progress.events.length - shown} \u6761\uFF09`);
         more.hidden = shown === progress.events.length;
         const render = (async () => {
@@ -2095,7 +2095,7 @@ var TaskContentRenderer = class {
       more.addEventListener("click", () => load(shown + 12));
       const recent = fdCreateDiv(section2, { cls: "flowdesk-log-recent" });
       renderProgressEvents(recent, progress.events.slice(-3), markdown, false);
-      bindProgressDisclosure(all, all.querySelectorAll("summary")[0], recent, full, progress.events.length, { signal: this.dependencies.signal, ensureHistory: () => load(), onChange: caption });
+      bindProgressDisclosure(all2, all2.querySelectorAll("summary")[0], recent, full, progress.events.length, { signal: this.dependencies.signal, ensureHistory: () => load(), onChange: caption });
     }
     const remaining = reading.sections.filter((item) => item.section !== (progress == null ? void 0 : progress.section));
     if (!remaining.length)
@@ -3156,7 +3156,7 @@ var CaseReferenceList = class {
     for (const item of value.slice(-this.capacity)) {
       if (!item || typeof item !== "object" || typeof item.casePath !== "string" || !item.casePath || item.casePath.length > 4096)
         continue;
-      const open2 = /* @__PURE__ */ new Map(), all = /* @__PURE__ */ new Set();
+      const open2 = /* @__PURE__ */ new Map(), all2 = /* @__PURE__ */ new Set();
       if (Array.isArray(item.open)) {
         for (const pair of item.open.slice(0, 32))
           if (Array.isArray(pair) && typeof pair[0] === "string" && typeof pair[1] === "boolean")
@@ -3165,9 +3165,9 @@ var CaseReferenceList = class {
       if (Array.isArray(item.all)) {
         for (const group of item.all.slice(0, 32))
           if (typeof group === "string")
-            all.add(group);
+            all2.add(group);
       }
-      this.choices.set(item.casePath, { query: typeof item.query === "string" ? item.query.slice(0, 4096) : "", open: open2, all });
+      this.choices.set(item.casePath, { query: typeof item.query === "string" ? item.query.slice(0, 4096) : "", open: open2, all: all2 });
     }
   }
   render(container, casePath, groups, dependencies) {
@@ -5956,10 +5956,10 @@ var LinkifyIt = class {
 // node_modules/markdown-it/dist/markdown-it.mjs
 var import_punycode = __toESM(require_punycode(), 1);
 var __defProp2 = Object.defineProperty;
-var __exportAll = (all, no_symbols) => {
+var __exportAll = (all2, no_symbols) => {
   let target = {};
-  for (var name in all) __defProp2(target, name, {
-    get: all[name],
+  for (var name in all2) __defProp2(target, name, {
+    get: all2[name],
     enumerable: true
   });
   if (!no_symbols) __defProp2(target, Symbol.toStringTag, { value: "Module" });
@@ -9765,12 +9765,139 @@ var RepositoryReaderView = class extends import_obsidian2.ItemView {
 };
 
 // src/doc-hub-view.ts
+var import_obsidian4 = require("obsidian");
+
+// src/atlas-index.ts
 var import_obsidian3 = require("obsidian");
 
-// src/doc-hub-data.ts
-var DOC_HUB_KIND_LABELS = { doc: "\u6587\u6863", plan: "\u65B9\u6848", research: "\u8C03\u7814" };
-var DOC_HUB_FOLDERS = { "Notes/Docs": "doc", "Notes/Plans": "plan", "Notes/Research": "research" };
+// src/atlas-data.ts
 var UNLINKED_PROJECT = "\u672A\u5173\u8054\u9879\u76EE";
+var ATLAS_ROOT = "Attachments/archify";
+var EXCLUDED_DIRS = /* @__PURE__ */ new Set([".meta", "tmp", "reference", "source"]);
+var TEXT_LIMIT = 24e3;
+var CHROME_PREFIX = /^(正在检查已编译语义|没有匹配的节点|最多选择两种|选择一种类型|语义雷达需要|跳至正文)/;
+var CHROME_LABEL = /* @__PURE__ */ new Set(["\u7CFB\u7EDF", "\u6D45\u8272", "\u6DF1\u8272", "\u98CE\u683C", "\u89C6\u89C9\u8868\u8FBE", "S \u5FAA\u73AF\u5207\u6362", "\u5BFC\u51FA", "\u5206\u4EAB", "\u590D\u5236", "\u56FE\u50CF", "\u52A8\u6001", "\u6F14\u793A", "\u7ECF\u5178", "\u4FE1\u53F7\u6D41", "\u84DD\u56FE", "\u7F16\u8F91", "\u7B80\u6D01", "\u6742\u5FD7", "\u4EA7\u54C1", "\u7F51\u683C", "\u957F\u56FE", "\u6253\u5370 / PDF", "PNG", "JPEG", "JPG", "WebP", "SVG"]);
+var isChrome = (text3) => CHROME_LABEL.has(text3) || CHROME_PREFIX.test(text3);
+function collectionOf(path9) {
+  if (!path9.startsWith(`${ATLAS_ROOT}/`) || !path9.toLowerCase().endsWith(".html")) return null;
+  const parts = path9.slice(ATLAS_ROOT.length + 1).split("/");
+  if (parts.length < 2) return null;
+  if (parts.slice(0, -1).some((part) => EXCLUDED_DIRS.has(part))) return null;
+  if (/\.archify-original\.html$/i.test(path9) || /残留/.test(path9)) return null;
+  return parts[0];
+}
+function isEntryPage(path9) {
+  return /\/index\.html$/i.test(path9) && path9.split("/").length === ATLAS_ROOT.split("/").length + 2;
+}
+var ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+function decode2(text3) {
+  return text3.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, code2) => {
+    var _a;
+    if (code2[0] === "#") {
+      const value = code2[1].toLowerCase() === "x" ? parseInt(code2.slice(2), 16) : parseInt(code2.slice(1), 10);
+      return Number.isFinite(value) && value > 0 && value < 1114112 ? String.fromCodePoint(value) : whole;
+    }
+    return (_a = ENTITIES[code2.toLowerCase()]) != null ? _a : whole;
+  });
+}
+var clean = (raw) => decode2(raw.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+function all(html, pattern, group) {
+  const found = [];
+  for (const match of html.matchAll(pattern)) {
+    const text3 = clean(match[group]);
+    if (text3 && !isChrome(text3)) found.push(text3);
+  }
+  return found;
+}
+function extractPage(html) {
+  var _a, _b, _c, _d;
+  const body = html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ");
+  const title = clean((_b = (_a = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(body)) == null ? void 0 : _a[1]) != null ? _b : "") || clean((_d = (_c = /<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(body)) == null ? void 0 : _c[1]) != null ? _d : "");
+  const headings = [...new Set(all(body, /<h([1-4])\b[^>]*>([\s\S]*?)<\/h\1>/gi, 2))].filter((item) => item !== title);
+  const pieces = [...all(body, /<(p|li|td|th)\b[^>]*>([\s\S]*?)<\/\1>/gi, 2), ...all(body, /<text\b[^>]*>([\s\S]*?)<\/text>/gi, 1)];
+  return { title, headings, text: [...new Set(pieces)].join(" \xB7 ").slice(0, TEXT_LIMIT) };
+}
+function buildEntry(path9, html, mtime, project) {
+  const collection = collectionOf(path9);
+  if (!collection) return null;
+  const page = extractPage(html);
+  const name = path9.split("/").pop().replace(/\.html$/i, "");
+  return { path: path9, collection, project, title: page.title || name, headings: page.headings, text: page.text, isEntry: isEntryPage(path9), mtime };
+}
+function projectByPrefix(collection, projectNames) {
+  const key = collection.toLowerCase();
+  const hit = [...projectNames].sort((a, b) => b.length - a.length).find((name) => key.startsWith(name.toLowerCase()));
+  return hit != null ? hit : null;
+}
+function resolveProject(collection, docProjects, projectNames) {
+  var _a, _b;
+  return (_b = (_a = docProjects[0]) != null ? _a : projectByPrefix(collection, projectNames)) != null ? _b : UNLINKED_PROJECT;
+}
+function manifestDocumentPath(manifest) {
+  var _a, _b;
+  const root = manifest;
+  if (typeof ((_a = root == null ? void 0 : root.document) == null ? void 0 : _a.path) === "string") return root.document.path;
+  for (const item of (_b = root == null ? void 0 : root.artifacts) != null ? _b : []) {
+    const doc = item == null ? void 0 : item.document;
+    if (typeof doc === "string") return doc;
+    if (typeof (doc == null ? void 0 : doc.path) === "string") return doc.path;
+  }
+  return null;
+}
+function groupCollections(entries, docs = {}) {
+  var _a, _b, _c, _d, _e;
+  const byCollection = /* @__PURE__ */ new Map();
+  for (const entry of entries) byCollection.set(entry.collection, [...(_a = byCollection.get(entry.collection)) != null ? _a : [], entry]);
+  const result = [];
+  for (const [collection, list2] of byCollection) {
+    const entry = list2.find((item) => item.isEntry);
+    const pages = list2.filter((item) => !item.isEntry).sort((a, b) => a.path.localeCompare(b.path, "zh", { numeric: true })).map((item) => ({ title: item.title, path: item.path, haystack: [item.title, ...item.headings, item.text].join(" ").toLowerCase() }));
+    if (!pages.length) continue;
+    result.push({
+      collection,
+      project: list2[0].project,
+      title: (entry == null ? void 0 : entry.title) || ((_b = docs[collection]) == null ? void 0 : _b.title) || collection,
+      documentPath: (_d = (_c = docs[collection]) == null ? void 0 : _c.path) != null ? _d : null,
+      entryPath: (_e = entry == null ? void 0 : entry.path) != null ? _e : null,
+      pages,
+      mtime: Math.max(...list2.map((item) => item.mtime)),
+      searchText: `${collection} ${pages.map((page) => page.haystack).join(" ")}`.toLowerCase()
+    });
+  }
+  return result;
+}
+function pageMatches(page, query) {
+  const needle = query.trim().toLowerCase();
+  return !!needle && page.haystack.includes(needle);
+}
+function buildAtlasPrompt(c) {
+  const dir = `${ATLAS_ROOT}/${c.collection}`;
+  const pages = c.pages.map((page, index) => `${index + 1}. ${page.title}\uFF08${page.path}\uFF09`).join("\n");
+  const lines = [
+    "/flow-desk:visual-doc \u8BF7\u8BC4\u4F30\u5E76\u4F18\u5316\u4E0B\u9762\u8FD9\u4E2A Archify \u56FE\u96C6\u7684\u9605\u8BFB\u7EC4\u7EC7\u65B9\u5F0F\u3002",
+    "",
+    `\u56FE\u96C6\uFF1A${c.title}`,
+    `\u76EE\u5F55\uFF1A${dir}`,
+    `\u9879\u76EE\uFF1A${c.project}`,
+    `\u6E05\u5355\uFF1A${dir}/artifacts.json`,
+    c.documentPath ? `\u4E3B\u6587\u6863\uFF1A${c.documentPath}` : "\u4E3B\u6587\u6863\uFF1A\uFF08\u6E05\u5355\u91CC\u6CA1\u6709\uFF0C\u8BF7\u5148\u786E\u8BA4\u5BF9\u5E94\u7684\u6587\u6863\uFF09",
+    c.entryPath ? `\u73B0\u6709\u603B\u89C8\u9875\uFF1A${c.entryPath}` : "\u73B0\u6709\u603B\u89C8\u9875\uFF1A\u65E0\uFF08\u5404\u9875\u5355\u72EC\u9605\u8BFB\uFF09",
+    "",
+    `\u73B0\u6709\u9875\u9762\uFF08${c.pages.length} \u9875\uFF09\uFF1A`,
+    pages,
+    "",
+    "\u8981\u6C42\uFF1A",
+    c.entryPath ? "- \u5148\u770B\u73B0\u6709\u603B\u89C8\u9875\u662F\u5426\u5DF2\u7ECF\u591F\u7528\uFF1B\u662F\u6807\u51C6\u6A21\u677F\u624D\u53EF\u4EE5\u5237\u65B0\uFF0C\u6709\u624B\u5DE5\u5B9A\u5236\u5C31\u4FDD\u7559\uFF0C\u53EA\u63D0\u51FA\u53EF\u6539\u4E4B\u5904\uFF0C\u4E0D\u8981\u8986\u76D6\u3002" : "- \u5148\u5224\u65AD\u8FD9\u4E9B\u9875\u9762\u662F\u5426\u9700\u8981\u4E00\u4E2A\u603B\u89C8\u9875\uFF1A\u5404\u9875\u72EC\u7ACB\u9605\u8BFB\u66F4\u5408\u9002\u5C31\u4FDD\u6301\u73B0\u72B6\u5E76\u8BF4\u660E\u7406\u7531\uFF1B\u9700\u8981\u7684\u8BDD\u518D\u63D0\u51FA\u5206\u7EC4\u4E0E\u547D\u540D\uFF0C\u6211\u786E\u8BA4\u540E\u518D\u751F\u6210\u3002",
+    "- \u5148\u8BFB\u4E3B\u6587\u6863\u548C\u5404\u9875\u6807\u9898\u518D\u63D0\u65B9\u6848\uFF1B\u590D\u7528\u73B0\u6709\u9875\u9762\uFF0C\u4E0D\u91CD\u753B\u3001\u4E0D\u91CD\u65B0\u751F\u6210\u56FE\uFF0C\u53EA\u8C03\u6574\u5BFC\u822A\u4E0E\u7EC4\u7EC7\u3002",
+    "- \u5DF2\u6709 HTML \u4E0D\u5F97\u8986\u76D6\uFF1B\u5B8C\u6210\u540E\u505A\u767B\u8BB0\u4E0E\u68C0\u67E5\u5E76\u544A\u8BC9\u6211\u7ED3\u679C\uFF1B\u4E0D\u8981\u53D1\u5E03\u5230 OBS\u3002"
+  ];
+  return lines.join("\n");
+}
+
+// src/doc-hub-data.ts
+var DOC_HUB_KIND_LABELS = { doc: "\u6587\u6863", plan: "\u65B9\u6848", research: "\u8C03\u7814", atlas: "\u56FE\u96C6" };
+var DOC_HUB_FOLDERS = { "Notes/Docs": "doc", "Notes/Plans": "plan", "Notes/Research": "research" };
+var UNLINKED_PROJECT2 = "\u672A\u5173\u8054\u9879\u76EE";
 var HIDDEN_STATUSES = /* @__PURE__ */ new Set(["superseded", "archived"]);
 var SUMMARY_LIMIT = 90;
 function kindOfPath(path9) {
@@ -9830,12 +9957,30 @@ function buildDoc(path9, basename3, mtime, meta, summary) {
   const status = fm.status === void 0 || fm.status === null ? "" : String(fm.status).trim();
   return { path: path9, title, kind, status, projects: projectsOf(fm), mtime, pinned: fm.pinned === true, reviewedAt: parseReviewed(fm.reviewed), summary };
 }
+function buildAtlasDoc(c) {
+  var _a, _b, _c, _d;
+  return {
+    path: (_c = (_b = c.entryPath) != null ? _b : (_a = c.pages[0]) == null ? void 0 : _a.path) != null ? _c : c.collection,
+    title: c.title,
+    kind: "atlas",
+    status: "",
+    projects: c.project === UNLINKED_PROJECT2 ? [] : [c.project],
+    mtime: c.mtime,
+    pinned: false,
+    reviewedAt: null,
+    summary: "",
+    atlas: { collection: c.collection, documentPath: (_d = c.documentPath) != null ? _d : null, entryPath: c.entryPath, pages: c.pages, searchText: c.searchText }
+  };
+}
 function isHidden(doc) {
   return HIDDEN_STATUSES.has(doc.status.toLowerCase());
 }
 function filterDocs(docs, filter) {
   const query = filter.query.trim().toLowerCase();
-  return docs.filter((doc) => (filter.showSuperseded || !isHidden(doc)) && (filter.kind === "all" || doc.kind === filter.kind) && (!filter.project || (doc.projects.length ? doc.projects : [UNLINKED_PROJECT]).includes(filter.project)) && (!query || `${doc.title} ${doc.summary} ${doc.projects.join(" ")} ${doc.path}`.toLowerCase().includes(query)));
+  return docs.filter((doc) => {
+    var _a;
+    return (filter.showSuperseded || !isHidden(doc)) && (filter.kind === "all" || doc.kind === filter.kind) && (!filter.project || (doc.projects.length ? doc.projects : [UNLINKED_PROJECT2]).includes(filter.project)) && (!query || `${doc.title} ${doc.summary} ${doc.projects.join(" ")} ${doc.path}`.toLowerCase().includes(query) || !!((_a = doc.atlas) == null ? void 0 : _a.searchText.includes(query)));
+  });
 }
 var DAY = 864e5;
 function groupRecent(docs, now) {
@@ -9850,11 +9995,11 @@ function groupRecent(docs, now) {
 function groupByProject(docs) {
   var _a;
   const map = /* @__PURE__ */ new Map();
-  for (const doc of docs) for (const name of doc.projects.length ? doc.projects : [UNLINKED_PROJECT]) map.set(name, [...(_a = map.get(name)) != null ? _a : [], doc]);
+  for (const doc of docs) for (const name of doc.projects.length ? doc.projects : [UNLINKED_PROJECT2]) map.set(name, [...(_a = map.get(name)) != null ? _a : [], doc]);
   return [...map.entries()].map(([name, list2]) => {
     const sorted = [...list2].sort((a, b) => b.mtime - a.mtime);
     return { name, docs: sorted, latest: sorted[0].mtime };
-  }).sort((a, b) => Number(a.name === UNLINKED_PROJECT) - Number(b.name === UNLINKED_PROJECT) || b.docs.length - a.docs.length || b.latest - a.latest || a.name.localeCompare(b.name));
+  }).sort((a, b) => Number(a.name === UNLINKED_PROJECT2) - Number(b.name === UNLINKED_PROJECT2) || b.docs.length - a.docs.length || b.latest - a.latest || a.name.localeCompare(b.name));
 }
 function pinnedDocs(docs) {
   return docs.filter((doc) => doc.pinned).sort((a, b) => {
@@ -9907,6 +10052,168 @@ function resolveKey(key, typing, modified) {
   return null;
 }
 
+// src/atlas-index.ts
+var SKIP_DIRS = /* @__PURE__ */ new Set([".meta", "tmp", "reference", "source"]);
+var REFERENCE_LIST_CAP = 8;
+var AtlasIndex = class {
+  constructor() {
+    this.pages = /* @__PURE__ */ new Map();
+  }
+  async load(app) {
+    var _a, _b;
+    const adapter = app.vault.adapter;
+    if (!await adapter.exists(ATLAS_ROOT)) return [];
+    const paths = [];
+    const walk = async (dir) => {
+      var _a2;
+      const listing = await adapter.list(dir);
+      for (const file of listing.files) if (collectionOf(file)) paths.push(file);
+      for (const folder of listing.folders) if (!SKIP_DIRS.has((_a2 = folder.split("/").pop()) != null ? _a2 : "")) await walk(folder);
+    };
+    await walk(ATLAS_ROOT);
+    const projectNames = this.projectNames(app);
+    const context = /* @__PURE__ */ new Map();
+    const entries = [];
+    for (const path9 of paths) {
+      const collection = collectionOf(path9);
+      if (!context.has(collection)) context.set(collection, await this.contextFor(app, collection, projectNames));
+      const { project } = context.get(collection);
+      const mtime = (_b = (_a = await adapter.stat(path9)) == null ? void 0 : _a.mtime) != null ? _b : 0;
+      let cached = this.pages.get(path9);
+      if (!cached || cached.mtime !== mtime) {
+        const entry = buildEntry(path9, await adapter.read(path9), mtime, project);
+        if (!entry) continue;
+        cached = { mtime, entry };
+        this.pages.set(path9, cached);
+      }
+      cached.entry.project = project;
+      entries.push(cached.entry);
+    }
+    const alive = new Set(paths);
+    for (const path9 of [...this.pages.keys()]) if (!alive.has(path9)) this.pages.delete(path9);
+    const docs = {};
+    for (const [collection, value] of context) if (value.doc) docs[collection] = value.doc;
+    return groupCollections(entries, docs);
+  }
+  projectNames(app) {
+    const folder = app.vault.getAbstractFileByPath("Notes/Projects");
+    return folder instanceof import_obsidian3.TFolder ? folder.children.filter((child) => child instanceof import_obsidian3.TFile && child.extension === "md").map((file) => file.basename) : [];
+  }
+  /** 项目与标题都取自 artifacts.json 指向的主文档；清单缺失或不可读时只按目录前缀兜底，不阻断。 */
+  async contextFor(app, collection, projectNames) {
+    var _a;
+    let docProjects = [];
+    let doc = null;
+    try {
+      const manifestPath = `${ATLAS_ROOT}/${collection}/artifacts.json`;
+      if (await app.vault.adapter.exists(manifestPath)) {
+        const docPath = manifestDocumentPath(JSON.parse(await app.vault.adapter.read(manifestPath)));
+        const file = docPath ? app.vault.getAbstractFileByPath(docPath) : null;
+        if (file instanceof import_obsidian3.TFile) {
+          const meta = (_a = app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
+          if (meta) docProjects = projectsOf(meta);
+          doc = { title: typeof (meta == null ? void 0 : meta.title) === "string" && meta.title.trim() ? meta.title.trim() : file.basename, path: file.path };
+        }
+      }
+    } catch (e) {
+    }
+    return { project: resolveProject(collection, docProjects, projectNames), doc };
+  }
+};
+function openInBrowser(app, vaultPath) {
+  const adapter = app.vault.adapter;
+  if (!(adapter instanceof import_obsidian3.FileSystemAdapter)) {
+    new import_obsidian3.Notice("\u4EC5\u684C\u9762\u7AEF\u652F\u6301\u7528\u6D4F\u89C8\u5668\u6253\u5F00");
+    return;
+  }
+  const absolute = `${adapter.getBasePath()}/${vaultPath}`;
+  try {
+    const { shell } = window.require("electron");
+    void shell.openPath(absolute).then((error) => {
+      if (error) new import_obsidian3.Notice(`\u6253\u5F00\u5931\u8D25\uFF1A${error}`);
+    });
+  } catch (e) {
+    new import_obsidian3.Notice(`\u65E0\u6CD5\u8C03\u7528\u7CFB\u7EDF\u6253\u5F00\uFF1A${absolute}`);
+  }
+}
+async function describeCollection(app, collection) {
+  const adapter = app.vault.adapter;
+  let files = 0, bytes = 0;
+  const walk = async (dir) => {
+    var _a, _b;
+    const listing = await adapter.list(dir);
+    for (const file of listing.files) {
+      files++;
+      bytes += (_b = (_a = await adapter.stat(file)) == null ? void 0 : _a.size) != null ? _b : 0;
+    }
+    for (const folder of listing.folders) await walk(folder);
+  };
+  await walk(`${ATLAS_ROOT}/${collection}`);
+  const needle = `archify/${collection}`;
+  const references = [];
+  for (const file of app.vault.getMarkdownFiles()) {
+    if (file.path.startsWith(`${ATLAS_ROOT}/`)) continue;
+    if ((await app.vault.cachedRead(file)).includes(needle)) references.push(file.path);
+  }
+  return { files, bytes, references };
+}
+var sizeText = (bytes) => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+var ConfirmTrashModal = class extends import_obsidian3.Modal {
+  constructor(app, title, collection, info, onConfirm) {
+    super(app);
+    this.title = title;
+    this.collection = collection;
+    this.info = info;
+    this.onConfirm = onConfirm;
+  }
+  onOpen() {
+    const { contentEl, info } = this;
+    this.setTitle("\u5220\u9664\u56FE\u96C6");
+    contentEl.createEl("p", { text: `\u5C06\u300C${this.title}\u300D\u6574\u4E2A\u76EE\u5F55\u79FB\u5230\u5E9F\u7EB8\u7BD3\uFF1A${ATLAS_ROOT}/${this.collection}\uFF08${info.files} \u4E2A\u6587\u4EF6\uFF0C${sizeText(info.bytes)}\uFF09\u3002` });
+    contentEl.createEl("p", { cls: "mod-warning", text: "\u5305\u542B\u9875\u9762\u3001\u6E90\u7A3F\u3001\u56DE\u6267\u548C artifacts.json \u6E05\u5355\uFF1B\u79FB\u5230\u7CFB\u7EDF\u5E9F\u7EB8\u7BD3\uFF0C\u53EF\u4ECE\u5E9F\u7EB8\u7BD3\u8FD8\u539F\u3002" });
+    if (info.references.length) {
+      contentEl.createEl("p", { text: `\u4ECD\u6709 ${info.references.length} \u7BC7\u6587\u6863\u5F15\u7528\u5B83\uFF0C\u5220\u9664\u540E\u8FD9\u4E9B\u6587\u6863\u91CC\u7684\u56FE\u4F1A\u6253\u4E0D\u5F00\uFF1A` });
+      const list2 = contentEl.createEl("ul");
+      for (const path9 of info.references.slice(0, REFERENCE_LIST_CAP)) list2.createEl("li", { text: path9 });
+      if (info.references.length > REFERENCE_LIST_CAP) list2.createEl("li", { text: `\u2026\u53E6\u6709 ${info.references.length - REFERENCE_LIST_CAP} \u7BC7` });
+    }
+    const buttons = contentEl.createDiv({ cls: "modal-button-container" });
+    buttons.createEl("button", { cls: "mod-warning", text: "\u79FB\u5230\u5E9F\u7EB8\u7BD3" }).addEventListener("click", () => {
+      this.onConfirm();
+      this.close();
+    });
+    buttons.createEl("button", { text: "\u53D6\u6D88" }).addEventListener("click", () => this.close());
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+async function confirmAndTrashCollection(app, collection, title) {
+  const info = await describeCollection(app, collection);
+  const confirmed = await new Promise((resolve6) => {
+    let accepted = false;
+    const modal = new ConfirmTrashModal(app, title, collection, info, () => {
+      accepted = true;
+    });
+    const close = modal.onClose.bind(modal);
+    modal.onClose = () => {
+      close();
+      resolve6(accepted);
+    };
+    modal.open();
+  });
+  if (!confirmed) return false;
+  const dir = `${ATLAS_ROOT}/${collection}`;
+  const adapter = app.vault.adapter;
+  let moved = await adapter.trashSystem(dir);
+  if (!moved) {
+    await adapter.trashLocal(dir);
+    moved = !await adapter.exists(dir);
+  }
+  if (!moved) throw new Error("\u672A\u80FD\u79FB\u5230\u5E9F\u7EB8\u7BD3");
+  return true;
+}
+
 // src/doc-hub-style.ts
 var DOC_HUB_STYLES = [
   { id: "classic", label: "\u7ECF\u5178", hint: "\u7A33\u5B9A\u7684\u6280\u672F\u9ED8\u8BA4\u98CE\u683C" },
@@ -9918,7 +10225,9 @@ function normalizePrefs(value) {
   var _a, _b;
   const raw = value != null ? value : {};
   const style = (_b = (_a = DOC_HUB_STYLES.find((item) => item.id === raw.style)) == null ? void 0 : _a.id) != null ? _b : "classic";
-  return raw.theme === "dark" || raw.theme === "light" ? { theme: raw.theme, style } : { style };
+  const atlasPinned = Array.isArray(raw.atlasPinned) ? [...new Set(raw.atlasPinned.filter((item) => typeof item === "string" && item.length > 0))] : [];
+  const prefs = raw.theme === "dark" || raw.theme === "light" ? { theme: raw.theme, style } : { style };
+  return atlasPinned.length ? { ...prefs, atlasPinned } : prefs;
 }
 function effectiveTheme(prefs, obsidian) {
   var _a;
@@ -9949,7 +10258,7 @@ async function openDocHub(workspace) {
   if (!existing) await leaf.setViewState({ type: DOC_HUB_VIEW_TYPE, active: true });
   await workspace.revealLeaf(leaf);
 }
-var DocHubView = class extends import_obsidian3.ItemView {
+var DocHubView = class extends import_obsidian4.ItemView {
   constructor(leaf, host) {
     super(leaf);
     this.host = host;
@@ -9964,6 +10273,7 @@ var DocHubView = class extends import_obsidian3.ItemView {
     this.timer = null;
     this.hoverTimer = null;
     this.closed = false;
+    this.atlasIndex = new AtlasIndex();
     this.processor = (file, mutate) => this.app.fileManager.processFrontMatter(file, mutate);
     this.prefs = normalizePrefs(host.prefs());
   }
@@ -9980,7 +10290,7 @@ var DocHubView = class extends import_obsidian3.ItemView {
     this.closed = false;
     this.buildShell();
     const touch = (path9) => {
-      if (kindOfPath(path9)) this.scheduleReload();
+      if (kindOfPath(path9) || path9.startsWith("Attachments/archify/")) this.scheduleReload();
     };
     this.registerEvent(this.app.metadataCache.on("changed", (file) => touch(file.path)));
     this.registerEvent(this.app.vault.on("create", (file) => touch(file.path)));
@@ -9990,6 +10300,9 @@ var DocHubView = class extends import_obsidian3.ItemView {
       touch(oldPath);
     }));
     this.registerEvent(this.app.workspace.on("css-change", () => this.syncChrome()));
+    this.registerEvent(this.app.workspace.on("active-leaf-change", (leaf) => {
+      if (leaf === this.leaf) this.scheduleReload();
+    }));
     await this.reload();
   }
   async onClose() {
@@ -10012,15 +10325,23 @@ var DocHubView = class extends import_obsidian3.ItemView {
   }
   /** 实时读取三个目录的顶层 *.md；摘要缺失时读正文，并按 mtime 缓存。 */
   async reload() {
+    var _a;
     const generation = ++this.generation;
     const files = [];
     for (const folder of Object.keys(DOC_HUB_FOLDERS)) {
       const dir = this.app.vault.getAbstractFileByPath(folder);
-      if (dir instanceof import_obsidian3.TFolder) {
-        for (const child of dir.children) if (child instanceof import_obsidian3.TFile && child.extension === "md") files.push(child);
+      if (dir instanceof import_obsidian4.TFolder) {
+        for (const child of dir.children) if (child instanceof import_obsidian4.TFile && child.extension === "md") files.push(child);
       }
     }
     const docs = (await Promise.all(files.map((file) => this.toDoc(file)))).filter((doc) => !!doc);
+    try {
+      docs.push(...(await this.atlasIndex.load(this.app)).map(buildAtlasDoc));
+    } catch (error) {
+      new import_obsidian4.Notice(`\u56FE\u96C6\u8BFB\u53D6\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`);
+    }
+    const atlasPinned = new Set((_a = this.prefs.atlasPinned) != null ? _a : []);
+    for (const doc of docs) if (doc.atlas) doc.pinned = atlasPinned.has(doc.atlas.collection);
     if (this.closed || generation !== this.generation) return;
     this.docs = docs;
     this.renderAll();
@@ -10052,7 +10373,7 @@ var DocHubView = class extends import_obsidian3.ItemView {
     const tabs = tools.createDiv({ cls: "fd-dochub-tabs", attr: { role: "tablist" } });
     const searchBox = tools.createDiv({ cls: "fd-dochub-searchbox" });
     searchBox.createSpan({ cls: "fd-dochub-ticon fd-dochub-search-icon", attr: { "aria-hidden": "true" } });
-    const search = searchBox.createEl("input", { cls: "fd-dochub-search", attr: { type: "search", placeholder: "\u641C\u7D22\u6807\u9898 / \u6458\u8981 / \u9879\u76EE\u2026", "aria-label": "\u641C\u7D22\u6587\u6863", "aria-keyshortcuts": "/", spellcheck: "false" } });
+    const search = searchBox.createEl("input", { cls: "fd-dochub-search", attr: { type: "search", placeholder: "\u641C\u7D22\u6807\u9898 / \u6458\u8981 / \u9879\u76EE / \u56FE\u96C6\u5185\u5BB9\u2026", "aria-label": "\u641C\u7D22\u6587\u6863", "aria-keyshortcuts": "/", spellcheck: "false" } });
     searchBox.createEl("kbd", { cls: "fd-dochub-search-kbd", text: "/", attr: { "aria-hidden": "true" } });
     const clear = searchBox.createEl("button", { cls: "fd-dochub-search-clear", attr: { type: "button", title: "\u6E05\u9664\u641C\u7D22\uFF08Esc\uFF09", "aria-label": "\u6E05\u9664\u641C\u7D22" } });
     clear.createSpan({ cls: "fd-dochub-ticon", attr: { "aria-hidden": "true" } });
@@ -10162,7 +10483,7 @@ var DocHubView = class extends import_obsidian3.ItemView {
   }
   persistPrefs() {
     this.syncChrome();
-    this.host.savePrefs(this.prefs).catch((error) => new import_obsidian3.Notice(`\u6587\u6863\u4E2D\u5FC3\u8BBE\u7F6E\u672A\u80FD\u4FDD\u5B58\uFF1A${error instanceof Error ? error.message : String(error)}`));
+    this.host.savePrefs(this.prefs).catch((error) => new import_obsidian4.Notice(`\u6587\u6863\u4E2D\u5FC3\u8BBE\u7F6E\u672A\u80FD\u4FDD\u5B58\uFF1A${error instanceof Error ? error.message : String(error)}`));
   }
   renderAll() {
     this.syncChrome();
@@ -10309,7 +10630,7 @@ var DocHubView = class extends import_obsidian3.ItemView {
       if (doc.fullscreenElement === this.els.root) await doc.exitFullscreen();
       else await this.els.root.requestFullscreen();
     } catch (error) {
-      new import_obsidian3.Notice(`\u5168\u5C4F\u5207\u6362\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`);
+      new import_obsidian4.Notice(`\u5168\u5C4F\u5207\u6362\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`);
     }
   }
   renderBody() {
@@ -10318,7 +10639,8 @@ var DocHubView = class extends import_obsidian3.ItemView {
     const projects = groupByProject(base);
     if (this.filter.project && !projects.some((group) => group.name === this.filter.project)) this.filter.project = void 0;
     const visible = filterDocs(this.docs, this.filter), hidden = this.docs.filter(isHidden).length;
-    sub.setText(`${this.docs.length} \u4EFD\u6587\u6863 \xB7 Notes/Docs\u3001Plans\u3001Research \xB7 \u5B9E\u65F6\u8BFB\u53D6 frontmatter`);
+    const atlasCount = this.docs.filter((doc) => doc.atlas).length;
+    sub.setText(`${this.docs.length - atlasCount} \u4EFD\u6587\u6863 \xB7 ${atlasCount} \u4E2A\u56FE\u96C6 \xB7 Notes/Docs\u3001Plans\u3001Research\u3001Attachments/archify`);
     tabs.empty();
     const counts = { recent: visible.length, project: groupByProject(visible).length, pinned: visible.filter((doc) => doc.pinned).length };
     for (const [id, label] of TABS) {
@@ -10397,9 +10719,13 @@ var DocHubView = class extends import_obsidian3.ItemView {
     for (const doc of docs) this.renderCard(grid, doc, now, showFreshness);
   }
   renderCard(grid, doc, now, showFreshness) {
+    if (doc.atlas) {
+      this.renderAtlasCard(grid, doc, now);
+      return;
+    }
     const marked = doc.pinned && !showFreshness;
     const card = grid.createDiv({ cls: `fd-dochub-card is-${doc.kind}${isHidden(doc) ? " is-dim" : ""}${marked ? " is-pinned" : ""}`, attr: { role: "link", tabindex: "0", title: doc.path } });
-    if (marked) (0, import_obsidian3.setIcon)(card.createDiv({ cls: "fd-dochub-pinbadge", attr: { "aria-label": "\u5DF2\u7F6E\u9876", title: "\u5DF2\u7F6E\u9876" } }), "pin");
+    if (marked) (0, import_obsidian4.setIcon)(card.createDiv({ cls: "fd-dochub-pinbadge", attr: { "aria-label": "\u5DF2\u7F6E\u9876", title: "\u5DF2\u7F6E\u9876" } }), "pin");
     card.createDiv({ cls: "fd-dochub-title", text: doc.title });
     card.createDiv({ cls: "fd-dochub-desc", text: doc.summary });
     const meta = card.createDiv({ cls: "fd-dochub-meta" });
@@ -10434,6 +10760,95 @@ var DocHubView = class extends import_obsidian3.ItemView {
     card.addEventListener("mouseenter", (event) => this.scheduleHover(card, doc, event));
     card.addEventListener("mouseleave", () => this.cancelHover());
   }
+  /** 图集卡：一个图集一张卡。卡内列出各页，点页面用浏览器打开；有总览页（或只有一页）的卡左下角带标识，点卡片直接打开它。搜索时命中的页排前并高亮。 */
+  renderAtlasCard(grid, doc, now) {
+    var _a;
+    const atlas = doc.atlas;
+    const entry = (_a = atlas.entryPath) != null ? _a : atlas.pages.length === 1 ? atlas.pages[0].path : null;
+    const card = grid.createDiv({ cls: `fd-dochub-card is-atlas${entry ? "" : " is-static"}${doc.pinned ? " is-pinned" : ""}`, attr: entry ? { role: "link", tabindex: "0", title: entry } : { title: doc.title } });
+    if (doc.pinned) (0, import_obsidian4.setIcon)(card.createDiv({ cls: "fd-dochub-pinbadge", attr: { "aria-label": "\u5DF2\u7F6E\u9876", title: "\u5DF2\u7F6E\u9876" } }), "pin");
+    card.createDiv({ cls: "fd-dochub-title", text: doc.title });
+    const query = this.filter.query.trim();
+    const hits = query ? atlas.pages.filter((page) => pageMatches(page, query)) : [];
+    const ordered = [...hits, ...atlas.pages.filter((page) => !hits.includes(page))];
+    const pages = card.createDiv({ cls: "fd-dochub-pages" });
+    for (const page of ordered) {
+      const chip = pages.createEl("button", { cls: `fd-dochub-page${hits.includes(page) ? " is-hit" : ""}`, text: page.title, attr: { type: "button", title: page.path } });
+      chip.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openInBrowser(this.app, page.path);
+      });
+    }
+    const meta = card.createDiv({ cls: "fd-dochub-meta" });
+    if (entry) (0, import_obsidian4.setIcon)(meta.createSpan({ cls: "fd-dochub-entrymark", attr: { "aria-label": "\u70B9\u5361\u7247\u6253\u5F00\u603B\u89C8\u9875", title: "\u70B9\u5361\u7247\u6253\u5F00\u603B\u89C8\u9875" } }), "layout-dashboard");
+    meta.createSpan({ cls: "fd-dochub-pill is-kind", text: DOC_HUB_KIND_LABELS.atlas });
+    for (const name of doc.projects.slice(0, 2)) meta.createSpan({ cls: "fd-dochub-pill is-project", text: name });
+    meta.createSpan({ cls: "fd-dochub-pill", text: `${atlas.pages.length} \u9875` });
+    meta.createSpan({ cls: "fd-dochub-when", text: agoText(doc.mtime, now) });
+    const actions = card.createDiv({ cls: "fd-dochub-actions" });
+    const prompt = actions.createEl("button", { cls: "fd-dochub-action", text: "\u590D\u5236\u63D0\u793A\u8BCD", attr: { type: "button", title: "\u590D\u5236\u7ED9 agent \u7684\u63D0\u793A\u8BCD\uFF1A\u8BC4\u4F30\u5E76\u4F18\u5316\u8FD9\u4E2A\u56FE\u96C6\u7684\u7EC4\u7EC7\u65B9\u5F0F" } });
+    prompt.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void this.copyAtlasPrompt(doc);
+    });
+    const pin = actions.createEl("button", { cls: `fd-dochub-action${doc.pinned ? " is-on" : ""}`, text: doc.pinned ? "\u53D6\u6D88\u7F6E\u9876" : "\u7F6E\u9876", attr: { type: "button", "aria-pressed": String(doc.pinned) } });
+    pin.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.setAtlasPinned(atlas.collection, !doc.pinned);
+    });
+    const remove = actions.createEl("button", { cls: "fd-dochub-action is-danger", text: "\u5220\u9664", attr: { type: "button", title: "\u6574\u4E2A\u56FE\u96C6\u76EE\u5F55\u79FB\u5230\u5E9F\u7EB8\u7BD3\uFF08\u5148\u786E\u8BA4\uFF09" } });
+    remove.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void this.deleteAtlas(doc);
+    });
+    if (entry) {
+      const open2 = (event) => {
+        event.preventDefault();
+        openInBrowser(this.app, entry);
+      };
+      card.addEventListener("click", (event) => {
+        if (!event.target.closest("button")) open2(event);
+      });
+      card.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && event.target === card) {
+          event.stopPropagation();
+          open2(event);
+        }
+      });
+    }
+  }
+  async copyAtlasPrompt(doc) {
+    var _a;
+    const atlas = doc.atlas;
+    try {
+      await navigator.clipboard.writeText(buildAtlasPrompt({ collection: atlas.collection, project: (_a = doc.projects[0]) != null ? _a : "\u672A\u5173\u8054\u9879\u76EE", title: doc.title, documentPath: atlas.documentPath, entryPath: atlas.entryPath, pages: atlas.pages }));
+      new import_obsidian4.Notice("\u63D0\u793A\u8BCD\u5DF2\u590D\u5236\uFF0C\u7C98\u8D34\u7ED9 agent \u5373\u53EF");
+    } catch (error) {
+      new import_obsidian4.Notice(`\u590D\u5236\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  setAtlasPinned(collection, pinned) {
+    var _a, _b;
+    const current = new Set((_a = this.prefs.atlasPinned) != null ? _a : []);
+    if (pinned) current.add(collection);
+    else current.delete(collection);
+    this.prefs = normalizePrefs({ ...this.prefs, atlasPinned: [...current] });
+    for (const doc of this.docs) if (((_b = doc.atlas) == null ? void 0 : _b.collection) === collection) doc.pinned = pinned;
+    this.persistPrefs();
+    this.renderBody();
+  }
+  async deleteAtlas(doc) {
+    var _a;
+    const atlas = doc.atlas;
+    try {
+      if (!await confirmAndTrashCollection(this.app, atlas.collection, doc.title)) return;
+      if ((_a = this.prefs.atlasPinned) == null ? void 0 : _a.includes(atlas.collection)) this.setAtlasPinned(atlas.collection, false);
+      new import_obsidian4.Notice(`\u5DF2\u79FB\u5230\u5E9F\u7EB8\u7BD3\uFF1A${doc.title}`);
+      await this.reload();
+    } catch (error) {
+      new import_obsidian4.Notice(`\u5220\u9664\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
   /** 悬停预览防抖：停留满 HOVER_DELAY 才触发，划过不弹；同一时间只保留一个待触发。 */
   scheduleHover(card, doc, event) {
     this.cancelHover();
@@ -10449,7 +10864,7 @@ var DocHubView = class extends import_obsidian3.ItemView {
   }
   fileOf(doc) {
     const file = this.app.vault.getAbstractFileByPath(doc.path);
-    if (!(file instanceof import_obsidian3.TFile)) throw new Error(`\u672A\u627E\u5230\u6587\u6863\uFF1A${doc.path}`);
+    if (!(file instanceof import_obsidian4.TFile)) throw new Error(`\u672A\u627E\u5230\u6587\u6863\uFF1A${doc.path}`);
     return file;
   }
   /** 写回只经 processFrontMatter；成功后乐观更新本地视图，随后 metadataCache 事件会按真实内容刷新。 */
@@ -10459,7 +10874,7 @@ var DocHubView = class extends import_obsidian3.ItemView {
       apply();
       this.renderBody();
     } catch (error) {
-      new import_obsidian3.Notice(`\u5199\u56DE\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`);
+      new import_obsidian4.Notice(`\u5199\u56DE\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`);
     }
   }
   openDoc(doc, newTab) {
@@ -10467,7 +10882,7 @@ var DocHubView = class extends import_obsidian3.ItemView {
       const leaf = selectContentLeaf(this.app.workspace, DOC_HUB_VIEW_TYPE, newTab);
       void leaf.openFile(this.fileOf(doc)).then(() => this.app.workspace.setActiveLeaf(leaf, { focus: true }));
     } catch (error) {
-      new import_obsidian3.Notice(`\u672A\u80FD\u6253\u5F00\u6587\u6863\uFF1A${error instanceof Error ? error.message : String(error)}`);
+      new import_obsidian4.Notice(`\u672A\u80FD\u6253\u5F00\u6587\u6863\uFF1A${error instanceof Error ? error.message : String(error)}`);
     }
   }
 };
@@ -10482,7 +10897,7 @@ var DEFAULT_SETTINGS = {
   apiUrl: "",
   tasknotesEnv: "{}"
 };
-var FlowDeskDashboardPlugin = class extends import_obsidian4.Plugin {
+var FlowDeskDashboardPlugin = class extends import_obsidian5.Plugin {
   constructor() {
     super(...arguments);
     this.coreResolution = null;
@@ -10509,7 +10924,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian4.Plugin {
   }
   dashboardFile(resourcePath) {
     const file = this.app.vault.getAbstractFileByPath(resourcePath);
-    return file instanceof import_obsidian4.TFile && (this.isTaskFile(file) || ["work-case", "session"].includes(this.workCaseType(file))) ? file : null;
+    return file instanceof import_obsidian5.TFile && (this.isTaskFile(file) || ["work-case", "session"].includes(this.workCaseType(file))) ? file : null;
   }
   mainDashboardTarget() {
     const active = this.app.workspace.getActiveViewOfType(FlowDeskDashboardView);
@@ -10524,7 +10939,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian4.Plugin {
     var _a;
     const file = this.mainDashboardTarget();
     if (!file) {
-      new import_obsidian4.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u6216 Work Case\u3002");
+      new import_obsidian5.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u6216 Work Case\u3002");
       return;
     }
     const pending = this.openingMainDashboards.get(file.path);
@@ -10543,7 +10958,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian4.Plugin {
       if (!(leaf.view instanceof FlowDeskDashboardView) || !leaf.view.readyForResource(file.path)) throw new Error(`Task/Case \u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${file.path}`);
     })).then(() => {
     }, (error) => {
-      new import_obsidian4.Notice(`\u672A\u80FD\u6253\u5F00\u4E3B\u533A\u57DF Dashboard\uFF1A${error instanceof Error ? error.message : String(error)}`);
+      new import_obsidian5.Notice(`\u672A\u80FD\u6253\u5F00\u4E3B\u533A\u57DF Dashboard\uFF1A${error instanceof Error ? error.message : String(error)}`);
     });
     this.openingMainDashboards.set(file.path, opening);
     try {
@@ -10578,7 +10993,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian4.Plugin {
         const canRun = this.isTaskFile(file) || ["work-case", "session"].includes(this.workCaseType(file));
         if (checking) return canRun;
         if (!file || !canRun) {
-          new import_obsidian4.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u6216 Work Case\u3002");
+          new import_obsidian5.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u6216 Work Case\u3002");
           return false;
         }
         void this.refreshDashboard();
@@ -10603,7 +11018,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian4.Plugin {
       })
     );
     const refreshOnChange = (file) => {
-      if (file instanceof import_obsidian4.TFile) {
+      if (file instanceof import_obsidian5.TFile) {
         for (const view of this.getDashboardViews()) if (view.observesFile(file.path)) view.scheduleRefresh();
       }
     };
@@ -10611,7 +11026,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian4.Plugin {
     this.registerEvent(this.app.vault.on("create", refreshOnChange));
     this.registerEvent(this.app.vault.on("delete", refreshOnChange));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
-      if (file instanceof import_obsidian4.TFile) {
+      if (file instanceof import_obsidian5.TFile) {
         for (const view of this.getDashboardViews()) if (view.observesFile(file.path) || view.observesFile(oldPath)) view.scheduleRefresh();
       }
     }));
@@ -10639,7 +11054,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian4.Plugin {
       await this.activateWorkCaseDashboard(file);
       return;
     }
-    new import_obsidian4.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u6216 Work Case\u3002");
+    new import_obsidian5.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u6216 Work Case\u3002");
   }
   async activateDashboard(taskPath) {
     var _a;
@@ -10774,7 +11189,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian4.Plugin {
   }
   async loadCaseContent(casePath, signal) {
     const file = this.app.vault.getAbstractFileByPath(casePath);
-    if (!(file instanceof import_obsidian4.TFile) || file.path !== casePath) throw new Error("\u672A\u627E\u5230\u51C6\u786ECase\u539F\u6587");
+    if (!(file instanceof import_obsidian5.TFile) || file.path !== casePath) throw new Error("\u672A\u627E\u5230\u51C6\u786ECase\u539F\u6587");
     const details = await this.app.vault.cachedRead(file);
     if (signal.aborted) throw new Error("Case\u539F\u6587\u8BF7\u6C42\u5DF2\u53D6\u6D88");
     return createCaseContent(casePath, details, (/* @__PURE__ */ new Date()).toISOString());
@@ -10858,7 +11273,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian4.Plugin {
     return path8.resolve(basePath);
   }
 };
-var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
+var FlowDeskDashboardView = class extends import_obsidian5.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
@@ -10924,7 +11339,7 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
         this.displayResourceModal(new DashboardContentModal(this.app, title, render));
       },
       editCase: (casePath, event) => this.openCaseProperties(casePath, event),
-      icon: import_obsidian4.setIcon
+      icon: import_obsidian5.setIcon
     });
     this.shell = new ViewShellController([this.taskAdapter, this.caseAdapter]);
     for (const name of ["pointerdown", "keydown", "wheel"]) this.contentEl.addEventListener(name, this.onReadingInteraction);
@@ -11036,7 +11451,7 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
     }
     if (typeof state.resourcePath !== "string" || !state.resourcePath) return;
     const file = this.app.vault.getAbstractFileByPath(state.resourcePath);
-    if (!(file instanceof import_obsidian4.TFile) || file.path !== state.resourcePath || !(this.plugin.isTaskFile(file) || ["work-case", "session"].includes(this.plugin.workCaseType(file)))) throw new Error("\u539F Task/Case \u5DF2\u65E0\u6CD5\u786E\u8BA4\uFF0C\u4FDD\u7559\u539F\u9605\u8BFB\u4F4D\u7F6E\u3002");
+    if (!(file instanceof import_obsidian5.TFile) || file.path !== state.resourcePath || !(this.plugin.isTaskFile(file) || ["work-case", "session"].includes(this.plugin.workCaseType(file)))) throw new Error("\u539F Task/Case \u5DF2\u65E0\u6CD5\u786E\u8BA4\uFF0C\u4FDD\u7559\u539F\u9605\u8BFB\u4F4D\u7F6E\u3002");
     await this.syncToActiveFile(file);
     if (this.shell.context.kind === "task" && !((_a = this.taskAdapter.getRenderState()) == null ? void 0 : _a.snapshot)) throw new Error("\u4EFB\u52A1\u8BFB\u53D6\u5931\u8D25\uFF0C\u4FDD\u7559\u539F Dashboard\u3002");
     if (this.shell.context.kind === this.caseAdapter.kind && !((_b = this.caseAdapter.getRenderState()) == null ? void 0 : _b.model)) throw new Error("\u6848\u5377\u8BFB\u53D6\u5931\u8D25\uFF0C\u4FDD\u7559\u539F Dashboard\u3002");
@@ -11157,7 +11572,7 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
     this.readingState.capture(this.renderedResource, container, { position: this.positionRestored || interaction !== this.lastRenderInteraction });
     this.clearRenderLifetime();
     this.renderController = new AbortController();
-    this.markdownScope = this.addChild(new import_obsidian4.Component());
+    this.markdownScope = this.addChild(new import_obsidian5.Component());
     this.positionRestored = false;
     this.lastRenderInteraction = interaction;
     const nextResource = "resourcePath" in this.shell.context ? `${this.shell.context.kind}:${this.shell.context.resourcePath}` : "";
@@ -11370,13 +11785,13 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
       cls: "flowdesk-toolbar-button",
       attr: { "aria-label": "\u590D\u5236 CLI", title: "\u590D\u5236 CLI" }
     });
-    (0, import_obsidian4.setIcon)(copy, "copy");
+    (0, import_obsidian5.setIcon)(copy, "copy");
     copy.addEventListener("click", async () => {
       try {
         await this.plugin.copyDashboardCommand(taskPath);
-        new import_obsidian4.Notice("CLI \u547D\u4EE4\u5DF2\u590D\u5236");
+        new import_obsidian5.Notice("CLI \u547D\u4EE4\u5DF2\u590D\u5236");
       } catch (error) {
-        new import_obsidian4.Notice(`\u65E0\u6CD5\u590D\u5236 CLI \u547D\u4EE4\uFF1A${String(error)}`);
+        new import_obsidian5.Notice(`\u65E0\u6CD5\u590D\u5236 CLI \u547D\u4EE4\uFF1A${String(error)}`);
       }
     });
     const refresh = toolbar.createEl("button", {
@@ -11386,7 +11801,7 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
         title: this.loading ? "\u5237\u65B0\u4E2D" : "\u5237\u65B0"
       }
     });
-    (0, import_obsidian4.setIcon)(refresh, "refresh-cw");
+    (0, import_obsidian5.setIcon)(refresh, "refresh-cw");
     refresh.disabled = this.loading;
     refresh.addEventListener("click", () => void this.refreshCurrentTask());
   }
@@ -11400,7 +11815,7 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
     card.createDiv({ cls: "flowdesk-subline", text: `\u5F53\u524D\u6587\u4EF6\uFF1A${context.activePath}` });
     if (context.previousTaskPath) {
       const file = this.app.vault.getAbstractFileByPath(context.previousTaskPath);
-      const available = file instanceof import_obsidian4.TFile && (this.plugin.isTaskFile(file) || ["work-case", "session"].includes(this.plugin.workCaseType(file)));
+      const available = file instanceof import_obsidian5.TFile && (this.plugin.isTaskFile(file) || ["work-case", "session"].includes(this.plugin.workCaseType(file)));
       const back = card.createEl("button", { cls: "flowdesk-return-resource", text: "\u2190 \u8FD4\u56DE\u5DE5\u4F5C\u770B\u677F", attr: { title: "\u56DE\u5230\u521A\u624D\u67E5\u770B\u7684\u4EFB\u52A1\u6216Case" } });
       back.disabled = !available;
       back.addEventListener("click", (event) => {
@@ -11472,9 +11887,9 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
   async copyDiagnostic(input) {
     try {
       await navigator.clipboard.writeText(formatDiagnosticClipboard(input));
-      new import_obsidian4.Notice("\u95EE\u9898\u5DF2\u590D\u5236");
+      new import_obsidian5.Notice("\u95EE\u9898\u5DF2\u590D\u5236");
     } catch (error) {
-      new import_obsidian4.Notice(`\u65E0\u6CD5\u590D\u5236\u95EE\u9898\uFF1A${String(error)}`);
+      new import_obsidian5.Notice(`\u65E0\u6CD5\u590D\u5236\u95EE\u9898\uFF1A${String(error)}`);
     }
   }
   async openDiagnosticLocation(diagnostic, event) {
@@ -11494,7 +11909,7 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
       await this.navigationLeaf("current", event).openFile(file);
       return true;
     } catch (error) {
-      if (!signal.aborted) new import_obsidian4.Notice(`\u65E0\u6CD5\u6253\u5F00\u51C6\u786E\u539F\u6587\uFF1A${error instanceof Error ? error.message : String(error)}`);
+      if (!signal.aborted) new import_obsidian5.Notice(`\u65E0\u6CD5\u6253\u5F00\u51C6\u786E\u539F\u6587\uFF1A${error instanceof Error ? error.message : String(error)}`);
       return false;
     } finally {
       if (this.navigationOpening === opening) this.navigationOpening = null;
@@ -11506,7 +11921,7 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
   async openSnapshotSource(taskPath, source, sourceKind = "\u6765\u6E90", text3 = "", event) {
     var _a, _b;
     if (!taskPath) {
-      new import_obsidian4.Notice("producer\u672A\u63D0\u4F9B\u51C6\u786ETask ID");
+      new import_obsidian5.Notice("producer\u672A\u63D0\u4F9B\u51C6\u786ETask ID");
       return;
     }
     if (!source) {
@@ -11515,8 +11930,8 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
     }
     const request = this.beginNavigation();
     const file = this.app.vault.getAbstractFileByPath(taskPath);
-    if (!(file instanceof import_obsidian4.TFile) || file.path !== taskPath) {
-      new import_obsidian4.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${taskPath}`);
+    if (!(file instanceof import_obsidian5.TFile) || file.path !== taskPath) {
+      new import_obsidian5.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${taskPath}`);
       return;
     }
     let apiDetails = null;
@@ -11532,21 +11947,21 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
     if (!await this.openNavigationFile(file, request.signal, event)) return;
     if (request.signal.aborted) return;
     if (location.kind === "note") {
-      new import_obsidian4.Notice(location.reason);
+      new import_obsidian5.Notice(location.reason);
       return;
     }
-    const view = this.app.workspace.getActiveViewOfType(import_obsidian4.MarkdownView);
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian5.MarkdownView);
     if (!view || ((_a = view.file) == null ? void 0 : _a.path) !== taskPath || ((_b = view.getMode) == null ? void 0 : _b.call(view)) === "preview" || location.editorLine >= view.editor.lineCount()) {
-      new import_obsidian4.Notice("\u4EFB\u52A1\u5DF2\u6253\u5F00\uFF1B\u5F53\u524D\u89C6\u56FE\u4E0D\u80FD\u786E\u8BA4\u7CBE\u786E\u4F4D\u7F6E\uFF0C\u8BF7\u67E5\u770B\u539F\u6587\u3002");
+      new import_obsidian5.Notice("\u4EFB\u52A1\u5DF2\u6253\u5F00\uFF1B\u5F53\u524D\u89C6\u56FE\u4E0D\u80FD\u786E\u8BA4\u7CBE\u786E\u4F4D\u7F6E\uFF0C\u8BF7\u67E5\u770B\u539F\u6587\u3002");
       return;
     }
     if (apiDetails === null || typeof view.editor.getValue !== "function") {
-      new import_obsidian4.Notice("\u5F53\u524D\u7F16\u8F91\u5668\u4E0D\u80FD\u6838\u5BF9\u539F\u6587\uFF1B\u5DF2\u6253\u5F00\u6574\u5F20\u4EFB\u52A1\u3002");
+      new import_obsidian5.Notice("\u5F53\u524D\u7F16\u8F91\u5668\u4E0D\u80FD\u6838\u5BF9\u539F\u6587\uFF1B\u5DF2\u6253\u5F00\u6574\u5F20\u4EFB\u52A1\u3002");
       return;
     }
     location = locateTaskSource(view.editor.getValue(), apiDetails, { heading: sourceKind, level: 2, text: text3, source });
     if (location.kind === "note") {
-      new import_obsidian4.Notice(location.reason);
+      new import_obsidian5.Notice(location.reason);
       return;
     }
     const position = { line: location.editorLine, ch: 0 };
@@ -11560,9 +11975,9 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
       const candidates = [linkText, path8.posix.normalize(path8.posix.join(path8.posix.dirname(sourcePath), linkText))];
       for (const candidate of candidates) {
         const file = this.app.vault.getAbstractFileByPath(candidate);
-        if (file instanceof import_obsidian4.TFile && file.path === candidate) return file.path;
+        if (file instanceof import_obsidian5.TFile && file.path === candidate) return file.path;
       }
-      const { path: linkpath } = (0, import_obsidian4.parseLinktext)(linkText);
+      const { path: linkpath } = (0, import_obsidian5.parseLinktext)(linkText);
       return (_d = (_c = (_b = (_a = this.app.metadataCache).getFirstLinkpathDest) == null ? void 0 : _b.call(_a, linkpath, sourcePath)) == null ? void 0 : _c.path) != null ? _d : null;
     };
   }
@@ -11595,7 +12010,7 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
       void this.openRelated(href, sourcePath, origin === "markdown" ? void 0 : "\u94FE\u63A5\u8BED\u6CD5\u6765\u6E90\u65E0\u6CD5\u552F\u4E00\u6838\u5BF9\uFF1B\u8BF7\u67E5\u770B\u539F\u6587\u6216\u590D\u5236\u5F15\u7528\u3002", false, event);
     }, true);
     const rendered = (async () => {
-      await import_obsidian4.MarkdownRenderer.render(this.app, text3, element, sourcePath, component);
+      await import_obsidian5.MarkdownRenderer.render(this.app, text3, element, sourcePath, component);
       if (signal.aborted) return;
       for (const checkbox of Array.from(element.querySelectorAll('input[type="checkbox"]'))) {
         checkbox.disabled = true;
@@ -11676,7 +12091,7 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
     const details = container.createDiv({ cls: "flowdesk-contract-summary flowdesk-reading-card" });
     const heading2 = details.createDiv({ cls: "flowdesk-dashboard-section-title flowdesk-content-heading" });
     const icon = heading2.createSpan({ cls: "flowdesk-content-icon" });
-    (0, import_obsidian4.setIcon)(icon, "file-text");
+    (0, import_obsidian5.setIcon)(icon, "file-text");
     heading2.createSpan({ text: "\u4EFB\u52A1\u8BE6\u60C5" });
     heading2.createSpan({ cls: "flowdesk-content-caption", text: "\u8BF4\u660E \xB7 \u9A8C\u6536 \xB7 \u7ED3\u679C" });
     const body = details.createDiv({ cls: "flowdesk-detail-body" });
@@ -11900,8 +12315,8 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
   async openTask(taskPath, origin = "current", event) {
     if (!taskPath) return;
     const file = this.app.vault.getAbstractFileByPath(taskPath);
-    if (!(file instanceof import_obsidian4.TFile)) {
-      new import_obsidian4.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${taskPath}`);
+    if (!(file instanceof import_obsidian5.TFile)) {
+      new import_obsidian5.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${taskPath}`);
       return;
     }
     await this.navigationLeaf(origin, event).openFile(file);
@@ -11909,8 +12324,8 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
   async openCaseSource(casePath, source, event) {
     var _a, _b, _c;
     const request = this.beginNavigation(), file = this.app.vault.getAbstractFileByPath(casePath);
-    if (!(file instanceof import_obsidian4.TFile) || file.path !== casePath) {
-      new import_obsidian4.Notice(`\u672A\u627E\u5230Work Case\u6587\u4EF6\uFF1A${casePath}`);
+    if (!(file instanceof import_obsidian5.TFile) || file.path !== casePath) {
+      new import_obsidian5.Notice(`\u672A\u627E\u5230Work Case\u6587\u4EF6\uFF1A${casePath}`);
       return;
     }
     let text3;
@@ -11919,7 +12334,7 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
     } catch (error) {
       if (!request.current()) return;
       const opened = await this.openNavigationFile(file, request.signal, event);
-      if (opened && !request.signal.aborted) new import_obsidian4.Notice(`Case\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF0C\u4EC5\u6253\u5F00\u6574\u5F20\u539F\u6587\uFF1A${error instanceof Error ? error.message : String(error)}`);
+      if (opened && !request.signal.aborted) new import_obsidian5.Notice(`Case\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF0C\u4EC5\u6253\u5F00\u6574\u5F20\u539F\u6587\uFF1A${error instanceof Error ? error.message : String(error)}`);
       return;
     }
     if (!request.current()) return;
@@ -11932,18 +12347,18 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
     const validRange = Number.isInteger(source.lineStart) && source.lineStart >= 1 && Number.isInteger(source.lineEnd) && source.lineEnd >= source.lineStart && source.lineEnd <= lines.length;
     const span = validRange ? lines.slice(source.lineStart - 1, source.lineEnd).join("\n") : "";
     if (!validRange || !expected || !span.includes(expected.text.replace(/\r\n/g, "\n"))) {
-      new import_obsidian4.Notice("Case\u6765\u6E90\u5DF2\u53D8\u5316\u6216\u8D8A\u754C\uFF1B\u5DF2\u6253\u5F00\u6574\u5F20Case\u539F\u6587\u3002");
+      new import_obsidian5.Notice("Case\u6765\u6E90\u5DF2\u53D8\u5316\u6216\u8D8A\u754C\uFF1B\u5DF2\u6253\u5F00\u6574\u5F20Case\u539F\u6587\u3002");
       return;
     }
-    const view = this.app.workspace.getActiveViewOfType(import_obsidian4.MarkdownView);
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian5.MarkdownView);
     if (!view || ((_b = view.file) == null ? void 0 : _b.path) !== casePath || ((_c = view.getMode) == null ? void 0 : _c.call(view)) === "preview" || source.lineStart - 1 >= view.editor.lineCount()) {
-      new import_obsidian4.Notice("Case\u5DF2\u6253\u5F00\uFF1B\u5F53\u524D\u89C6\u56FE\u65E0\u6CD5\u786E\u8BA4\u7CBE\u786E\u4F4D\u7F6E\u3002");
+      new import_obsidian5.Notice("Case\u5DF2\u6253\u5F00\uFF1B\u5F53\u524D\u89C6\u56FE\u65E0\u6CD5\u786E\u8BA4\u7CBE\u786E\u4F4D\u7F6E\u3002");
       return;
     }
     const liveLines = view.editor.getValue().replace(/\r\n/g, "\n").split("\n");
     const liveSpan = liveLines.slice(source.lineStart - 1, source.lineEnd).join("\n");
     if (source.lineEnd > liveLines.length || expected && !liveSpan.includes(expected.text.replace(/\r\n/g, "\n"))) {
-      new import_obsidian4.Notice("Case\u7F16\u8F91\u5668\u539F\u6587\u5DF2\u53D8\u5316\uFF1B\u4E0D\u731C\u4F4D\u7F6E\u3002");
+      new import_obsidian5.Notice("Case\u7F16\u8F91\u5668\u539F\u6587\u5DF2\u53D8\u5316\uFF1B\u4E0D\u731C\u4F4D\u7F6E\u3002");
       return;
     }
     const position = { line: source.lineStart - 1, ch: 0 };
@@ -11967,12 +12382,12 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
   }
   async openCaseProperties(casePath, event) {
     const file = this.app.vault.getAbstractFileByPath(casePath);
-    if (!(file instanceof import_obsidian4.TFile) || file.path !== casePath || !["work-case", "session"].includes(this.plugin.workCaseType(file))) {
-      new import_obsidian4.Notice("\u65E0\u6CD5\u786E\u8BA4\u539FCase\u6587\u4EF6\uFF0C\u8BF7\u4ECE\u6587\u4EF6\u5217\u8868\u6838\u5BF9\u3002");
+    if (!(file instanceof import_obsidian5.TFile) || file.path !== casePath || !["work-case", "session"].includes(this.plugin.workCaseType(file))) {
+      new import_obsidian5.Notice("\u65E0\u6CD5\u786E\u8BA4\u539FCase\u6587\u4EF6\uFF0C\u8BF7\u4ECE\u6587\u4EF6\u5217\u8868\u6838\u5BF9\u3002");
       return;
     }
     await this.navigationLeaf("current", event).openFile(file, { active: true, state: { mode: "source" } });
-    new import_obsidian4.Notice("\u5728Case\u9876\u90E8\u5C5E\u6027\u4E2D\u7EF4\u62A4project\u3001plans\u3001docs\u548Crelated\uFF1B\u4FDD\u5B58\u540E\u770B\u677F\u4F1A\u5237\u65B0\u3002Dashboard\u4E0D\u4F1A\u4EE3\u5199\u8FD9\u4E9B\u5C5E\u6027\u3002");
+    new import_obsidian5.Notice("\u5728Case\u9876\u90E8\u5C5E\u6027\u4E2D\u7EF4\u62A4project\u3001plans\u3001docs\u548Crelated\uFF1B\u4FDD\u5B58\u540E\u770B\u677F\u4F1A\u5237\u65B0\u3002Dashboard\u4E0D\u4F1A\u4EE3\u5199\u8FD9\u4E9B\u5C5E\u6027\u3002");
   }
   async openRelated(raw, sourcePath, sourceError, direct = false, event) {
     var _a, _b, _c, _d, _e, _f;
@@ -11995,10 +12410,10 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
     if (target.kind === "vault") {
       const destination = (_a = target.resolvedPath) != null ? _a : this.vaultLinkResolver(sourcePath)(target.linkText);
       const baseFile = destination ? this.app.vault.getAbstractFileByPath(destination) : null;
-      if (!(baseFile instanceof import_obsidian4.TFile) || target.exactFile && baseFile.path !== target.resolvedPath) {
+      if (!(baseFile instanceof import_obsidian5.TFile) || target.exactFile && baseFile.path !== target.resolvedPath) {
         target = { kind: "unavailable", label: target.label, reason: `\u672A\u627E\u5230\u5DF2\u786E\u8BA4\u7684vault\u539F\u6587\u4EF6\uFF1A${target.linkText}\uFF1B\u4E0D\u4F1A\u521B\u5EFA\u6216\u6539\u9009\u540C\u540D\u7B14\u8BB0\u3002` };
       } else if (baseFile.extension.toLowerCase() === "json") {
-        const fragment = (_b = target.fragment) != null ? _b : target.exactFile ? void 0 : (0, import_obsidian4.parseLinktext)(target.linkText).subpath || void 0;
+        const fragment = (_b = target.fragment) != null ? _b : target.exactFile ? void 0 : (0, import_obsidian5.parseLinktext)(target.linkText).subpath || void 0;
         target = { ...target, resolvedPath: baseFile.path, ...fragment ? { fragment } : {} };
       } else {
         const directFile = target.exactFile === true && (((_c = target.resolvedPath) == null ? void 0 : _c.includes("#")) || target.resolvedPath && target.resolvedPath !== target.resolvedPath.trim() || target.fileUrl && (!target.fragment || ((_d = target.resolvedPath) == null ? void 0 : _d.includes("%"))));
@@ -12016,7 +12431,7 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
     if (direct && target.kind === "repository" && /\.md$/i.test(path8.extname(target.absolutePath))) {
       try {
         await this.plugin.openRepositoryInWorkspace(target.absolutePath, event, request.current);
-        if (request.current() && target.fragment) new import_obsidian4.Notice("\u5DF2\u6253\u5F00\u51C6\u786E\u539F\u6587\u4EF6\uFF0C\u7AE0\u8282\u4F4D\u7F6E\u5C1A\u672A\u5B9A\u4F4D\u3002");
+        if (request.current() && target.fragment) new import_obsidian5.Notice("\u5DF2\u6253\u5F00\u51C6\u786E\u539F\u6587\u4EF6\uFF0C\u7AE0\u8282\u4F4D\u7F6E\u5C1A\u672A\u5B9A\u4F4D\u3002");
         if (request.current()) return;
       } catch (error) {
         firstError = `\u53EA\u8BFB\u8BFB\u53D6\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`;
@@ -12064,7 +12479,7 @@ var FlowDeskDashboardView = class extends import_obsidian4.ItemView {
     }
   }
 };
-var DashboardSettingsModal = class extends import_obsidian4.Modal {
+var DashboardSettingsModal = class extends import_obsidian5.Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
@@ -12081,7 +12496,7 @@ var DashboardSettingsModal = class extends import_obsidian4.Modal {
     this.contentEl.empty();
   }
 };
-var FlowDeskDashboardSettingTab = class extends import_obsidian4.PluginSettingTab {
+var FlowDeskDashboardSettingTab = class extends import_obsidian5.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -12091,7 +12506,7 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian4.PluginSettingTa
     containerEl.empty();
     containerEl.addClass("flowdesk-dashboard-settings");
     containerEl.createEl("h2", { text: "FlowDesk Dashboard" });
-    new import_obsidian4.Setting(containerEl).setName("Core \u6765\u6E90").setDesc("\u8DDF\u968F\u6A21\u5F0F\u4F18\u5148\u4F7F\u7528 Claude \u5B89\u88C5\u767B\u8BB0\uFF0C\u7F3A\u5931\u65F6\u68C0\u67E5 Codex \u7F13\u5B58\uFF1B\u56FA\u5B9A\u6A21\u5F0F\u4F7F\u7528\u6307\u5B9A\u8DEF\u5F84\u3002").addDropdown((dropdown) => {
+    new import_obsidian5.Setting(containerEl).setName("Core \u6765\u6E90").setDesc("\u8DDF\u968F\u6A21\u5F0F\u4F18\u5148\u4F7F\u7528 Claude \u5B89\u88C5\u767B\u8BB0\uFF0C\u7F3A\u5931\u65F6\u68C0\u67E5 Codex \u7F13\u5B58\uFF1B\u56FA\u5B9A\u6A21\u5F0F\u4F7F\u7528\u6307\u5B9A\u8DEF\u5F84\u3002").addDropdown((dropdown) => {
       var _a;
       return dropdown.addOption("installed", "\u8DDF\u968F\u5DF2\u5B89\u88C5 Core").addOption("fixed", "\u56FA\u5B9A\u8DEF\u5F84").setValue((_a = this.plugin.settings.coreMode) != null ? _a : this.plugin.settings.flowdeskRoot ? "fixed" : "installed").onChange(async (value) => {
         this.plugin.settings.coreMode = value;
@@ -12123,15 +12538,15 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian4.PluginSettingTa
       }
     };
     inspect();
-    new import_obsidian4.Setting(containerEl).setName("\u56FA\u5B9A Core \u8DEF\u5F84").setDesc("\u4FDD\u7559\u539F\u8DEF\u5F84\uFF1B\u53EA\u6709\u56FA\u5B9A\u6A21\u5F0F\u4F7F\u7528\u3002\u9700\u5305\u542B Task \u4E0E Case producer\u3002").addText((text3) => text3.setPlaceholder("/Users/me/workspaces/flowdesk-plugin").setValue(this.plugin.settings.flowdeskRoot).onChange(async (value) => {
+    new import_obsidian5.Setting(containerEl).setName("\u56FA\u5B9A Core \u8DEF\u5F84").setDesc("\u4FDD\u7559\u539F\u8DEF\u5F84\uFF1B\u53EA\u6709\u56FA\u5B9A\u6A21\u5F0F\u4F7F\u7528\u3002\u9700\u5305\u542B Task \u4E0E Case producer\u3002").addText((text3) => text3.setPlaceholder("/Users/me/workspaces/flowdesk-plugin").setValue(this.plugin.settings.flowdeskRoot).onChange(async (value) => {
       this.plugin.settings.flowdeskRoot = value.trim();
       await this.plugin.saveSettings();
     }));
-    new import_obsidian4.Setting(containerEl).setName("\u5DE5\u4F5C\u76EE\u5F55").setDesc("\u4F20\u7ED9 Task snapshot \u7684 --working-directory\uFF1B\u7559\u7A7A\u65F6\u4F7F\u7528\u6240\u9009 Core \u8DEF\u5F84\u3002").addText((text3) => text3.setValue(this.plugin.settings.workingDirectory).onChange(async (value) => {
+    new import_obsidian5.Setting(containerEl).setName("\u5DE5\u4F5C\u76EE\u5F55").setDesc("\u4F20\u7ED9 Task snapshot \u7684 --working-directory\uFF1B\u7559\u7A7A\u65F6\u4F7F\u7528\u6240\u9009 Core \u8DEF\u5F84\u3002").addText((text3) => text3.setValue(this.plugin.settings.workingDirectory).onChange(async (value) => {
       this.plugin.settings.workingDirectory = value.trim();
       await this.plugin.saveSettings();
     }));
-    new import_obsidian4.Setting(containerEl).setName("TaskNotes API \u5730\u5740").setDesc("\u7559\u7A7A\u4F7F\u7528\u73AF\u5883\u914D\u7F6E\u6216\u672C\u673A\u9ED8\u8BA4\u5730\u5740\u3002").addText((text3) => text3.setPlaceholder("http://127.0.0.1:18090").setValue(this.plugin.settings.apiUrl).onChange(async (value) => {
+    new import_obsidian5.Setting(containerEl).setName("TaskNotes API \u5730\u5740").setDesc("\u7559\u7A7A\u4F7F\u7528\u73AF\u5883\u914D\u7F6E\u6216\u672C\u673A\u9ED8\u8BA4\u5730\u5740\u3002").addText((text3) => text3.setPlaceholder("http://127.0.0.1:18090").setValue(this.plugin.settings.apiUrl).onChange(async (value) => {
       this.plugin.settings.apiUrl = value.trim();
       await this.plugin.saveSettings();
     }));
@@ -12141,7 +12556,7 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian4.PluginSettingTa
       configured = parseTaskNotesEnvironment(this.plugin.settings.tasknotesEnv);
     } catch (e) {
     }
-    const token = new import_obsidian4.Setting(containerEl).setName("TaskNotes token").setDesc("\u9ED8\u8BA4\u906E\u4F4F\uFF0C\u4FDD\u5B58\u5728\u65E2\u6709\u73AF\u5883\u53D8\u91CF\u914D\u7F6E\u4E2D\u3002\u6709\u6548\u8BBE\u7F6E\u4FDD\u5B58\u540E\u4F1A\u81EA\u52A8\u5237\u65B0\u770B\u677F\u3002");
+    const token = new import_obsidian5.Setting(containerEl).setName("TaskNotes token").setDesc("\u9ED8\u8BA4\u906E\u4F4F\uFF0C\u4FDD\u5B58\u5728\u65E2\u6709\u73AF\u5883\u53D8\u91CF\u914D\u7F6E\u4E2D\u3002\u6709\u6548\u8BBE\u7F6E\u4FDD\u5B58\u540E\u4F1A\u81EA\u52A8\u5237\u65B0\u770B\u677F\u3002");
     const tokenError = token.descEl.createDiv({ attr: { role: "status" } });
     token.addText((text3) => {
       tokenInput = text3.inputEl;
@@ -12168,7 +12583,7 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian4.PluginSettingTa
     }));
     const advanced = containerEl.createEl("details", { cls: "flowdesk-advanced-settings" });
     advanced.createEl("summary", { text: "\u9AD8\u7EA7\u73AF\u5883\u53D8\u91CF JSON" });
-    const environmentSetting = new import_obsidian4.Setting(advanced).setName("TaskNotes \u73AF\u5883\u53D8\u91CF").setDesc("\u4FDD\u7559\u539F\u6709\u53D8\u91CF\u5408\u5E76\u89C4\u5219\uFF1B\u5C55\u5F00\u540E\u53EF\u67E5\u770B\u5E76\u7F16\u8F91\u5168\u90E8\u914D\u7F6E\u3002");
+    const environmentSetting = new import_obsidian5.Setting(advanced).setName("TaskNotes \u73AF\u5883\u53D8\u91CF").setDesc("\u4FDD\u7559\u539F\u6709\u53D8\u91CF\u5408\u5E76\u89C4\u5219\uFF1B\u5C55\u5F00\u540E\u53EF\u67E5\u770B\u5E76\u7F16\u8F91\u5168\u90E8\u914D\u7F6E\u3002");
     const error = environmentSetting.descEl.createDiv({ attr: { role: "status" } });
     environmentSetting.addTextArea((text3) => {
       jsonInput = text3.inputEl;
