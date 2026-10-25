@@ -1,6 +1,6 @@
 import { ItemView, Notice, TFile, TFolder, Workspace, WorkspaceLeaf, setIcon } from 'obsidian';
 import { selectContentLeaf } from './dashboard-placement';
-import { AtlasIndex, confirmAndTrashCollection, openInBrowser } from './atlas-index';
+import { AtlasIndex, confirmAndTrashCollection, openInBrowser, showReferences } from './atlas-index';
 import { buildAtlasPrompt, pageMatches } from './atlas-data';
 import {
   DOC_HUB_FOLDERS, DOC_HUB_KIND_LABELS, SUMMARY_LIMIT, agoText, buildAtlasDoc, buildDoc, filterDocs, freshness, groupByProject, groupRecent, isHidden, kindOfPath,
@@ -407,6 +407,8 @@ export class DocHubView extends ItemView {
     meta.createSpan({ cls: 'fd-dochub-pill', text: `${atlas.pages.length} 页` });
     meta.createSpan({ cls: 'fd-dochub-when', text: agoText(doc.mtime, now) });
     const actions = card.createDiv({ cls: 'fd-dochub-actions' });
+    const refs = actions.createEl('button', { cls: 'fd-dochub-action', text: '关联文档', attr: { type: 'button', title: '哪些文档引用了这个图集，点击跳转' } });
+    refs.addEventListener('click', event => { event.stopPropagation(); void showReferences(this.app, atlas.collection, doc.title).catch(error => new Notice(`读取关联文档失败：${error instanceof Error ? error.message : String(error)}`)); });
     const prompt = actions.createEl('button', { cls: 'fd-dochub-action', text: '复制提示词', attr: { type: 'button', title: '复制给 agent 的提示词：评估并优化这个图集的组织方式' } });
     prompt.addEventListener('click', event => { event.stopPropagation(); void this.copyAtlasPrompt(doc); });
     const pin = actions.createEl('button', { cls: `fd-dochub-action${doc.pinned ? ' is-on' : ''}`, text: doc.pinned ? '取消置顶' : '置顶', attr: { type: 'button', 'aria-pressed': String(doc.pinned) } });

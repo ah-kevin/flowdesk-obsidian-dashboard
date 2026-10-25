@@ -2775,3 +2775,6 @@ body .flowdesk-dashboard-settings .setting-item-control input:not([type="checkbo
 .fd-dochub button.fd-dochub-action.is-danger:hover { color:var(--dh-bad); border-color:var(--dh-bad); }
 .fd-dochub-entrymark { display:inline-flex; align-items:center; color:var(--dh-accent); }
 .fd-dochub-entrymark svg { width:14px; height:14px; }
+/* 关联文档 / 删除确认里的引用链接列表 */
+.fd-atlas-refs { margin:6px 0 0; padding-left:18px; }
+.fd-atlas-refs li { margin:2px 0; word-break:break-all; }

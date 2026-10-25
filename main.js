@@ -10136,6 +10136,15 @@ function openInBrowser(app, vaultPath) {
     new import_obsidian3.Notice(`\u65E0\u6CD5\u8C03\u7528\u7CFB\u7EDF\u6253\u5F00\uFF1A${absolute}`);
   }
 }
+async function findReferences(app, collection) {
+  const needle = `archify/${collection}`;
+  const references = [];
+  for (const file of app.vault.getMarkdownFiles()) {
+    if (file.path.startsWith(`${ATLAS_ROOT}/`)) continue;
+    if ((await app.vault.cachedRead(file)).includes(needle)) references.push(file.path);
+  }
+  return references.sort((a, b) => a.localeCompare(b, "zh"));
+}
 async function describeCollection(app, collection) {
   const adapter = app.vault.adapter;
   let files = 0, bytes = 0;
@@ -10149,13 +10158,41 @@ async function describeCollection(app, collection) {
     for (const folder of listing.folders) await walk(folder);
   };
   await walk(`${ATLAS_ROOT}/${collection}`);
-  const needle = `archify/${collection}`;
-  const references = [];
-  for (const file of app.vault.getMarkdownFiles()) {
-    if (file.path.startsWith(`${ATLAS_ROOT}/`)) continue;
-    if ((await app.vault.cachedRead(file)).includes(needle)) references.push(file.path);
+  return { files, bytes, references: await findReferences(app, collection) };
+}
+function renderReferenceLinks(app, parent, references, onNavigate) {
+  const list2 = parent.createEl("ul", { cls: "fd-atlas-refs" });
+  for (const path9 of references) {
+    const link2 = list2.createEl("li").createEl("a", { text: path9, attr: { href: "#", title: path9 } });
+    link2.addEventListener("click", (event) => {
+      event.preventDefault();
+      onNavigate();
+      void app.workspace.openLinkText(path9, "", event.metaKey || event.ctrlKey);
+    });
   }
-  return { files, bytes, references };
+}
+var ReferencesModal = class extends import_obsidian3.Modal {
+  constructor(app, title, references) {
+    super(app);
+    this.title = title;
+    this.references = references;
+  }
+  onOpen() {
+    this.setTitle("\u5173\u8054\u6587\u6863");
+    this.contentEl.createEl("p", { text: `\u300C${this.title}\u300D\u88AB ${this.references.length} \u7BC7\u6587\u6863\u5F15\u7528\uFF0C\u70B9\u51FB\u8DF3\u8F6C\uFF1A` });
+    renderReferenceLinks(this.app, this.contentEl, this.references, () => this.close());
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+async function showReferences(app, collection, title) {
+  const references = await findReferences(app, collection);
+  if (!references.length) {
+    new import_obsidian3.Notice("\u6CA1\u6709\u6587\u6863\u5F15\u7528\u8FD9\u4E2A\u56FE\u96C6");
+    return;
+  }
+  new ReferencesModal(app, title, references).open();
 }
 var sizeText = (bytes) => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 var ConfirmTrashModal = class extends import_obsidian3.Modal {
@@ -10173,9 +10210,8 @@ var ConfirmTrashModal = class extends import_obsidian3.Modal {
     contentEl.createEl("p", { cls: "mod-warning", text: "\u5305\u542B\u9875\u9762\u3001\u6E90\u7A3F\u3001\u56DE\u6267\u548C artifacts.json \u6E05\u5355\uFF1B\u79FB\u5230\u7CFB\u7EDF\u5E9F\u7EB8\u7BD3\uFF0C\u53EF\u4ECE\u5E9F\u7EB8\u7BD3\u8FD8\u539F\u3002" });
     if (info.references.length) {
       contentEl.createEl("p", { text: `\u4ECD\u6709 ${info.references.length} \u7BC7\u6587\u6863\u5F15\u7528\u5B83\uFF0C\u5220\u9664\u540E\u8FD9\u4E9B\u6587\u6863\u91CC\u7684\u56FE\u4F1A\u6253\u4E0D\u5F00\uFF1A` });
-      const list2 = contentEl.createEl("ul");
-      for (const path9 of info.references.slice(0, REFERENCE_LIST_CAP)) list2.createEl("li", { text: path9 });
-      if (info.references.length > REFERENCE_LIST_CAP) list2.createEl("li", { text: `\u2026\u53E6\u6709 ${info.references.length - REFERENCE_LIST_CAP} \u7BC7` });
+      renderReferenceLinks(this.app, contentEl, info.references.slice(0, REFERENCE_LIST_CAP), () => this.close());
+      if (info.references.length > REFERENCE_LIST_CAP) contentEl.createEl("p", { text: `\u2026\u53E6\u6709 ${info.references.length - REFERENCE_LIST_CAP} \u7BC7\uFF0C\u53EF\u5728\u5361\u7247\u4E0A\u70B9\u300C\u5173\u8054\u6587\u6863\u300D\u67E5\u770B\u5168\u90E8\u3002` });
     }
     const buttons = contentEl.createDiv({ cls: "modal-button-container" });
     buttons.createEl("button", { cls: "mod-warning", text: "\u79FB\u5230\u5E9F\u7EB8\u7BD3" }).addEventListener("click", () => {
@@ -10786,6 +10822,11 @@ var DocHubView = class extends import_obsidian4.ItemView {
     meta.createSpan({ cls: "fd-dochub-pill", text: `${atlas.pages.length} \u9875` });
     meta.createSpan({ cls: "fd-dochub-when", text: agoText(doc.mtime, now) });
     const actions = card.createDiv({ cls: "fd-dochub-actions" });
+    const refs = actions.createEl("button", { cls: "fd-dochub-action", text: "\u5173\u8054\u6587\u6863", attr: { type: "button", title: "\u54EA\u4E9B\u6587\u6863\u5F15\u7528\u4E86\u8FD9\u4E2A\u56FE\u96C6\uFF0C\u70B9\u51FB\u8DF3\u8F6C" } });
+    refs.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void showReferences(this.app, atlas.collection, doc.title).catch((error) => new import_obsidian4.Notice(`\u8BFB\u53D6\u5173\u8054\u6587\u6863\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`));
+    });
     const prompt = actions.createEl("button", { cls: "fd-dochub-action", text: "\u590D\u5236\u63D0\u793A\u8BCD", attr: { type: "button", title: "\u590D\u5236\u7ED9 agent \u7684\u63D0\u793A\u8BCD\uFF1A\u8BC4\u4F30\u5E76\u4F18\u5316\u8FD9\u4E2A\u56FE\u96C6\u7684\u7EC4\u7EC7\u65B9\u5F0F" } });
     prompt.addEventListener("click", (event) => {
       event.stopPropagation();

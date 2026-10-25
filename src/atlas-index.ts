@@ -80,6 +80,17 @@ export function openInBrowser(app: App, vaultPath: string): void {
   } catch { new Notice(`无法调用系统打开：${absolute}`); }
 }
 
+/** 哪些 Markdown 文档引用了这个图集目录（内嵌 iframe 或链接都算）。 */
+export async function findReferences(app: App, collection: string): Promise<string[]> {
+  const needle = `archify/${collection}`;
+  const references: string[] = [];
+  for (const file of app.vault.getMarkdownFiles()) {
+    if (file.path.startsWith(`${ATLAS_ROOT}/`)) continue;
+    if ((await app.vault.cachedRead(file)).includes(needle)) references.push(file.path);
+  }
+  return references.sort((a, b) => a.localeCompare(b, 'zh'));
+}
+
 /** 整个图集目录：文件数、体积，以及哪些 Markdown 文档还在引用它。 */
 async function describeCollection(app: App, collection: string): Promise<{ files: number; bytes: number; references: string[] }> {
   const adapter = app.vault.adapter;
@@ -90,13 +101,32 @@ async function describeCollection(app: App, collection: string): Promise<{ files
     for (const folder of listing.folders) await walk(folder);
   };
   await walk(`${ATLAS_ROOT}/${collection}`);
-  const needle = `archify/${collection}`;
-  const references: string[] = [];
-  for (const file of app.vault.getMarkdownFiles()) {
-    if (file.path.startsWith(`${ATLAS_ROOT}/`)) continue;
-    if ((await app.vault.cachedRead(file)).includes(needle)) references.push(file.path);
+  return { files, bytes, references: await findReferences(app, collection) };
+}
+/** 引用文档列表：每项是可点的链接，点击在 Obsidian 里打开该文档（Cmd/Ctrl 点击开新标签）。 */
+function renderReferenceLinks(app: App, parent: HTMLElement, references: string[], onNavigate: () => void): void {
+  const list = parent.createEl('ul', { cls: 'fd-atlas-refs' });
+  for (const path of references) {
+    const link = list.createEl('li').createEl('a', { text: path, attr: { href: '#', title: path } });
+    link.addEventListener('click', event => { event.preventDefault(); onNavigate(); void app.workspace.openLinkText(path, '', event.metaKey || event.ctrlKey); });
   }
-  return { files, bytes, references };
+}
+
+class ReferencesModal extends Modal {
+  constructor(app: App, private readonly title: string, private readonly references: string[]) { super(app); }
+  onOpen(): void {
+    this.setTitle('关联文档');
+    this.contentEl.createEl('p', { text: `「${this.title}」被 ${this.references.length} 篇文档引用，点击跳转：` });
+    renderReferenceLinks(this.app, this.contentEl, this.references, () => this.close());
+  }
+  onClose(): void { this.contentEl.empty(); }
+}
+
+/** 列出引用该图集的文档；没有引用时只提示，不弹窗。 */
+export async function showReferences(app: App, collection: string, title: string): Promise<void> {
+  const references = await findReferences(app, collection);
+  if (!references.length) { new Notice('没有文档引用这个图集'); return; }
+  new ReferencesModal(app, title, references).open();
 }
 const sizeText = (bytes: number): string => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
@@ -109,9 +139,9 @@ class ConfirmTrashModal extends Modal {
     contentEl.createEl('p', { cls: 'mod-warning', text: '包含页面、源稿、回执和 artifacts.json 清单；移到系统废纸篓，可从废纸篓还原。' });
     if (info.references.length) {
       contentEl.createEl('p', { text: `仍有 ${info.references.length} 篇文档引用它，删除后这些文档里的图会打不开：` });
-      const list = contentEl.createEl('ul');
-      for (const path of info.references.slice(0, REFERENCE_LIST_CAP)) list.createEl('li', { text: path });
-      if (info.references.length > REFERENCE_LIST_CAP) list.createEl('li', { text: `…另有 ${info.references.length - REFERENCE_LIST_CAP} 篇` });
+      // 点链接跳去看文档会关闭确认框，等同取消删除。
+      renderReferenceLinks(this.app, contentEl, info.references.slice(0, REFERENCE_LIST_CAP), () => this.close());
+      if (info.references.length > REFERENCE_LIST_CAP) contentEl.createEl('p', { text: `…另有 ${info.references.length - REFERENCE_LIST_CAP} 篇，可在卡片上点「关联文档」查看全部。` });
     }
     const buttons = contentEl.createDiv({ cls: 'modal-button-container' });
     buttons.createEl('button', { cls: 'mod-warning', text: '移到废纸篓' }).addEventListener('click', () => { this.onConfirm(); this.close(); }); // 先记下确认再关闭：关闭会触发 onClose 去 resolve，顺序反了就永远是「未确认」
