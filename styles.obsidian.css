@@ -189,3 +189,34 @@
 /* 关联文档 / 删除确认里的引用链接列表 */
 .fd-atlas-refs { margin:6px 0 0; padding-left:18px; }
 .fd-atlas-refs li { margin:2px 0; word-break:break-all; }
+
+.modal.fd-atlas-preview-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(1440px, 96vw);
+  height: 92vh;
+  max-width: none;
+  max-height: none;
+}
+.fd-atlas-preview-modal .modal-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-right: 32px;
+}
+.fd-atlas-preview-modal .modal-title button {
+  flex: none;
+  font-size: var(--font-ui-small);
+}
+.fd-atlas-preview-modal .modal-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.fd-atlas-preview-modal iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}

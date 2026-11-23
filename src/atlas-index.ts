@@ -1,4 +1,4 @@
-import { App, FileSystemAdapter, Modal, Notice, TFile, TFolder } from 'obsidian';
+import { App, Modal, Notice, TFile, TFolder } from 'obsidian';
 import { ATLAS_ROOT, buildEntry, collectionOf, groupCollections, manifestDocumentPath, resolveProject, type AtlasCollection, type AtlasEntry } from './atlas-data';
 import { projectsOf } from './doc-hub-data';
 
@@ -67,17 +67,6 @@ export class AtlasIndex {
     } catch { /* 清单不可读：保持兜底 */ }
     return { project: resolveProject(collection, docProjects, projectNames), doc };
   }
-}
-
-/** 用系统默认浏览器打开 vault 内的 HTML。 */
-export function openInBrowser(app: App, vaultPath: string): void {
-  const adapter = app.vault.adapter;
-  if (!(adapter instanceof FileSystemAdapter)) { new Notice('仅桌面端支持用浏览器打开'); return; }
-  const absolute = `${adapter.getBasePath()}/${vaultPath}`;
-  try {
-    const { shell } = (window as unknown as { require(name: string): { shell: { openPath(path: string): Promise<string> } } }).require('electron');
-    void shell.openPath(absolute).then(error => { if (error) new Notice(`打开失败：${error}`); });
-  } catch { new Notice(`无法调用系统打开：${absolute}`); }
 }
 
 /** 哪些 Markdown 文档引用了这个图集目录（内嵌 iframe 或链接都算）。 */

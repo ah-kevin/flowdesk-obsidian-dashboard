@@ -238,6 +238,11 @@ Dashboard 已打开时，切换到 frontmatter `type: work-case` 或 legacy `typ
 其他 Markdown 文件继续显示非 FlowDesk 提示。Case 内容由独立 producer 解析，Dashboard
 不从散文猜测任务或 Current 字段。
 
+文档中心的图集卡片、子页标签，以及 Markdown 阅读视图中指向库内 `Attachments/archify/`
+展示版 HTML 的普通单击，都会在 Obsidian 弹窗中预览。页面在独立沙箱中运行，可以使用
+图表自身的缩放和动效。点「用默认浏览器打开」可在浏览器查看同一个本地 HTML。
+关闭弹窗即可返回原文。
+
 ## Task-centric snapshot v3/v4 展示语义
 
 侧栏使用行动优先的单列控制台，默认按以下顺序显示：

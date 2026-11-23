@@ -112,6 +112,7 @@ import { applyDashboardLayout } from "./dashboard-layout";
 import { openDashboardInMain as openMainDashboard, selectContentLeaf, type DashboardPlacement } from "./dashboard-placement";
 import { FLOWDESK_REPOSITORY_VIEW_TYPE, RepositoryReaderView } from "./repository-reader-view";
 import { DOC_HUB_HOVER_SOURCE, DOC_HUB_VIEW_TYPE, DocHubView, openDocHub } from "./doc-hub-view";
+import { AtlasPreview } from "./atlas-preview";
 import { normalizePrefs, type DocHubPrefs } from "./doc-hub-style";
 
 export const FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
@@ -149,6 +150,7 @@ export default class FlowDeskDashboardPlugin extends Plugin {
   repositoryOpenDependencies: RepositoryOpenDependencies = {};
   private openingRepository = 0;
   private readonly openingMainDashboards = new Map<string,Promise<void>>();
+  private atlasPreview?: AtlasPreview;
 
   openRepositoryMarkdown(absolutePath: string): Promise<RepositoryOpenResult> {
     return new RepositoryMarkdownOpener(this.repositoryOpenDependencies).open(absolutePath);
@@ -205,7 +207,9 @@ export default class FlowDeskDashboardPlugin extends Plugin {
       const outcome=await this.openRepositoryMarkdown(absolutePath);
       if(outcome.kind!=="accepted")throw new Error(outcome.message);
     }}));
-    this.registerView(DOC_HUB_VIEW_TYPE,leaf=>new DocHubView(leaf,{prefs:()=>this.settings.docHub,savePrefs:prefs=>this.saveDocHubPrefs(prefs)}));
+    const atlasPreview = this.atlasPreview = new AtlasPreview(this.app);
+    this.registerView(DOC_HUB_VIEW_TYPE,leaf=>new DocHubView(leaf,{prefs:()=>this.settings.docHub,savePrefs:prefs=>this.saveDocHubPrefs(prefs)},atlasPreview));
+    this.registerMarkdownPostProcessor((element, context) => atlasPreview.addMarkdownLinks(element, context));
     this.registerHoverLinkSource?.(DOC_HUB_HOVER_SOURCE,{display:"文档中心",defaultMod:false});
     this.addRibbonIcon("layout-dashboard", "FlowDesk Dashboard", () => {
       void this.refreshDashboard();
@@ -258,6 +262,8 @@ export default class FlowDeskDashboardPlugin extends Plugin {
   }
 
   async onunload() {
+    this.atlasPreview?.dispose();
+    this.atlasPreview = undefined;
     if (this.settingsRefresh) clearTimeout(this.settingsRefresh);
     this.app.workspace.detachLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(FLOWDESK_REPOSITORY_VIEW_TYPE);

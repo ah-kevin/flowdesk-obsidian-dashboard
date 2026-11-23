@@ -1,6 +1,7 @@
 import { ItemView, Notice, TFile, TFolder, Workspace, WorkspaceLeaf, setIcon } from 'obsidian';
 import { selectContentLeaf } from './dashboard-placement';
-import { AtlasIndex, confirmAndTrashCollection, openInBrowser, showReferences } from './atlas-index';
+import { AtlasIndex, confirmAndTrashCollection, showReferences } from './atlas-index';
+import type { AtlasPreview } from './atlas-preview';
 import { buildAtlasPrompt, pageMatches } from './atlas-data';
 import {
   DOC_HUB_FOLDERS, DOC_HUB_KIND_LABELS, SUMMARY_LIMIT, agoText, buildAtlasDoc, buildDoc, filterDocs, freshness, groupByProject, groupRecent, isHidden, kindOfPath,
@@ -39,7 +40,7 @@ export class DocHubView extends ItemView {
   private closed = false;
   private readonly atlasIndex = new AtlasIndex();
   private els!: Record<'root' | 'sub' | 'tabs' | 'filters' | 'list' | 'searchBox' | 'theme' | 'preset' | 'presetName' | 'menu' | 'full', HTMLElement> & { search: HTMLInputElement };
-  constructor(leaf: WorkspaceLeaf, private readonly host: DocHubHost) { super(leaf); this.prefs = normalizePrefs(host.prefs()); }
+  constructor(leaf: WorkspaceLeaf, private readonly host: DocHubHost, private readonly atlasPreview: AtlasPreview) { super(leaf); this.prefs = normalizePrefs(host.prefs()); }
   getViewType(): string { return DOC_HUB_VIEW_TYPE; }
   getDisplayText(): string { return '文档中心'; }
   getIcon(): string { return 'library'; }
@@ -384,7 +385,7 @@ export class DocHubView extends ItemView {
     card.addEventListener('mouseleave', () => this.cancelHover());
   }
 
-  /** 图集卡：一个图集一张卡。卡内列出各页，点页面用浏览器打开；有总览页（或只有一页）的卡左下角带标识，点卡片直接打开它。搜索时命中的页排前并高亮。 */
+  /** 图集卡：点页面预览，点带总览标识的卡片预览入口页。搜索时命中的页排前并高亮。 */
   private renderAtlasCard(grid: HTMLElement, doc: DocHubDoc, now: number): void {
     const atlas = doc.atlas!;
     const entry = atlas.entryPath ?? (atlas.pages.length === 1 ? atlas.pages[0].path : null);
@@ -398,7 +399,7 @@ export class DocHubView extends ItemView {
     const pages = card.createDiv({ cls: 'fd-dochub-pages' });
     for (const page of ordered) {
       const chip = pages.createEl('button', { cls: `fd-dochub-page${hits.includes(page) ? ' is-hit' : ''}`, text: page.title, attr: { type: 'button', title: page.path } });
-      chip.addEventListener('click', event => { event.stopPropagation(); openInBrowser(this.app, page.path); });
+      chip.addEventListener('click', event => { event.stopPropagation(); void this.atlasPreview.open(page.path, () => !this.closed); });
     }
     const meta = card.createDiv({ cls: 'fd-dochub-meta' });
     if (entry) setIcon(meta.createSpan({ cls: 'fd-dochub-entrymark', attr: { 'aria-label': '点卡片打开总览页', title: '点卡片打开总览页' } }), 'layout-dashboard');
@@ -416,7 +417,7 @@ export class DocHubView extends ItemView {
     const remove = actions.createEl('button', { cls: 'fd-dochub-action is-danger', text: '删除', attr: { type: 'button', title: '整个图集目录移到废纸篓（先确认）' } });
     remove.addEventListener('click', event => { event.stopPropagation(); void this.deleteAtlas(doc); });
     if (entry) {
-      const open = (event: Event) => { event.preventDefault(); openInBrowser(this.app, entry); };
+      const open = (event: Event) => { event.preventDefault(); void this.atlasPreview.open(entry, () => !this.closed); };
       card.addEventListener('click', event => { if (!(event.target as HTMLElement).closest('button')) open(event); });
       card.addEventListener('keydown', event => { if (event.key === 'Enter' && event.target === card) { event.stopPropagation(); open(event); } });
     }

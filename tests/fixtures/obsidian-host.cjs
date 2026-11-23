@@ -9,15 +9,25 @@ class Component {
   removeChild(child){child.unload();this.children=this.children.filter(value=>value!==child);return child;}
   register(callback){this.callbacks.push(callback);}
 }
+class MarkdownRenderChild extends Component {
+  constructor(containerEl){super();this.containerEl=containerEl;}
+  registerDomEvent(element,event,callback,options){
+    element.addEventListener(event,callback,options);
+    this.register(()=>element.removeEventListener(event,callback,options));
+  }
+}
 class Plugin {
   views = new Map();
+  markdownPostProcessors = [];
   async loadData(){return {};}
   registerView(name,factory){this.views.set(name,factory);}
+  registerMarkdownPostProcessor(processor){this.markdownPostProcessors.push(processor);return processor;}
   addRibbonIcon(){} addCommand(){} registerEvent(){} addSettingTab(){}
 }
 class ItemView extends Component { constructor(leaf){super();this.leaf=leaf;this.app=leaf.app;this.contentEl=leaf.contentEl;this.containerEl=leaf.contentEl;this.load();} }
 class Modal {
-  constructor(app){this.app=app;const Element=app.workspace.getLeavesOfType()[0].view.contentEl.constructor;this.contentEl=new Element('div');this.titleEl=new Element('h2');this.containerEl=new Element('div');this.containerEl.appendChild(this.titleEl);this.containerEl.appendChild(this.contentEl);}
+  constructor(app){this.app=app;const Element=app.workspace.getLeavesOfType()[0].view.contentEl.constructor;this.contentEl=new Element('div');this.titleEl=new Element('h2');this.containerEl=new Element('div');this.modalEl=this.containerEl;this.containerEl.appendChild(this.titleEl);this.containerEl.appendChild(this.contentEl);}
+  setTitle(title){this.titleEl.setText(title);}
   open(){this.app.activeModal=this;this.onOpen?.();}
   close(){this.onClose?.();if(this.app.activeModal===this)this.app.activeModal=null;}
 }
@@ -39,9 +49,10 @@ async function renderMarkdown(app,text,element,source,component){
   if(app?.markdownDelay)await app.markdownDelay();
 }
 class TFile { static [Symbol.hasInstance](value){return !!value && typeof value.path==='string' && typeof value.extension==='string';} constructor(path){this.path=path;this.extension='md';} }
+class FileSystemAdapter { static [Symbol.hasInstance](value){return !!value && typeof value.getBasePath==='function';} }
 module.exports = {
   App: HostClass, Component, ItemView, MarkdownRenderer: { render:renderMarkdown }, MarkdownView: HostClass,
-  Modal, Notice, Plugin, PluginSettingTab: HostClass,
+  FileSystemAdapter, MarkdownRenderChild, Modal, Notice, Plugin, PluginSettingTab: HostClass,
   Setting: HostClass, TFile, WorkspaceLeaf: HostClass, setIcon() {},
   parseLinktext(value){const index=value.indexOf("#");return index<0?{path:value,subpath:""}:{path:value.slice(0,index),subpath:value.slice(index)};},
 };
