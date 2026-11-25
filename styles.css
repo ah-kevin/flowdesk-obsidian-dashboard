@@ -2797,6 +2797,12 @@ body .flowdesk-dashboard-settings .setting-item-control input:not([type="checkbo
 .fd-atlas-preview-modal .modal-title button {
   flex: none;
   font-size: var(--font-ui-small);
+  order: 1;
+}
+.fd-atlas-preview-modal .fd-atlas-page-select {
+  min-width: 0;
+  max-width: 42%;
+  margin-left: auto;
 }
 .fd-atlas-preview-modal .modal-content {
   flex: 1;

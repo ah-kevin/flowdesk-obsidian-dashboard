@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 import { TestElement } from './support/dom.ts';
 import { compilePlugin, ownedEnvironment } from './support/owned-environment.ts';
 
@@ -179,4 +181,112 @@ test('compiled Atlas previews release their pages, pending opens, and Markdown l
   assert.equal(preview.loading, null);
   assert.equal(preview.modal, null);
   assert.equal(preview.markdownChildren.size, 0);
+});
+
+test('collection previews prefer readable local pages and can open packaged pages without a matching digest', async t => {
+  const fixture = await ownedEnvironment(t);
+  const vaultRoot = fixture.env.OBSIDIAN_VAULT!;
+  const index = { path: 'Attachments/archify/饲喂/index.html', basename: 'index', extension: 'html' };
+  const indexPath = join(vaultRoot, index.path);
+  const pagesPath = join(dirname(indexPath), 'pages');
+  const temporaryPage = join(pagesPath, 'temporary.html');
+  const outsidePage = join(vaultRoot, 'private.html');
+  mkdirSync(pagesPath, { recursive: true });
+  writeFileSync(join(pagesPath, 'local.html'), '<!doctype html><p>current local reader</p>');
+  writeFileSync(temporaryPage, '<!doctype html><p>temporary reader</p>');
+  writeFileSync(outsidePage, '<!doctype html><p>unrelated local file</p>');
+  symlinkSync(outsidePage, join(pagesPath, 'outside.html'));
+
+  const collection = {
+    schema: 'flowdesk.visual-doc-collection/2',
+    title: '饲喂图集',
+    groups: [{ id: 'content', label: '内容' }],
+    pages: [
+      { id: 'outside', title: '库内其他文件', views: { content: { url: 'pages/outside.html' } } },
+      { id: 'missing', title: '缺失', views: { content: { url: 'pages/missing.html', readerId: 'missing' } } },
+      { id: 'local', title: '本地', views: { content: { url: 'pages/local.html', readerId: 'local' } } },
+      { id: 'packed', title: '内嵌', views: { content: { url: 'pages/packed.html', readerId: 'packed' } } },
+      { id: 'temporary', title: '临时', views: { content: { url: 'pages/temporary.html', readerId: 'temporary' } } },
+    ],
+  };
+  const readers = {
+    local: { htmlGzip: gzipSync('<p>stale packaged reader</p>').toString('base64'), sha256: '0'.repeat(64), bytes: 0 },
+    packed: { htmlGzip: gzipSync('<p>available packaged reader</p>').toString('base64'), sha256: '0'.repeat(64), bytes: 0 },
+  };
+  writeFileSync(indexPath, `<!doctype html><p>collection shell</p>
+    <script type="application/json" id="collection-data">${JSON.stringify(collection)}</script>
+    <script type="application/json" id="collection-readers">${JSON.stringify(readers)}</script>`);
+
+  const bundle = fixture.path('plugin.cjs');
+  compilePlugin(bundle);
+  const Plugin = createRequire(import.meta.url)(bundle).default;
+  const plugin = new Plugin();
+  type PreviewModal = { modalEl: TestElement; contentEl: TestElement };
+  let opened: PreviewModal | null = null;
+  plugin.app = {
+    get activeModal() { return opened; },
+    set activeModal(modal: PreviewModal | null) { opened = modal; },
+    vault: {
+      adapter: { getBasePath: () => vaultRoot },
+      getAbstractFileByPath: (path: string) => path === index.path ? index : null,
+      on() {},
+    },
+    metadataCache: { on() {}, getFirstLinkpathDest: (path: string) => path === index.path ? index : null },
+    workspace: {
+      on() {},
+      onLayoutReady() {},
+      detachLeavesOfType() {},
+      getLeavesOfType: () => [{ view: { contentEl: new TestElement() } }],
+    },
+  };
+  await plugin.onload();
+  t.after(() => plugin.onunload());
+
+  const activeModal = () => opened;
+  const frameSource = () => {
+    const frame = activeModal()?.contentEl.querySelectorAll('iframe')[0] as (TestElement & { srcdoc?: string }) | undefined;
+    assert.equal(frame?.getAttribute('sandbox'), 'allow-scripts');
+    return frame?.srcdoc ?? '';
+  };
+  const settle = async (predicate: () => boolean, message: string) => {
+    const deadline = Date.now() + 2000;
+    while (!predicate() && Date.now() < deadline) await delay(10);
+    assert.ok(predicate(), message);
+  };
+
+  await plugin.atlasPreview.open(index.path, () => true);
+  assert.match(frameSource(), /current local reader/);
+  assert.doesNotMatch(frameSource(), /collection shell|stale packaged reader/);
+
+  type SelectElement = TestElement & { value: string };
+  const select = activeModal()?.modalEl.querySelectorAll('select')[0] as SelectElement | undefined;
+  assert.ok(select);
+  const changeTo = (label: string) => {
+    const options = select.querySelectorAll('option');
+    const option = options.find(item => item.text.includes(label)) as SelectElement | undefined;
+    assert.ok(option);
+    select.value = option.getAttribute('value') ?? option.value;
+    const change = new Event('change');
+    select.dispatchEvent(change);
+    return select.value;
+  };
+  const packedValue = changeTo('内嵌');
+  await settle(() => frameSource().includes('available packaged reader'), 'packaged page should open despite its mismatched digest and size');
+
+  unlinkSync(temporaryPage);
+  changeTo('临时');
+  await settle(() => select.value === packedValue, 'an unavailable page should leave the previous selection active');
+  assert.match(frameSource(), /available packaged reader/);
+
+  const anchor = { getAttribute: () => `${index.path}#packed/content` };
+  let onClick: ((event: object) => void) | undefined;
+  plugin.markdownPostProcessors[0]({
+    querySelector: () => anchor,
+    contains: () => true,
+    addEventListener(_type: string, listener: typeof onClick) { onClick = listener; },
+    removeEventListener() { onClick = undefined; },
+  }, { sourcePath: 'Notes/Plans/饲喂设计.md', addChild() {} });
+  const previousModal = activeModal();
+  onClick?.({ target: { closest: () => anchor }, button: 0, preventDefault() {}, stopPropagation() {} });
+  await settle(() => activeModal() !== previousModal && frameSource().includes('available packaged reader'), 'the Markdown link should open the requested collection view');
 });

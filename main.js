@@ -10917,21 +10917,28 @@ var DocHubView = class extends import_obsidian4.ItemView {
 var import_promises2 = require("node:fs/promises");
 var import_node_path = require("node:path");
 var import_node_url = require("node:url");
+var import_node_util = require("node:util");
+var import_node_zlib = require("node:zlib");
 var import_obsidian5 = require("obsidian");
 var ATLAS_LINK = "a.internal-link[data-href]";
 var PREVIEW_POLICY = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; frame-src about: data: blob:; base-uri 'none'; form-action 'none'";
+var unpack = (0, import_node_util.promisify)(import_node_zlib.gunzip);
+var MAX_UNPACKED_BYTES = 32 * 1024 * 1024;
 function isAtlasFile(file) {
   return file instanceof import_obsidian5.TFile && Boolean(collectionOf(file.path)) && !file.path.includes("\\") && !file.path.split("/").some((part) => !part || part === "." || part === "..");
 }
 var AtlasPreviewModal = class extends import_obsidian5.Modal {
-  constructor(app, title, html, browserUrl, release) {
+  constructor(app, title, html, browserUrl, release, collection) {
     super(app);
     this.title = title;
     this.html = html;
     this.browserUrl = browserUrl;
     this.release = release;
+    this.collection = collection;
+    this.switching = null;
   }
   onOpen() {
+    var _a;
     this.modalEl.addClass("fd-atlas-preview-modal");
     this.setTitle(this.title);
     const openInBrowser = this.titleEl.createEl("button", {
@@ -10953,15 +10960,138 @@ var AtlasPreviewModal = class extends import_obsidian5.Modal {
         referrerpolicy: "no-referrer"
       }
     });
-    frame.srcdoc = this.html;
+    frame.srcdoc = (_a = this.html) != null ? _a : previewDocument("<p>\u6CA1\u6709\u53EF\u9884\u89C8\u7684\u56FE\u96C6\u5B50\u9875\u3002</p>", "");
     this.html = "";
+    const collection = this.collection;
+    if (!collection || collection.views.length < 2) return;
+    const select = this.titleEl.createEl("select", { cls: "fd-atlas-page-select", attr: { "aria-label": "\u56FE\u96C6\u5B50\u9875" } });
+    const groups = /* @__PURE__ */ new Map();
+    collection.views.forEach((view, index) => {
+      let group = groups.get(view.group);
+      if (!group) {
+        group = select.createEl("optgroup", { attr: { label: view.group } });
+        groups.set(view.group, group);
+      }
+      group.createEl("option", { text: view.title, attr: { value: String(index) } });
+    });
+    let selected = collection.selected;
+    select.value = String(selected);
+    select.addEventListener("change", async () => {
+      var _a2;
+      (_a2 = this.switching) == null ? void 0 : _a2.abort();
+      if (!select.value) return;
+      const index = Number(select.value);
+      const view = collection.views[index];
+      if (!view || index === selected) return;
+      const request = this.switching = new AbortController();
+      const html = await collection.load(view, request.signal);
+      if (request.signal.aborted) return;
+      this.switching = null;
+      if (html === null) {
+        select.value = String(selected);
+        new import_obsidian5.Notice("\u65E0\u6CD5\u8BFB\u53D6\u8FD9\u4E2A\u56FE\u96C6\u5B50\u9875");
+        return;
+      }
+      selected = index;
+      this.browserUrl.hash = view.route;
+      frame.srcdoc = previewDocument(html, "");
+    });
   }
   onClose() {
+    var _a;
+    (_a = this.switching) == null ? void 0 : _a.abort();
+    this.switching = null;
     this.titleEl.empty();
     this.contentEl.empty();
     this.release();
   }
 };
+function asRecord(value) {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+}
+function embeddedJson(html, id) {
+  var _a;
+  const blob = (_a = new RegExp(`<script\\b[^>]*\\bid="${id}"[^>]*>([\\s\\S]*?)</script>`, "i").exec(html)) == null ? void 0 : _a[1];
+  if (blob === void 0) return;
+  try {
+    return asRecord(JSON.parse(blob));
+  } catch (e) {
+    return void 0;
+  }
+}
+function collectionIndex(html, base, root, collection) {
+  var _a;
+  const metadata = embeddedJson(html, "collection-data");
+  if ((metadata == null ? void 0 : metadata.schema) !== "flowdesk.visual-doc-collection/2" || !Array.isArray(metadata.groups) || !Array.isArray(metadata.pages)) return null;
+  const views = [];
+  for (const rawGroup of metadata.groups) {
+    const group = asRecord(rawGroup);
+    if (typeof (group == null ? void 0 : group.id) !== "string" || typeof group.label !== "string") continue;
+    for (const rawPage of metadata.pages) {
+      const page = asRecord(rawPage);
+      const view = asRecord((_a = asRecord(page == null ? void 0 : page.views)) == null ? void 0 : _a[group.id]);
+      if (typeof (page == null ? void 0 : page.id) !== "string" || typeof (view == null ? void 0 : view.url) !== "string") continue;
+      let path9;
+      try {
+        if (/^(?:[a-z][a-z0-9+.-]*:|[/\\\\])/i.test(view.url)) continue;
+        path9 = (0, import_node_url.fileURLToPath)(new URL(view.url, base));
+      } catch (e) {
+        continue;
+      }
+      const vaultPath = (0, import_node_path.relative)(root, path9).split(import_node_path.sep).join("/");
+      if (collectionOf(vaultPath) !== collection || isEntryPage(vaultPath)) continue;
+      views.push({
+        title: typeof view.title === "string" ? view.title : typeof page.title === "string" ? page.title : vaultPath.split("/").pop(),
+        group: group.label,
+        pageId: page.id,
+        route: `${page.id}/${group.id}`,
+        path: path9,
+        readerId: typeof view.readerId === "string" ? view.readerId : void 0,
+        diagramId: typeof view.embeddedId === "string" ? view.embeddedId : void 0
+      });
+    }
+  }
+  return { title: typeof metadata.title === "string" ? metadata.title : void 0, views };
+}
+async function unpackHtml(payload) {
+  if (typeof (payload == null ? void 0 : payload.htmlGzip) === "string") {
+    try {
+      const bytes = await unpack(Buffer.from(payload.htmlGzip, "base64"), { maxOutputLength: MAX_UNPACKED_BYTES });
+      return bytes.toString("utf8");
+    } catch (e) {
+      return null;
+    }
+  }
+  return typeof (payload == null ? void 0 : payload.html) === "string" ? payload.html : null;
+}
+function collectionLoader(html, root, collection) {
+  let readers;
+  let diagrams;
+  return async (view, signal) => {
+    var _a, _b, _c, _d, _e;
+    let reader = null;
+    try {
+      const resource = await (0, import_promises2.realpath)(view.path);
+      const vaultPath = (0, import_node_path.relative)(root, resource).split(import_node_path.sep).join("/");
+      if (collectionOf(vaultPath) === collection && !isEntryPage(vaultPath)) {
+        reader = await (0, import_promises2.readFile)(resource, { encoding: "utf8", signal });
+      }
+    } catch (e) {
+    }
+    if (signal.aborted) return null;
+    if (reader === null && view.readerId) {
+      readers != null ? readers : readers = (_a = embeddedJson(html, "collection-readers")) != null ? _a : {};
+      reader = await unpackHtml(asRecord(readers[view.readerId]));
+    }
+    if (reader === null || signal.aborted || !view.diagramId) return reader;
+    diagrams != null ? diagrams : diagrams = (_b = embeddedJson(html, "collection-diagrams")) != null ? _b : {};
+    const diagram = asRecord(diagrams[view.diagramId]);
+    if (typeof (diagram == null ? void 0 : diagram.childId) !== "string") return reader;
+    const prepared = asRecord((_c = embeddedJson(reader, "archify-explainer-prepared")) == null ? void 0 : _c.preparedDiagrams);
+    const child = asRecord((_d = asRecord(prepared == null ? void 0 : prepared.diagrams)) == null ? void 0 : _d[diagram.childId]);
+    return (_e = await unpackHtml(child)) != null ? _e : reader;
+  };
+}
 function previewDocument(html, subpath) {
   const policy = `<meta http-equiv="Content-Security-Policy" content="${PREVIEW_POLICY}">`;
   let fragmentScript = "";
@@ -11030,7 +11160,7 @@ var AtlasPreview = class {
     context.addChild(child);
   }
   async show(file, subpath, sourceIsOpen) {
-    var _a, _b;
+    var _a, _b, _c;
     const adapter = this.app.vault.adapter;
     if (!(adapter instanceof import_obsidian5.FileSystemAdapter)) {
       new import_obsidian5.Notice("\u56FE\u96C6\u9884\u89C8\u9700\u8981\u684C\u9762\u7AEF\u672C\u5730\u5E93");
@@ -11047,7 +11177,8 @@ var AtlasPreview = class {
       const resource = await (0, import_promises2.realpath)((0, import_node_path.join)(root, vaultPath));
       if (!isCurrent()) return;
       const actualVaultPath = (0, import_node_path.relative)(root, resource).split(import_node_path.sep).join("/");
-      if (!collectionOf(actualVaultPath) || file.path !== vaultPath) {
+      const collection = collectionOf(actualVaultPath);
+      if (!collection || file.path !== vaultPath) {
         new import_obsidian5.Notice("\u56FE\u96C6\u9884\u89C8\u9700\u8981\u5E93\u5185\u7684\u56FE\u96C6\u6587\u4EF6");
         return;
       }
@@ -11055,10 +11186,38 @@ var AtlasPreview = class {
       if (!isCurrent()) return;
       const browserUrl = (0, import_node_url.pathToFileURL)(resource);
       browserUrl.hash = subpath;
-      const modal = new AtlasPreviewModal(this.app, file.basename, previewDocument(html, subpath), browserUrl, () => {
+      const index = isEntryPage(actualVaultPath) ? collectionIndex(html, browserUrl, root, collection) : null;
+      let navigation = null;
+      let content = null;
+      if (index) {
+        const { views } = index;
+        const load = collectionLoader(html, root, collection);
+        navigation = { views, selected: -1, load };
+        let fragment = subpath.slice(1);
+        try {
+          fragment = decodeURIComponent(fragment);
+        } catch (e) {
+        }
+        const preferred = views.findIndex((view) => view.route === fragment || view.pageId === fragment);
+        const candidates = views.map((_, index2) => index2).filter((index2) => index2 !== preferred);
+        if (preferred >= 0) candidates.unshift(preferred);
+        for (const candidate of candidates) {
+          const view = views[candidate];
+          const member = await load(view, request.signal);
+          if (!isCurrent()) return;
+          if (member === null) continue;
+          navigation.selected = candidate;
+          browserUrl.hash = view.route;
+          content = previewDocument(member, "");
+          break;
+        }
+      } else {
+        content = previewDocument(html, subpath);
+      }
+      const modal = new AtlasPreviewModal(this.app, (_b = index == null ? void 0 : index.title) != null ? _b : file.basename, content, browserUrl, () => {
         if (this.modal === modal) this.modal = null;
-      });
-      (_b = this.modal) == null ? void 0 : _b.close();
+      }, navigation);
+      (_c = this.modal) == null ? void 0 : _c.close();
       this.modal = modal;
       modal.open();
     } catch (e) {
