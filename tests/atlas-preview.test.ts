@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, realpathSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { webcrypto } from 'node:crypto';
+import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
-import { setTimeout as delay } from 'node:timers/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createContext, runInContext } from 'node:vm';
 import { gzipSync } from 'node:zlib';
 import { TestElement } from './support/dom.ts';
 import { compilePlugin, ownedEnvironment } from './support/owned-environment.ts';
@@ -183,49 +184,97 @@ test('compiled Atlas previews release their pages, pending opens, and Markdown l
   assert.equal(preview.markdownChildren.size, 0);
 });
 
-test('collection previews prefer readable local pages and can open packaged pages without a matching digest', async t => {
+test('the Atlas collection preview keeps the native viewer and opens its embedded deep link', { timeout: 5000 }, async t => {
   const fixture = await ownedEnvironment(t);
   const vaultRoot = fixture.env.OBSIDIAN_VAULT!;
   const index = { path: 'Attachments/archify/饲喂/index.html', basename: 'index', extension: 'html' };
   const indexPath = join(vaultRoot, index.path);
-  const pagesPath = join(dirname(indexPath), 'pages');
-  const temporaryPage = join(pagesPath, 'temporary.html');
-  const outsidePage = join(vaultRoot, 'private.html');
-  mkdirSync(pagesPath, { recursive: true });
-  writeFileSync(join(pagesPath, 'local.html'), '<!doctype html><p>current local reader</p>');
-  writeFileSync(temporaryPage, '<!doctype html><p>temporary reader</p>');
-  writeFileSync(outsidePage, '<!doctype html><p>unrelated local file</p>');
-  symlinkSync(outsidePage, join(pagesPath, 'outside.html'));
-
   const collection = {
     schema: 'flowdesk.visual-doc-collection/2',
     title: '饲喂图集',
-    groups: [{ id: 'content', label: '内容' }],
+    groups: [{ id: 'content', label: '内容' }, { id: 'diagram', label: '图' }],
     pages: [
-      { id: 'outside', title: '库内其他文件', views: { content: { url: 'pages/outside.html' } } },
-      { id: 'missing', title: '缺失', views: { content: { url: 'pages/missing.html', readerId: 'missing' } } },
-      { id: 'local', title: '本地', views: { content: { url: 'pages/local.html', readerId: 'local' } } },
-      { id: 'packed', title: '内嵌', views: { content: { url: 'pages/packed.html', readerId: 'packed' } } },
-      { id: 'temporary', title: '临时', views: { content: { url: 'pages/temporary.html', readerId: 'temporary' } } },
+      { id: 'overview', title: '总览', views: { content: { url: 'pages/overview.html', readerId: 'overview' } } },
+      { id: 'feeding', title: '饲喂', views: { diagram: { url: 'pages/feeding.html', readerId: 'feeding' } } },
     ],
   };
+  const readerHtml = '<!doctype html><head><title>饲喂</title></head><body><p>embedded feeding diagram</p></body>';
   const readers = {
-    local: { htmlGzip: gzipSync('<p>stale packaged reader</p>').toString('base64'), sha256: '0'.repeat(64), bytes: 0 },
-    packed: { htmlGzip: gzipSync('<p>available packaged reader</p>').toString('base64'), sha256: '0'.repeat(64), bytes: 0 },
+    overview: { htmlGzip: gzipSync('<p>default overview</p>').toString('base64'), sha256: '0'.repeat(64), bytes: 0 },
+    feeding: { htmlGzip: gzipSync(readerHtml).toString('base64'), sha256: '0'.repeat(64), bytes: 0 },
   };
-  writeFileSync(indexPath, `<!doctype html><p>collection shell</p>
-    <script type="application/json" id="collection-data">${JSON.stringify(collection)}</script>
-    <script type="application/json" id="collection-readers">${JSON.stringify(readers)}</script>`);
+  const collectionJson = JSON.stringify(collection);
+  const readersJson = JSON.stringify(readers);
+  mkdirSync(dirname(indexPath), { recursive: true });
+  writeFileSync(indexPath, String.raw`<!doctype html>
+    <style>.toolbar { color: rebeccapurple; }</style>
+    <header class="toolbar">
+      <nav class="tabs"><button role="tab">总览</button></nav>
+      <select id="theme"><option value="auto">系统</option></select>
+    </header>
+    <script type="application/json" id="collection-data">${collectionJson}</script>
+    <script type="application/json" id="collection-readers">${readersJson}</script>
+    <script>
+      const COLLECTION = JSON.parse(document.getElementById('collection-data').textContent);
+      const embeddedReaders = JSON.parse(document.getElementById('collection-readers').textContent);
+
+      async function checkedText(bytes, sha, size) {
+        if (!crypto.subtle || !/^[a-f0-9]{64}$/.test(sha)) throw new Error('Digest verification unavailable');
+        if (size !== undefined && bytes.length !== size) throw new Error('Byte count mismatch');
+        const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), byte => byte.toString(16).padStart(2, '0')).join('');
+        if (hash !== sha) throw new Error('Payload digest mismatch');
+        return new TextDecoder('utf-8', {fatal: true}).decode(bytes);
+      }
+
+      async function unpack(payload) {
+        const bytes = Uint8Array.from(atob(payload.htmlGzip), character => character.charCodeAt(0));
+        const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+        const result = new Uint8Array(await new Response(stream).arrayBuffer());
+        return checkedText(result, payload.sha256, payload.bytes);
+      }
+
+      function inflateReader(id) {
+        return unpack(embeddedReaders[id]);
+      }
+
+      function createPanel(page, mode) {
+        const view = page.views[mode];
+        return inflateReader(view.readerId).then(html => {
+          const href = new URL(view.url, location.href).href.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+          html = html.replace(/<head([^>]*)>/i, match => match + '<base href="' + href + '">');
+          return html;
+        });
+      }
+
+      function fromHash() {
+        let value = location.hash.slice(1); try { value = decodeURIComponent(value); } catch {}
+        const [id, mode] = value.split('/');
+        const page = COLLECTION.pages.find(page => page.id === id) || COLLECTION.pages[0];
+        globalThis.openedContent = createPanel(page, mode || 'content');
+      }
+
+      function completeUrl() {
+        const full = new URL(location.href);
+        full.searchParams.set('standalone', '1');
+        return full.href;
+      }
+
+      function applyTheme() {}
+      applyTheme(); fromHash();
+      globalThis.completeUrl = completeUrl();
+    </script>`);
 
   const bundle = fixture.path('plugin.cjs');
   compilePlugin(bundle);
   const Plugin = createRequire(import.meta.url)(bundle).default;
   const plugin = new Plugin();
   type PreviewModal = { modalEl: TestElement; contentEl: TestElement };
+  let receiveModal: (modal: PreviewModal) => void;
+  const nextModal = new Promise<PreviewModal>(resolve => { receiveModal = resolve; });
   let opened: PreviewModal | null = null;
   plugin.app = {
     get activeModal() { return opened; },
-    set activeModal(modal: PreviewModal | null) { opened = modal; },
+    set activeModal(modal: PreviewModal | null) { opened = modal; if (modal) receiveModal(modal); },
     vault: {
       adapter: { getBasePath: () => vaultRoot },
       getAbstractFileByPath: (path: string) => path === index.path ? index : null,
@@ -242,43 +291,7 @@ test('collection previews prefer readable local pages and can open packaged page
   await plugin.onload();
   t.after(() => plugin.onunload());
 
-  const activeModal = () => opened;
-  const frameSource = () => {
-    const frame = activeModal()?.contentEl.querySelectorAll('iframe')[0] as (TestElement & { srcdoc?: string }) | undefined;
-    assert.equal(frame?.getAttribute('sandbox'), 'allow-scripts');
-    return frame?.srcdoc ?? '';
-  };
-  const settle = async (predicate: () => boolean, message: string) => {
-    const deadline = Date.now() + 2000;
-    while (!predicate() && Date.now() < deadline) await delay(10);
-    assert.ok(predicate(), message);
-  };
-
-  await plugin.atlasPreview.open(index.path, () => true);
-  assert.match(frameSource(), /current local reader/);
-  assert.doesNotMatch(frameSource(), /collection shell|stale packaged reader/);
-
-  type SelectElement = TestElement & { value: string };
-  const select = activeModal()?.modalEl.querySelectorAll('select')[0] as SelectElement | undefined;
-  assert.ok(select);
-  const changeTo = (label: string) => {
-    const options = select.querySelectorAll('option');
-    const option = options.find(item => item.text.includes(label)) as SelectElement | undefined;
-    assert.ok(option);
-    select.value = option.getAttribute('value') ?? option.value;
-    const change = new Event('change');
-    select.dispatchEvent(change);
-    return select.value;
-  };
-  const packedValue = changeTo('内嵌');
-  await settle(() => frameSource().includes('available packaged reader'), 'packaged page should open despite its mismatched digest and size');
-
-  unlinkSync(temporaryPage);
-  changeTo('临时');
-  await settle(() => select.value === packedValue, 'an unavailable page should leave the previous selection active');
-  assert.match(frameSource(), /available packaged reader/);
-
-  const anchor = { getAttribute: () => `${index.path}#packed/content` };
+  const anchor = { getAttribute: () => `${index.path}#feeding/diagram` };
   let onClick: ((event: object) => void) | undefined;
   plugin.markdownPostProcessors[0]({
     querySelector: () => anchor,
@@ -286,7 +299,35 @@ test('collection previews prefer readable local pages and can open packaged page
     addEventListener(_type: string, listener: typeof onClick) { onClick = listener; },
     removeEventListener() { onClick = undefined; },
   }, { sourcePath: 'Notes/Plans/饲喂设计.md', addChild() {} });
-  const previousModal = activeModal();
-  onClick?.({ target: { closest: () => anchor }, button: 0, preventDefault() {}, stopPropagation() {} });
-  await settle(() => activeModal() !== previousModal && frameSource().includes('available packaged reader'), 'the Markdown link should open the requested collection view');
+  assert.ok(onClick);
+  onClick({ target: { closest: () => anchor }, button: 0, preventDefault() {}, stopPropagation() {} });
+  const modal = await nextModal;
+  const [frame] = modal.contentEl.querySelectorAll('iframe') as Array<TestElement & { srcdoc: string }>;
+  assert.ok(frame);
+  assert.equal(frame.getAttribute('sandbox'), 'allow-scripts');
+  assert.equal(modal.modalEl.querySelectorAll('select').length, 0);
+  assert.match(frame.srcdoc, /<style>\.toolbar \{ color: rebeccapurple; \}<\/style>/);
+  assert.match(frame.srcdoc, /<nav class="tabs"><button role="tab">总览<\/button><\/nav>/);
+  assert.match(frame.srcdoc, /<select id="theme"><option value="auto">系统<\/option><\/select>/);
+
+  const scripts = [...frame.srcdoc.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+  assert.ok(scripts.length);
+  const scriptData = { 'collection-data': collectionJson, 'collection-readers': readersJson };
+  const expectedUrl = pathToFileURL(realpathSync(indexPath));
+  expectedUrl.searchParams.set('standalone', '1');
+  for (const crypto of [webcrypto, {}]) {
+    const context = createContext({
+      atob, Blob, crypto, DecompressionStream, Response, TextDecoder, URL,
+      location: { href: 'about:srcdoc', hash: '' },
+      document: {
+        addEventListener() {},
+        getElementById(id: keyof typeof scriptData) { return { textContent: scriptData[id] }; },
+      },
+    });
+    for (const [, script] of scripts) runInContext(script, context);
+    assert.equal(await context.openedContent, readerHtml);
+    const completeUrl = new URL(context.completeUrl);
+    assert.equal(completeUrl.pathname, expectedUrl.pathname);
+    assert.equal(completeUrl.search, expectedUrl.search);
+  }
 });

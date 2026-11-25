@@ -240,8 +240,8 @@ Dashboard 已打开时，切换到 frontmatter `type: work-case` 或 legacy `typ
 
 文档中心的图集卡片、子页标签，以及 Markdown 阅读视图中指向库内 `Attachments/archify/`
 展示版 HTML 的普通单击，都会在 Obsidian 弹窗中预览。页面在独立沙箱中运行，可以使用
-图表自身的缩放和动效。打开 visual-doc v2 集合时，弹窗默认展示首个可读子页，可在标题栏
-切换。预览优先读取本地子页，文件不可用时尝试使用集合内可解压的副本。
+图表自身的缩放和动效。visual-doc 集合在弹窗里保留原页面的样式，在页面内切换标签、阅读模式和主题。
+预览直接展开内嵌子页，可解压的内容即使摘要不匹配也能打开。
 点「用默认浏览器打开」可查看原始 HTML，关闭弹窗即可返回原文。
 
 ## Task-centric snapshot v3/v4 展示语义
