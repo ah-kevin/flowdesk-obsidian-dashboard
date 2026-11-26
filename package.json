@@ -6,7 +6,9 @@
   "main": "main.js",
   "scripts": {
     "test": "node tests/run-tests.mjs",
-    "build": "node scripts/build-reading-styles.mjs && node scripts/build-dashboard-ui.mjs && esbuild src/main.ts --bundle --external:obsidian --platform=node --target=es2018 --format=cjs --outfile=main.js",
+    "build": "node scripts/build-reading-styles.mjs && node scripts/build-dashboard-ui.mjs && npm run build:workbench && esbuild src/main.ts --bundle --external:obsidian --platform=node --target=es2018 --format=cjs --outfile=main.js",
+    "build:workbench": "node scripts/build-workbench-runtime.mjs",
+    "test:workbench": "node --test web-workbench/flowdesk-workbench/tests/*.test.mjs web-workbench/flowdesk-review/tests/*.test.mjs",
     "build:ui": "node scripts/build-dashboard-ui.mjs",
     "dev": "esbuild src/main.ts --bundle --external:obsidian --platform=node --target=es2018 --format=cjs --outfile=main.js --watch",
     "typecheck": "tsc --noEmit",
@@ -24,6 +26,9 @@
     "typescript": "^5.4.5"
   },
   "dependencies": {
-    "markdown-it": "15.0.2"
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "js-sha256": "1.1.0",
+    "markdown-it": "15.0.2",
+    "yaml": "2.8.2"
   }
 }

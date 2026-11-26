@@ -278,8 +278,8 @@ __export(main_exports, {
   default: () => FlowDeskDashboardPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian6 = require("obsidian");
-var import_child_process3 = require("child_process");
+var import_obsidian7 = require("obsidian");
+var import_child_process4 = require("child_process");
 
 // src/tasknotes-auth.ts
 function parseTaskNotesEnvironment(configuration) {
@@ -387,11 +387,11 @@ function createLoginShellPathResolver(deps = {}) {
   const read = () => {
     var _a2;
     if (((_a2 = deps.platform) != null ? _a2 : process.platform) === "win32") return Promise.resolve(void 0);
-    return new Promise((resolve6) => {
-      const timer = setTimeout(() => resolve6(void 0), timeoutMs + 500);
+    return new Promise((resolve7) => {
+      const timer = setTimeout(() => resolve7(void 0), timeoutMs + 500);
       const finish = (value) => {
         clearTimeout(timer);
-        resolve6(value);
+        resolve7(value);
       };
       try {
         const shell = pickShell("shell" in deps ? deps.shell : process.env.SHELL, deps.isExecutable);
@@ -421,9 +421,9 @@ async function resolveSnapshotEnv(env, configuration, resolver = defaultResolver
 }
 
 // src/main.ts
-var import_os = require("os");
+var import_os2 = require("os");
 var path8 = __toESM(require("path"));
-var import_util2 = require("util");
+var import_util3 = require("util");
 
 // src/dashboard-state.ts
 var MAX_SNAPSHOT_BUFFER = 8 * 1024 * 1024;
@@ -1397,7 +1397,7 @@ var import_http = require("http");
 var import_https = require("https");
 var desktopTaskNotesRead = ({ url, headers, signal }) => {
   if (signal.aborted) return Promise.reject(Object.assign(new Error("TaskNotes \u539F\u6587\u8BFB\u53D6\u5DF2\u53D6\u6D88"), { name: "AbortError", code: "ABORT_ERR" }));
-  return new Promise((resolve6, reject) => {
+  return new Promise((resolve7, reject) => {
     const target = new URL(url);
     if (target.protocol !== "http:" && target.protocol !== "https:") {
       reject(new Error("TaskNotes API \u5730\u5740\u5FC5\u987B\u4F7F\u7528 HTTP/HTTPS"));
@@ -1420,7 +1420,7 @@ var desktopTaskNotesRead = ({ url, headers, signal }) => {
       const status = (_a = response.statusCode) != null ? _a : 0;
       const statusText = (_b = response.statusMessage) != null ? _b : "";
       if (status >= 300 && status < 400) {
-        resolve6({ status, statusText, text: "" });
+        resolve7({ status, statusText, text: "" });
         response.destroy();
         return;
       }
@@ -1440,7 +1440,7 @@ var desktopTaskNotesRead = ({ url, headers, signal }) => {
           reject(new Error("TaskNotes \u54CD\u5E94\u672A\u5B8C\u6574\u7ED3\u675F"));
           return;
         }
-        resolve6({ status, statusText, text: text3 });
+        resolve7({ status, statusText, text: text3 });
       });
     });
     pending.once("error", reject);
@@ -4012,8 +4012,8 @@ var RepositoryMarkdownOpener = class {
   }
 };
 function executePublicFileOpen(executable, args, options) {
-  return new Promise((resolve6, reject) => {
-    (0, import_child_process2.execFile)(executable, args, { timeout: options.timeoutMs, shell: false, windowsHide: true }, (error) => error ? reject(error) : resolve6());
+  return new Promise((resolve7, reject) => {
+    (0, import_child_process2.execFile)(executable, args, { timeout: options.timeoutMs, shell: false, windowsHide: true }, (error) => error ? reject(error) : resolve7());
   });
 }
 
@@ -10210,7 +10210,7 @@ var ConfirmTrashModal = class extends import_obsidian3.Modal {
 };
 async function confirmAndTrashCollection(app, collection, title) {
   const info = await describeCollection(app, collection);
-  const confirmed = await new Promise((resolve6) => {
+  const confirmed = await new Promise((resolve7) => {
     let accepted = false;
     const modal = new ConfirmTrashModal(app, title, collection, info, () => {
       accepted = true;
@@ -10218,7 +10218,7 @@ async function confirmAndTrashCollection(app, collection, title) {
     const close = modal.onClose.bind(modal);
     modal.onClose = () => {
       close();
-      resolve6(accepted);
+      resolve7(accepted);
     };
     modal.open();
   });
@@ -11084,17 +11084,406 @@ var AtlasPreview = class {
   }
 };
 
+// src/web-workbench.ts
+var import_child_process3 = require("child_process");
+var import_crypto = require("crypto");
+var import_promises3 = require("fs/promises");
+var import_net = require("net");
+var import_os = require("os");
+var import_path = require("path");
+var import_util2 = require("util");
+var execFileAsync = (0, import_util2.promisify)(import_child_process3.execFile);
+var DEFAULT_WORKBENCH_PORT = 4327;
+var WORKBENCH_LAN_BIND_HOST = "0.0.0.0";
+var DEFAULT_WORKBENCH_PAIRING_KEY = "qwe123";
+function parseWorkbenchPort(value) {
+  const port = Number(value);
+  return /^\d{1,5}$/.test(value) && port >= 1 && port <= 65535 ? port : void 0;
+}
+function isPrivateIPv4(address) {
+  if (!(0, import_net.isIPv4)(address)) return false;
+  const [first, second] = address.split(".").map(Number);
+  return first === 10 || first === 172 && second >= 16 && second <= 31 || first === 192 && second === 168;
+}
+function isWorkbenchPairingKey(value) {
+  return typeof value === "string" && Boolean(value.trim()) && !/[\0\r\n]/.test(value);
+}
+function normalizeWorkbenchSettings(value) {
+  var _a;
+  const settings = value && typeof value === "object" ? value : {};
+  const lanHost = typeof settings.lanHost === "string" ? settings.lanHost.trim() : "";
+  return {
+    port: typeof settings.port === "number" ? (_a = parseWorkbenchPort(String(settings.port))) != null ? _a : DEFAULT_WORKBENCH_PORT : DEFAULT_WORKBENCH_PORT,
+    lanHost: lanHost === WORKBENCH_LAN_BIND_HOST || isPrivateIPv4(lanHost) ? WORKBENCH_LAN_BIND_HOST : "",
+    nodePath: typeof settings.nodePath === "string" ? settings.nodePath.trim() : "",
+    autoStart: settings.autoStart === true,
+    requirePairing: settings.requirePairing === true,
+    pairingKey: isWorkbenchPairingKey(settings.pairingKey) ? settings.pairingKey : DEFAULT_WORKBENCH_PAIRING_KEY
+  };
+}
+function workbenchLanAddresses(interfaces = (0, import_os.networkInterfaces)()) {
+  const addresses = Object.values(interfaces).flatMap((entries) => (entries != null ? entries : []).filter(({ address, internal }) => !internal && (0, import_net.isIPv4)(address) && address !== WORKBENCH_LAN_BIND_HOST && !address.startsWith("127.")).map((entry) => entry.address));
+  return [...new Set(addresses)].sort();
+}
+function workbenchReviewDataPath(canonicalVault, userHome = (0, import_os.homedir)()) {
+  const vaultId = (0, import_crypto.createHash)("sha256").update(canonicalVault).digest("hex");
+  return (0, import_path.join)(userHome, ".flowdesk", "workbench", "review-data", vaultId);
+}
+async function prepareWorkbenchLaunch(input, signal) {
+  const { port, lanHost, nodePath, requirePairing, pairingKey } = normalizeWorkbenchSettings(input.settings);
+  const entry = (0, import_path.resolve)(input.vaultRoot, input.pluginDir, "workbench-runtime", "flowdesk-workbench", "server.mjs");
+  const info = await (0, import_promises3.stat)(entry).catch(() => void 0);
+  if (!(info == null ? void 0 : info.isFile())) throw new Error("\u7F3A\u5C11 Web \u5DE5\u4F5C\u53F0\u8FD0\u884C\u6587\u4EF6\u3002\u8BF7\u5B89\u88C5\u5305\u542B workbench-runtime \u7684 FlowDesk Dashboard \u63D2\u4EF6\u5305\u3002");
+  if (nodePath && (!(0, import_path.isAbsolute)(nodePath) || nodePath.includes("\0"))) {
+    throw new Error("\u8BF7\u8F93\u5165 Node.js \u53EF\u6267\u884C\u6587\u4EF6\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002");
+  }
+  const vault = await (0, import_promises3.realpath)(input.vaultRoot);
+  const auth = resolveTaskNotesAuth(input.tasknotesEnv);
+  const nodeEnv = await resolveSnapshotEnv(auth.env, input.tasknotesEnv);
+  const executable = nodePath || "node";
+  const { stdout } = await execFileAsync(executable, ["--version"], {
+    env: nodeEnv,
+    signal,
+    timeout: 5e3,
+    windowsHide: true
+  }).catch(() => {
+    throw new Error("\u65E0\u6CD5\u8FD0\u884C Node.js\u3002\u8BF7\u5B89\u88C5 Node.js 22 \u6216\u4EE5\u4E0A\uFF0C\u6216\u586B\u5199\u53EF\u6267\u884C\u6587\u4EF6\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002");
+  });
+  const version = /^v(\d+)\.\d+\.\d+(?:[-+][\w.-]+)?$/.exec(stdout.trim());
+  if (!version || Number(version[1]) < 22) throw new Error("Web \u5DE5\u4F5C\u53F0\u9700\u8981 Node.js 22 \u6216\u4EE5\u4E0A\u3002\u8BF7\u68C0\u67E5 Node.js \u8DEF\u5F84\u3002");
+  const reviewData = workbenchReviewDataPath(vault);
+  return {
+    executable,
+    entry,
+    port,
+    lanHost,
+    requirePairing,
+    env: {
+      ...nodeEnv,
+      OBSIDIAN_VAULT: vault,
+      TASKNOTES_API_URL: resolveTaskNotesApiUrl(input.apiUrl, auth.env),
+      FLOWDESK_WORKBENCH_VAULT: vault,
+      FLOWDESK_WORKBENCH_PORT: String(port),
+      FLOWDESK_WORKBENCH_LAN_HOST: lanHost,
+      FLOWDESK_WORKBENCH_REQUIRE_PAIRING: requirePairing ? "1" : "0",
+      FLOWDESK_WORKBENCH_PAIRING_KEY: pairingKey,
+      FLOWDESK_WORKBENCH_REVIEW_DATA: reviewData,
+      FLOWDESK_REVIEW_DATA: reviewData
+    }
+  };
+}
+function startError(code2, config2) {
+  if (code2 === "EADDRINUSE") return `\u7AEF\u53E3 ${config2.port} \u5DF2\u88AB\u5360\u7528\u3002\u8BF7\u66F4\u6362\u7AEF\u53E3\uFF0C\u6216\u4ECE\u539F\u670D\u52A1\u505C\u6B62\u5B83\u3002`;
+  if (code2 === "EACCES") return `\u7CFB\u7EDF\u62D2\u7EDD\u76D1\u542C\u7AEF\u53E3 ${config2.port}\u3002\u8BF7\u68C0\u67E5\u7AEF\u53E3\u6743\u9650\u6216\u66F4\u6362\u7AEF\u53E3\u3002`;
+  if (code2 === "EADDRNOTAVAIL") return `\u7CFB\u7EDF\u65E0\u6CD5\u76D1\u542C ${config2.lanHost || "127.0.0.1"}:${config2.port}\u3002\u8BF7\u68C0\u67E5\u672C\u673A\u7F51\u7EDC\u8BBE\u7F6E\u540E\u91CD\u8BD5\u3002`;
+  if (code2 === "ERR_MODULE_NOT_FOUND") return "Web \u5DE5\u4F5C\u53F0\u8FD0\u884C\u4F9D\u8D56\u7F3A\u5931\u3002\u8BF7\u91CD\u65B0\u5B89\u88C5\u5B8C\u6574\u7684 Dashboard \u63D2\u4EF6\u5305\u3002";
+  return "Web \u5DE5\u4F5C\u53F0\u65E0\u6CD5\u542F\u52A8\u3002\u8BF7\u68C0\u67E5\u8FD0\u884C\u6587\u4EF6\u3001Vault \u548C\u8BC4\u5BA1\u6570\u636E\u76EE\u5F55\u540E\u91CD\u8BD5\u3002";
+}
+function observeChild(child, config2, onExit) {
+  let finishStartup;
+  const startup = new Promise((resolve7) => {
+    finishStartup = resolve7;
+  });
+  let exited = false;
+  const exit = new Promise((resolve7) => {
+    const finish = (code2, signal) => {
+      if (exited) return;
+      exited = true;
+      finishStartup({ kind: "failed", message: startError(void 0, config2) });
+      resolve7(true);
+      onExit({ code: code2, signal });
+    };
+    child.once("exit", finish);
+    child.once("close", finish);
+  });
+  child.on("error", (error) => {
+    finishStartup({ kind: "failed", message: startError(error.code, config2) });
+  });
+  child.on("message", (event) => {
+    if (!event || typeof event !== "object") return;
+    const message = event;
+    if (message.type === "flowdesk-workbench-start-error") {
+      finishStartup({ kind: "failed", message: startError(message.code, config2) });
+    }
+    if (message.type === "flowdesk-workbench-ready" && message.port === config2.port && message.lanHost === config2.lanHost) {
+      finishStartup({ kind: "ready" });
+    }
+  });
+  return { child, startup, exit, hasExited: () => exited };
+}
+function awaitStartup(startup, signal) {
+  if (signal.aborted) return Promise.resolve({ kind: "cancelled" });
+  return new Promise((resolve7) => {
+    const finish = (result) => {
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", abort);
+      resolve7(result);
+    };
+    const abort = () => finish({ kind: "cancelled" });
+    const timeout = setTimeout(() => finish({ kind: "failed", message: "\u7B49\u5F85 Web \u5DE5\u4F5C\u53F0\u542F\u52A8\u8D85\u65F6\u3002" }), 15e3);
+    signal.addEventListener("abort", abort, { once: true });
+    void startup.then(finish);
+  });
+}
+function awaitExit(exit, timeoutMs) {
+  return new Promise((resolve7) => {
+    const timeout = setTimeout(() => resolve7(false), timeoutMs);
+    void exit.then((closed) => {
+      clearTimeout(timeout);
+      resolve7(closed);
+    });
+  });
+}
+function spawnWorkbench(config2) {
+  return (0, import_child_process3.spawn)(config2.executable, [config2.entry], {
+    cwd: (0, import_path.dirname)(config2.entry),
+    env: config2.env,
+    windowsHide: true,
+    stdio: ["ignore", "ignore", "ignore", "ipc"]
+  });
+}
+var WorkbenchService = class {
+  constructor(prepare, spawnChild = spawnWorkbench) {
+    this.prepare = prepare;
+    this.spawnChild = spawnChild;
+    this.current = { kind: "stopped" };
+    this.tail = Promise.resolve();
+    this.disposed = false;
+    this.listeners = /* @__PURE__ */ new Set();
+  }
+  get status() {
+    return this.current;
+  }
+  subscribe(listener) {
+    this.listeners.add(listener);
+    listener(this.current);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+  update(state) {
+    this.current = state;
+    for (const listener of this.listeners) listener(state);
+  }
+  enqueue(operation) {
+    const pending = this.tail.then(operation);
+    this.tail = pending.catch(() => {
+    });
+    return pending;
+  }
+  start() {
+    if (this.disposed || this.startRequest) return this.tail;
+    const request = this.startRequest = new AbortController();
+    return this.enqueue(async () => {
+      try {
+        await this.startOwned(request.signal);
+      } finally {
+        if (this.startRequest === request) this.startRequest = void 0;
+      }
+    });
+  }
+  stop() {
+    var _a;
+    (_a = this.startRequest) == null ? void 0 : _a.abort();
+    this.startRequest = void 0;
+    return this.enqueue(() => this.stopOwned());
+  }
+  restart() {
+    void this.stop();
+    return this.start();
+  }
+  dispose() {
+    this.disposed = true;
+    this.listeners.clear();
+    return this.stop();
+  }
+  async startOwned(signal) {
+    if (signal.aborted || this.child) return;
+    this.update({ kind: "starting" });
+    try {
+      const config2 = await this.prepare(signal);
+      if (signal.aborted) return;
+      const run = observeChild(this.spawnChild(config2), config2, (exit) => {
+        var _a, _b;
+        if (this.child !== run) return;
+        this.child = void 0;
+        if (this.current.kind === "running") {
+          this.update({ kind: "error", message: `Web \u5DE5\u4F5C\u53F0\u5DF2\u9000\u51FA\uFF08${(_b = (_a = exit.signal) != null ? _a : exit.code) != null ? _b : "\u539F\u56E0\u672A\u77E5"}\uFF09\u3002` });
+        } else if (this.current.kind === "error" && this.current.canStop) {
+          this.update({ kind: "error", message: this.current.message });
+        }
+      });
+      this.child = run;
+      const startup = await awaitStartup(run.startup, signal);
+      if (signal.aborted) return;
+      if (startup.kind === "ready" && !run.hasExited()) {
+        this.update({ kind: "running", port: config2.port, lanHost: config2.lanHost, requirePairing: config2.requirePairing });
+        return;
+      }
+      const stopped = await this.terminate(run);
+      if (signal.aborted) return;
+      const message = startup.kind === "failed" ? startup.message : "Web \u5DE5\u4F5C\u53F0\u5728\u542F\u52A8\u540E\u9000\u51FA\u3002";
+      this.update({ kind: "error", message, canStop: !stopped });
+    } catch (error) {
+      if (!signal.aborted) this.update({ kind: "error", message: error instanceof Error ? error.message : "Web \u5DE5\u4F5C\u53F0\u65E0\u6CD5\u542F\u52A8\u3002" });
+    }
+  }
+  async stopOwned() {
+    const run = this.child;
+    if (run) {
+      this.update({ kind: "stopping" });
+      if (!await this.terminate(run)) {
+        this.update({ kind: "error", message: "\u672A\u6536\u5230 Web \u5DE5\u4F5C\u53F0\u8FDB\u7A0B\u7684\u9000\u51FA\u786E\u8BA4\u3002", canStop: true });
+        return;
+      }
+    }
+    this.update({ kind: "stopped" });
+  }
+  async terminate(run) {
+    if (run.hasExited()) return true;
+    run.child.kill("SIGTERM");
+    if (await awaitExit(run.exit, 2500)) return true;
+    run.child.kill("SIGKILL");
+    return awaitExit(run.exit, 1e3);
+  }
+};
+
+// src/web-workbench-settings.ts
+var import_obsidian6 = require("obsidian");
+function addWorkbenchSettings(container, actions) {
+  const { settings, service, save, open: open2 } = actions;
+  new import_obsidian6.Setting(container).setName("Web \u5DE5\u4F5C\u53F0").setHeading();
+  const controls = new import_obsidian6.Setting(container).setName("\u670D\u52A1\u72B6\u6001").setDesc("\u4FEE\u6539 TaskNotes \u8FDE\u63A5\u8BBE\u7F6E\u540E\uFF0C\u91CD\u542F\u5DE5\u4F5C\u53F0\u751F\u6548\u3002");
+  const statusText = controls.descEl.createDiv({ attr: { role: "status" } });
+  const endpoints = controls.descEl.createDiv();
+  let start;
+  let stop;
+  let restart;
+  let browser;
+  controls.addButton((button) => {
+    start = button.setButtonText("\u542F\u52A8").onClick(() => service.start());
+  });
+  controls.addButton((button) => {
+    stop = button.setButtonText("\u505C\u6B62").onClick(() => service.stop());
+  });
+  controls.addButton((button) => {
+    restart = button.setButtonText("\u91CD\u542F").onClick(() => service.restart());
+  });
+  controls.addButton((button) => {
+    browser = button.setButtonText("\u5728\u6D4F\u89C8\u5668\u6253\u5F00").onClick(open2);
+  });
+  const portRow = new import_obsidian6.Setting(container).setName("\u7AEF\u53E3").setDesc("\u672C\u673A\u548C\u5C40\u57DF\u7F51\u5171\u7528\u540C\u4E00\u4E2A\u7AEF\u53E3\u3002\u4FEE\u6539\u540E\u91CD\u542F\u751F\u6548\u3002");
+  const portStatus = portRow.descEl.createDiv({ attr: { role: "status" } });
+  portRow.addText((text3) => {
+    text3.setValue(String(settings.port));
+    text3.inputEl.inputMode = "numeric";
+    text3.inputEl.addEventListener("change", async () => {
+      const port = parseWorkbenchPort(text3.getValue().trim());
+      if (port === void 0) {
+        portStatus.setText("\u8BF7\u8F93\u5165 1 \u5230 65535 \u4E4B\u95F4\u7684\u6574\u6570\u3002");
+        return;
+      }
+      try {
+        await save({ port });
+        portStatus.setText("");
+      } catch (e) {
+        portStatus.setText("\u7AEF\u53E3\u8BBE\u7F6E\u672A\u80FD\u4FDD\u5B58\u3002");
+      }
+    });
+  });
+  new import_obsidian6.Setting(container).setName("\u5C40\u57DF\u7F51\u8BBF\u95EE").setDesc("\u5F00\u542F\u65F6\u76D1\u542C\u6240\u6709 IPv4 \u7F51\u5361\u3002\u540C\u7F51\u6BB5\u8BBE\u5907\u53EF\u901A\u8FC7\u5F53\u524D\u7F51\u5361\u5730\u5740\u8BBF\u95EE\u5DE5\u4F5C\u53F0\u3002\u5173\u95ED\u65F6\u4EC5\u672C\u673A\u53EF\u8BBF\u95EE\u3002\u4FEE\u6539\u540E\u91CD\u542F\u751F\u6548\u3002").addToggle((toggle) => toggle.setValue(Boolean(settings.lanHost)).onChange((enabled) => save({ lanHost: enabled ? WORKBENCH_LAN_BIND_HOST : "" })));
+  new import_obsidian6.Setting(container).setName("\u4F5C\u8005\u914D\u5BF9").setDesc("\u5F00\u542F\u540E\uFF0C\u6D4F\u89C8\u5668\u9700\u5148\u914D\u5BF9\u624D\u80FD\u4F7F\u7528\u4F5C\u8005\u64CD\u4F5C\u3002\u4FEE\u6539\u540E\u91CD\u542F\u751F\u6548\u3002").addToggle((toggle) => toggle.setValue(settings.requirePairing).onChange((requirePairing) => save({ requirePairing })));
+  const pairingKeyRow = new import_obsidian6.Setting(container).setName("\u914D\u5BF9\u5BC6\u94A5").setDesc("\u4F5C\u8005\u914D\u5BF9\u65F6\u8F93\u5165\u6B64\u5BC6\u94A5\u3002\u4FEE\u6539\u540E\u91CD\u542F\u751F\u6548\u3002");
+  const pairingKeyStatus = pairingKeyRow.descEl.createDiv({ attr: { role: "status" } });
+  pairingKeyRow.addText((text3) => {
+    text3.inputEl.type = "password";
+    text3.inputEl.autocomplete = "new-password";
+    text3.inputEl.spellcheck = false;
+    text3.inputEl.setAttribute("aria-label", "\u914D\u5BF9\u5BC6\u94A5");
+    text3.setValue(settings.pairingKey);
+    text3.inputEl.addEventListener("change", async () => {
+      const pairingKey = text3.getValue();
+      if (!isWorkbenchPairingKey(pairingKey)) {
+        text3.inputEl.setAttribute("aria-invalid", "true");
+        pairingKeyStatus.setText("\u8BF7\u8F93\u5165\u6709\u6548\u7684\u914D\u5BF9\u5BC6\u94A5\u3002");
+        return;
+      }
+      text3.inputEl.removeAttribute("aria-invalid");
+      try {
+        await save({ pairingKey });
+        pairingKeyStatus.setText("");
+      } catch (e) {
+        pairingKeyStatus.setText("\u914D\u5BF9\u5BC6\u94A5\u672A\u80FD\u4FDD\u5B58\u3002");
+      }
+    });
+  });
+  new import_obsidian6.Setting(container).setName("Node.js \u8DEF\u5F84").setDesc("\u9700\u8981 Node.js 22 \u6216\u4EE5\u4E0A\u3002\u7559\u7A7A\u65F6\u4ECE PATH \u67E5\u627E\uFF0C\u4E5F\u53EF\u586B\u5199\u53EF\u6267\u884C\u6587\u4EF6\u7684\u7EDD\u5BF9\u8DEF\u5F84\u3002\u4FEE\u6539\u540E\u91CD\u542F\u751F\u6548\u3002").addText((text3) => text3.setPlaceholder("\u81EA\u52A8\u67E5\u627E").setValue(settings.nodePath).onChange((nodePath) => save({ nodePath: nodePath.trim() })));
+  new import_obsidian6.Setting(container).setName("\u968F\u63D2\u4EF6\u542F\u52A8").setDesc("\u52A0\u8F7D Dashboard \u65F6\u81EA\u52A8\u542F\u52A8 Web \u5DE5\u4F5C\u53F0\u3002").addToggle((toggle) => toggle.setValue(settings.autoStart).onChange((autoStart) => save({ autoStart })));
+  const renderEndpoints = () => {
+    endpoints.empty();
+    const state = service.status;
+    if (state.kind !== "running") return;
+    const addLink = (label, address) => {
+      const origin = `http://${address}:${state.port}`;
+      const href = origin + "/";
+      const line = endpoints.createDiv();
+      line.createSpan({ text: `${label} ` });
+      line.createEl("a", { text: href, cls: "external-link", attr: { href, target: "_blank", rel: "noopener noreferrer" } });
+      if (state.requirePairing) {
+        line.createSpan({ text: " \xB7 " });
+        line.createEl("a", { text: "\u4F5C\u8005\u914D\u5BF9", cls: "external-link", attr: {
+          href: origin + "/pair",
+          target: "_blank",
+          rel: "noopener noreferrer",
+          "aria-label": `\u4F5C\u8005\u914D\u5BF9 ${origin}`
+        } });
+      }
+    };
+    addLink("\u672C\u673A", "127.0.0.1");
+    if (!state.lanHost) return;
+    endpoints.createDiv({ text: `\u5C40\u57DF\u7F51\u76D1\u542C ${state.lanHost}` });
+    const addresses = workbenchLanAddresses();
+    if (!addresses.length) endpoints.createDiv({ text: "\u5F53\u524D\u6CA1\u6709\u5C40\u57DF\u7F51 IPv4 \u5730\u5740\u3002" });
+    for (const address of addresses) addLink("\u5C40\u57DF\u7F51", address);
+  };
+  const unsubscribe = service.subscribe((state) => {
+    renderEndpoints();
+    const busy = state.kind === "starting" || state.kind === "stopping";
+    const owned = state.kind === "running" || state.kind === "error" && state.canStop;
+    start.setDisabled(busy || Boolean(owned));
+    stop.setDisabled(state.kind !== "starting" && !owned);
+    restart.setDisabled(!owned);
+    browser.setDisabled(state.kind !== "running");
+    if (state.kind === "running") {
+      statusText.setText("\u8FD0\u884C\u4E2D");
+    } else if (state.kind === "error") {
+      statusText.setText(state.message);
+    } else {
+      statusText.setText({ stopped: "\u5DF2\u505C\u6B62", starting: "\u6B63\u5728\u542F\u52A8\u2026", stopping: "\u6B63\u5728\u505C\u6B62\u2026" }[state.kind]);
+    }
+  });
+  const trackedWindow = container.ownerDocument.defaultView;
+  trackedWindow == null ? void 0 : trackedWindow.addEventListener("online", renderEndpoints);
+  trackedWindow == null ? void 0 : trackedWindow.addEventListener("focus", renderEndpoints);
+  return () => {
+    unsubscribe();
+    trackedWindow == null ? void 0 : trackedWindow.removeEventListener("online", renderEndpoints);
+    trackedWindow == null ? void 0 : trackedWindow.removeEventListener("focus", renderEndpoints);
+  };
+}
+
 // src/main.ts
 var FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
-var execFileAsync = (0, import_util2.promisify)(import_child_process3.execFile);
+var execFileAsync2 = (0, import_util3.promisify)(import_child_process4.execFile);
 var DEFAULT_SETTINGS = {
   coreMode: "installed",
   flowdeskRoot: "",
   workingDirectory: "",
   apiUrl: "",
-  tasknotesEnv: "{}"
+  tasknotesEnv: "{}",
+  workbench: normalizeWorkbenchSettings(void 0)
 };
-var FlowDeskDashboardPlugin = class extends import_obsidian6.Plugin {
+var FlowDeskDashboardPlugin = class extends import_obsidian7.Plugin {
   constructor() {
     super(...arguments);
     this.coreResolution = null;
@@ -11103,6 +11492,16 @@ var FlowDeskDashboardPlugin = class extends import_obsidian6.Plugin {
     this.repositoryOpenDependencies = {};
     this.openingRepository = 0;
     this.openingMainDashboards = /* @__PURE__ */ new Map();
+    this.workbench = new WorkbenchService((signal) => {
+      var _a;
+      return prepareWorkbenchLaunch({
+        vaultRoot: this.resolveVaultRoot(),
+        pluginDir: (_a = this.manifest.dir) != null ? _a : path8.join(this.app.vault.configDir, "plugins", this.manifest.id),
+        settings: this.settings.workbench,
+        tasknotesEnv: this.settings.tasknotesEnv,
+        apiUrl: this.settings.apiUrl
+      }, signal);
+    });
   }
   openRepositoryMarkdown(absolutePath) {
     return new RepositoryMarkdownOpener(this.repositoryOpenDependencies).open(absolutePath);
@@ -11121,7 +11520,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian6.Plugin {
   }
   dashboardFile(resourcePath) {
     const file = this.app.vault.getAbstractFileByPath(resourcePath);
-    return file instanceof import_obsidian6.TFile && (this.isTaskFile(file) || ["work-case", "session"].includes(this.workCaseType(file))) ? file : null;
+    return file instanceof import_obsidian7.TFile && (this.isTaskFile(file) || ["work-case", "session"].includes(this.workCaseType(file))) ? file : null;
   }
   mainDashboardTarget() {
     const active = this.app.workspace.getActiveViewOfType(FlowDeskDashboardView);
@@ -11136,7 +11535,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian6.Plugin {
     var _a;
     const file = this.mainDashboardTarget();
     if (!file) {
-      new import_obsidian6.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u6216 Work Case\u3002");
+      new import_obsidian7.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u6216 Work Case\u3002");
       return;
     }
     const pending = this.openingMainDashboards.get(file.path);
@@ -11155,7 +11554,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian6.Plugin {
       if (!(leaf.view instanceof FlowDeskDashboardView) || !leaf.view.readyForResource(file.path)) throw new Error(`Task/Case \u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${file.path}`);
     })).then(() => {
     }, (error) => {
-      new import_obsidian6.Notice(`\u672A\u80FD\u6253\u5F00\u4E3B\u533A\u57DF Dashboard\uFF1A${error instanceof Error ? error.message : String(error)}`);
+      new import_obsidian7.Notice(`\u672A\u80FD\u6253\u5F00\u4E3B\u533A\u57DF Dashboard\uFF1A${error instanceof Error ? error.message : String(error)}`);
     });
     this.openingMainDashboards.set(file.path, opening);
     try {
@@ -11184,6 +11583,10 @@ var FlowDeskDashboardPlugin = class extends import_obsidian6.Plugin {
     });
     this.addCommand({ id: "open-doc-hub", name: "\u6253\u5F00\u6587\u6863\u4E2D\u5FC3", callback: () => void openDocHub(this.app.workspace) });
     this.addCommand({ id: "open-dashboard-in-main", name: "\u5728\u4E3B\u533A\u57DF\u6253\u5F00 Dashboard", callback: () => this.openDashboardInMain() });
+    this.addCommand({ id: "start-web-workbench", name: "\u542F\u52A8 Web \u5DE5\u4F5C\u53F0", callback: () => this.runWorkbenchCommand("start") });
+    this.addCommand({ id: "stop-web-workbench", name: "\u505C\u6B62 Web \u5DE5\u4F5C\u53F0", callback: () => this.runWorkbenchCommand("stop") });
+    this.addCommand({ id: "restart-web-workbench", name: "\u91CD\u542F Web \u5DE5\u4F5C\u53F0", callback: () => this.runWorkbenchCommand("restart") });
+    this.addCommand({ id: "open-web-workbench", name: "\u5728\u6D4F\u89C8\u5668\u6253\u5F00 Web \u5DE5\u4F5C\u53F0", callback: () => this.openWorkbench() });
     this.addCommand({
       id: "show-current-task-dashboard",
       name: "\u663E\u793A\u5F53\u524D Task \u6216 Case",
@@ -11192,7 +11595,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian6.Plugin {
         const canRun = this.isTaskFile(file) || ["work-case", "session"].includes(this.workCaseType(file));
         if (checking) return canRun;
         if (!file || !canRun) {
-          new import_obsidian6.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u6216 Work Case\u3002");
+          new import_obsidian7.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u6216 Work Case\u3002");
           return false;
         }
         void this.refreshDashboard();
@@ -11217,7 +11620,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian6.Plugin {
       })
     );
     const refreshOnChange = (file) => {
-      if (file instanceof import_obsidian6.TFile) {
+      if (file instanceof import_obsidian7.TFile) {
         for (const view of this.getDashboardViews()) if (view.observesFile(file.path)) view.scheduleRefresh();
       }
     };
@@ -11225,20 +11628,42 @@ var FlowDeskDashboardPlugin = class extends import_obsidian6.Plugin {
     this.registerEvent(this.app.vault.on("create", refreshOnChange));
     this.registerEvent(this.app.vault.on("delete", refreshOnChange));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
-      if (file instanceof import_obsidian6.TFile) {
+      if (file instanceof import_obsidian7.TFile) {
         for (const view of this.getDashboardViews()) if (view.observesFile(file.path) || view.observesFile(oldPath)) view.scheduleRefresh();
       }
     }));
     this.addSettingTab(new FlowDeskDashboardSettingTab(this.app, this));
+    if (this.settings.workbench.autoStart) void this.runWorkbenchCommand("start", false);
   }
   async onunload() {
     var _a;
+    const stopWorkbench = this.workbench.dispose();
     (_a = this.atlasPreview) == null ? void 0 : _a.dispose();
     this.atlasPreview = void 0;
     if (this.settingsRefresh) clearTimeout(this.settingsRefresh);
     this.app.workspace.detachLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(FLOWDESK_REPOSITORY_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(DOC_HUB_VIEW_TYPE);
+    await stopWorkbench;
+  }
+  async runWorkbenchCommand(action, notifySuccess = true) {
+    await this.workbench[action]();
+    const status = this.workbench.status;
+    if (status.kind === "error") new import_obsidian7.Notice(status.message);
+    else if (notifySuccess && status.kind === "running") new import_obsidian7.Notice(`Web \u5DE5\u4F5C\u53F0\u8FD0\u884C\u4E8E http://127.0.0.1:${status.port}/`);
+    else if (notifySuccess && action === "stop" && status.kind === "stopped") new import_obsidian7.Notice("Web \u5DE5\u4F5C\u53F0\u5DF2\u505C\u6B62\u3002");
+  }
+  openWorkbench() {
+    const status = this.workbench.status;
+    if (status.kind !== "running") {
+      new import_obsidian7.Notice("\u8BF7\u5148\u542F\u52A8 Web \u5DE5\u4F5C\u53F0\u3002");
+      return;
+    }
+    window.open(`http://127.0.0.1:${status.port}/`, "_blank", "noopener,noreferrer");
+  }
+  async saveWorkbenchSettings(changes) {
+    this.settings.workbench = { ...this.settings.workbench, ...changes };
+    await this.saveData(this.settings);
   }
   /** 文档中心偏好独立保存：不走 saveSettings，避免重置 Core 解析并触发 Dashboard 刷新。 */
   async saveDocHubPrefs(prefs) {
@@ -11256,7 +11681,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian6.Plugin {
       await this.activateWorkCaseDashboard(file);
       return;
     }
-    new import_obsidian6.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u6216 Work Case\u3002");
+    new import_obsidian7.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A TaskNotes \u4EFB\u52A1\u6216 Work Case\u3002");
   }
   async activateDashboard(taskPath) {
     var _a;
@@ -11302,7 +11727,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian6.Plugin {
     const usedCore = this.coreResolution ? { ...this.coreResolution, notices: [...this.coreResolution.notices] } : null;
     let stdout;
     try {
-      const result = await execFileAsync(invocation.executable, invocation.args, {
+      const result = await execFileAsync2(invocation.executable, invocation.args, {
         ...createSnapshotExecutionOptions(invocation.cwd, signal),
         env: snapshotEnv
       });
@@ -11327,7 +11752,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian6.Plugin {
     const usedCore = this.coreResolution ? { ...this.coreResolution, notices: [...this.coreResolution.notices] } : null;
     let stdout;
     let resumeUnavailable = false;
-    const execute = (args) => execFileAsync(invocation.executable, args, {
+    const execute = (args) => execFileAsync2(invocation.executable, args, {
       ...createSnapshotExecutionOptions(invocation.cwd, signal),
       env: snapshotEnv
     });
@@ -11391,7 +11816,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian6.Plugin {
   }
   async loadCaseContent(casePath, signal) {
     const file = this.app.vault.getAbstractFileByPath(casePath);
-    if (!(file instanceof import_obsidian6.TFile) || file.path !== casePath) throw new Error("\u672A\u627E\u5230\u51C6\u786ECase\u539F\u6587");
+    if (!(file instanceof import_obsidian7.TFile) || file.path !== casePath) throw new Error("\u672A\u627E\u5230\u51C6\u786ECase\u539F\u6587");
     const details = await this.app.vault.cachedRead(file);
     if (signal.aborted) throw new Error("Case\u539F\u6587\u8BF7\u6C42\u5DF2\u53D6\u6D88");
     return createCaseContent(casePath, details, (/* @__PURE__ */ new Date()).toISOString());
@@ -11400,6 +11825,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian6.Plugin {
     var _a;
     const saved = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
+    this.settings.workbench = normalizeWorkbenchSettings(saved == null ? void 0 : saved.workbench);
     if (!(saved == null ? void 0 : saved.coreMode) && ((_a = saved == null ? void 0 : saved.flowdeskRoot) == null ? void 0 : _a.trim())) this.settings.coreMode = "fixed";
   }
   async saveSettings() {
@@ -11458,7 +11884,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian6.Plugin {
     this.coreResolution = resolveCore({
       mode: (_a = this.settings.coreMode) != null ? _a : this.settings.flowdeskRoot.trim() ? "fixed" : "installed",
       fixedPath: expandHomePath(this.settings.flowdeskRoot.trim()),
-      home: (0, import_os.homedir)(),
+      home: (0, import_os2.homedir)(),
       workingDirectory: expandHomePath(this.settings.workingDirectory.trim())
     });
     return this.coreResolution.root;
@@ -11475,7 +11901,7 @@ var FlowDeskDashboardPlugin = class extends import_obsidian6.Plugin {
     return path8.resolve(basePath);
   }
 };
-var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
+var FlowDeskDashboardView = class extends import_obsidian7.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
@@ -11541,7 +11967,7 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
         this.displayResourceModal(new DashboardContentModal(this.app, title, render));
       },
       editCase: (casePath, event) => this.openCaseProperties(casePath, event),
-      icon: import_obsidian6.setIcon
+      icon: import_obsidian7.setIcon
     });
     this.shell = new ViewShellController([this.taskAdapter, this.caseAdapter]);
     for (const name of ["pointerdown", "keydown", "wheel"]) this.contentEl.addEventListener(name, this.onReadingInteraction);
@@ -11653,7 +12079,7 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
     }
     if (typeof state.resourcePath !== "string" || !state.resourcePath) return;
     const file = this.app.vault.getAbstractFileByPath(state.resourcePath);
-    if (!(file instanceof import_obsidian6.TFile) || file.path !== state.resourcePath || !(this.plugin.isTaskFile(file) || ["work-case", "session"].includes(this.plugin.workCaseType(file)))) throw new Error("\u539F Task/Case \u5DF2\u65E0\u6CD5\u786E\u8BA4\uFF0C\u4FDD\u7559\u539F\u9605\u8BFB\u4F4D\u7F6E\u3002");
+    if (!(file instanceof import_obsidian7.TFile) || file.path !== state.resourcePath || !(this.plugin.isTaskFile(file) || ["work-case", "session"].includes(this.plugin.workCaseType(file)))) throw new Error("\u539F Task/Case \u5DF2\u65E0\u6CD5\u786E\u8BA4\uFF0C\u4FDD\u7559\u539F\u9605\u8BFB\u4F4D\u7F6E\u3002");
     await this.syncToActiveFile(file);
     if (this.shell.context.kind === "task" && !((_a = this.taskAdapter.getRenderState()) == null ? void 0 : _a.snapshot)) throw new Error("\u4EFB\u52A1\u8BFB\u53D6\u5931\u8D25\uFF0C\u4FDD\u7559\u539F Dashboard\u3002");
     if (this.shell.context.kind === this.caseAdapter.kind && !((_b = this.caseAdapter.getRenderState()) == null ? void 0 : _b.model)) throw new Error("\u6848\u5377\u8BFB\u53D6\u5931\u8D25\uFF0C\u4FDD\u7559\u539F Dashboard\u3002");
@@ -11774,7 +12200,7 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
     this.readingState.capture(this.renderedResource, container, { position: this.positionRestored || interaction !== this.lastRenderInteraction });
     this.clearRenderLifetime();
     this.renderController = new AbortController();
-    this.markdownScope = this.addChild(new import_obsidian6.Component());
+    this.markdownScope = this.addChild(new import_obsidian7.Component());
     this.positionRestored = false;
     this.lastRenderInteraction = interaction;
     const nextResource = "resourcePath" in this.shell.context ? `${this.shell.context.kind}:${this.shell.context.resourcePath}` : "";
@@ -11987,13 +12413,13 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
       cls: "flowdesk-toolbar-button",
       attr: { "aria-label": "\u590D\u5236 CLI", title: "\u590D\u5236 CLI" }
     });
-    (0, import_obsidian6.setIcon)(copy, "copy");
+    (0, import_obsidian7.setIcon)(copy, "copy");
     copy.addEventListener("click", async () => {
       try {
         await this.plugin.copyDashboardCommand(taskPath);
-        new import_obsidian6.Notice("CLI \u547D\u4EE4\u5DF2\u590D\u5236");
+        new import_obsidian7.Notice("CLI \u547D\u4EE4\u5DF2\u590D\u5236");
       } catch (error) {
-        new import_obsidian6.Notice(`\u65E0\u6CD5\u590D\u5236 CLI \u547D\u4EE4\uFF1A${String(error)}`);
+        new import_obsidian7.Notice(`\u65E0\u6CD5\u590D\u5236 CLI \u547D\u4EE4\uFF1A${String(error)}`);
       }
     });
     const refresh = toolbar.createEl("button", {
@@ -12003,7 +12429,7 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
         title: this.loading ? "\u5237\u65B0\u4E2D" : "\u5237\u65B0"
       }
     });
-    (0, import_obsidian6.setIcon)(refresh, "refresh-cw");
+    (0, import_obsidian7.setIcon)(refresh, "refresh-cw");
     refresh.disabled = this.loading;
     refresh.addEventListener("click", () => void this.refreshCurrentTask());
   }
@@ -12017,7 +12443,7 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
     card.createDiv({ cls: "flowdesk-subline", text: `\u5F53\u524D\u6587\u4EF6\uFF1A${context.activePath}` });
     if (context.previousTaskPath) {
       const file = this.app.vault.getAbstractFileByPath(context.previousTaskPath);
-      const available = file instanceof import_obsidian6.TFile && (this.plugin.isTaskFile(file) || ["work-case", "session"].includes(this.plugin.workCaseType(file)));
+      const available = file instanceof import_obsidian7.TFile && (this.plugin.isTaskFile(file) || ["work-case", "session"].includes(this.plugin.workCaseType(file)));
       const back = card.createEl("button", { cls: "flowdesk-return-resource", text: "\u2190 \u8FD4\u56DE\u5DE5\u4F5C\u770B\u677F", attr: { title: "\u56DE\u5230\u521A\u624D\u67E5\u770B\u7684\u4EFB\u52A1\u6216Case" } });
       back.disabled = !available;
       back.addEventListener("click", (event) => {
@@ -12089,9 +12515,9 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
   async copyDiagnostic(input) {
     try {
       await navigator.clipboard.writeText(formatDiagnosticClipboard(input));
-      new import_obsidian6.Notice("\u95EE\u9898\u5DF2\u590D\u5236");
+      new import_obsidian7.Notice("\u95EE\u9898\u5DF2\u590D\u5236");
     } catch (error) {
-      new import_obsidian6.Notice(`\u65E0\u6CD5\u590D\u5236\u95EE\u9898\uFF1A${String(error)}`);
+      new import_obsidian7.Notice(`\u65E0\u6CD5\u590D\u5236\u95EE\u9898\uFF1A${String(error)}`);
     }
   }
   async openDiagnosticLocation(diagnostic, event) {
@@ -12111,7 +12537,7 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
       await this.navigationLeaf("current", event).openFile(file);
       return true;
     } catch (error) {
-      if (!signal.aborted) new import_obsidian6.Notice(`\u65E0\u6CD5\u6253\u5F00\u51C6\u786E\u539F\u6587\uFF1A${error instanceof Error ? error.message : String(error)}`);
+      if (!signal.aborted) new import_obsidian7.Notice(`\u65E0\u6CD5\u6253\u5F00\u51C6\u786E\u539F\u6587\uFF1A${error instanceof Error ? error.message : String(error)}`);
       return false;
     } finally {
       if (this.navigationOpening === opening) this.navigationOpening = null;
@@ -12123,7 +12549,7 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
   async openSnapshotSource(taskPath, source, sourceKind = "\u6765\u6E90", text3 = "", event) {
     var _a, _b;
     if (!taskPath) {
-      new import_obsidian6.Notice("producer\u672A\u63D0\u4F9B\u51C6\u786ETask ID");
+      new import_obsidian7.Notice("producer\u672A\u63D0\u4F9B\u51C6\u786ETask ID");
       return;
     }
     if (!source) {
@@ -12132,8 +12558,8 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
     }
     const request = this.beginNavigation();
     const file = this.app.vault.getAbstractFileByPath(taskPath);
-    if (!(file instanceof import_obsidian6.TFile) || file.path !== taskPath) {
-      new import_obsidian6.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${taskPath}`);
+    if (!(file instanceof import_obsidian7.TFile) || file.path !== taskPath) {
+      new import_obsidian7.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${taskPath}`);
       return;
     }
     let apiDetails = null;
@@ -12149,21 +12575,21 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
     if (!await this.openNavigationFile(file, request.signal, event)) return;
     if (request.signal.aborted) return;
     if (location.kind === "note") {
-      new import_obsidian6.Notice(location.reason);
+      new import_obsidian7.Notice(location.reason);
       return;
     }
-    const view = this.app.workspace.getActiveViewOfType(import_obsidian6.MarkdownView);
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian7.MarkdownView);
     if (!view || ((_a = view.file) == null ? void 0 : _a.path) !== taskPath || ((_b = view.getMode) == null ? void 0 : _b.call(view)) === "preview" || location.editorLine >= view.editor.lineCount()) {
-      new import_obsidian6.Notice("\u4EFB\u52A1\u5DF2\u6253\u5F00\uFF1B\u5F53\u524D\u89C6\u56FE\u4E0D\u80FD\u786E\u8BA4\u7CBE\u786E\u4F4D\u7F6E\uFF0C\u8BF7\u67E5\u770B\u539F\u6587\u3002");
+      new import_obsidian7.Notice("\u4EFB\u52A1\u5DF2\u6253\u5F00\uFF1B\u5F53\u524D\u89C6\u56FE\u4E0D\u80FD\u786E\u8BA4\u7CBE\u786E\u4F4D\u7F6E\uFF0C\u8BF7\u67E5\u770B\u539F\u6587\u3002");
       return;
     }
     if (apiDetails === null || typeof view.editor.getValue !== "function") {
-      new import_obsidian6.Notice("\u5F53\u524D\u7F16\u8F91\u5668\u4E0D\u80FD\u6838\u5BF9\u539F\u6587\uFF1B\u5DF2\u6253\u5F00\u6574\u5F20\u4EFB\u52A1\u3002");
+      new import_obsidian7.Notice("\u5F53\u524D\u7F16\u8F91\u5668\u4E0D\u80FD\u6838\u5BF9\u539F\u6587\uFF1B\u5DF2\u6253\u5F00\u6574\u5F20\u4EFB\u52A1\u3002");
       return;
     }
     location = locateTaskSource(view.editor.getValue(), apiDetails, { heading: sourceKind, level: 2, text: text3, source });
     if (location.kind === "note") {
-      new import_obsidian6.Notice(location.reason);
+      new import_obsidian7.Notice(location.reason);
       return;
     }
     const position = { line: location.editorLine, ch: 0 };
@@ -12177,9 +12603,9 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
       const candidates = [linkText, path8.posix.normalize(path8.posix.join(path8.posix.dirname(sourcePath), linkText))];
       for (const candidate of candidates) {
         const file = this.app.vault.getAbstractFileByPath(candidate);
-        if (file instanceof import_obsidian6.TFile && file.path === candidate) return file.path;
+        if (file instanceof import_obsidian7.TFile && file.path === candidate) return file.path;
       }
-      const { path: linkpath } = (0, import_obsidian6.parseLinktext)(linkText);
+      const { path: linkpath } = (0, import_obsidian7.parseLinktext)(linkText);
       return (_d = (_c = (_b = (_a = this.app.metadataCache).getFirstLinkpathDest) == null ? void 0 : _b.call(_a, linkpath, sourcePath)) == null ? void 0 : _c.path) != null ? _d : null;
     };
   }
@@ -12212,7 +12638,7 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
       void this.openRelated(href, sourcePath, origin === "markdown" ? void 0 : "\u94FE\u63A5\u8BED\u6CD5\u6765\u6E90\u65E0\u6CD5\u552F\u4E00\u6838\u5BF9\uFF1B\u8BF7\u67E5\u770B\u539F\u6587\u6216\u590D\u5236\u5F15\u7528\u3002", false, event);
     }, true);
     const rendered = (async () => {
-      await import_obsidian6.MarkdownRenderer.render(this.app, text3, element, sourcePath, component);
+      await import_obsidian7.MarkdownRenderer.render(this.app, text3, element, sourcePath, component);
       if (signal.aborted) return;
       for (const checkbox of Array.from(element.querySelectorAll('input[type="checkbox"]'))) {
         checkbox.disabled = true;
@@ -12293,7 +12719,7 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
     const details = container.createDiv({ cls: "flowdesk-contract-summary flowdesk-reading-card" });
     const heading2 = details.createDiv({ cls: "flowdesk-dashboard-section-title flowdesk-content-heading" });
     const icon = heading2.createSpan({ cls: "flowdesk-content-icon" });
-    (0, import_obsidian6.setIcon)(icon, "file-text");
+    (0, import_obsidian7.setIcon)(icon, "file-text");
     heading2.createSpan({ text: "\u4EFB\u52A1\u8BE6\u60C5" });
     heading2.createSpan({ cls: "flowdesk-content-caption", text: "\u8BF4\u660E \xB7 \u9A8C\u6536 \xB7 \u7ED3\u679C" });
     const body = details.createDiv({ cls: "flowdesk-detail-body" });
@@ -12517,8 +12943,8 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
   async openTask(taskPath, origin = "current", event) {
     if (!taskPath) return;
     const file = this.app.vault.getAbstractFileByPath(taskPath);
-    if (!(file instanceof import_obsidian6.TFile)) {
-      new import_obsidian6.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${taskPath}`);
+    if (!(file instanceof import_obsidian7.TFile)) {
+      new import_obsidian7.Notice(`\u672A\u627E\u5230\u4EFB\u52A1\u6587\u4EF6\uFF1A${taskPath}`);
       return;
     }
     await this.navigationLeaf(origin, event).openFile(file);
@@ -12526,8 +12952,8 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
   async openCaseSource(casePath, source, event) {
     var _a, _b, _c;
     const request = this.beginNavigation(), file = this.app.vault.getAbstractFileByPath(casePath);
-    if (!(file instanceof import_obsidian6.TFile) || file.path !== casePath) {
-      new import_obsidian6.Notice(`\u672A\u627E\u5230Work Case\u6587\u4EF6\uFF1A${casePath}`);
+    if (!(file instanceof import_obsidian7.TFile) || file.path !== casePath) {
+      new import_obsidian7.Notice(`\u672A\u627E\u5230Work Case\u6587\u4EF6\uFF1A${casePath}`);
       return;
     }
     let text3;
@@ -12536,7 +12962,7 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
     } catch (error) {
       if (!request.current()) return;
       const opened = await this.openNavigationFile(file, request.signal, event);
-      if (opened && !request.signal.aborted) new import_obsidian6.Notice(`Case\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF0C\u4EC5\u6253\u5F00\u6574\u5F20\u539F\u6587\uFF1A${error instanceof Error ? error.message : String(error)}`);
+      if (opened && !request.signal.aborted) new import_obsidian7.Notice(`Case\u6765\u6E90\u8BFB\u53D6\u5931\u8D25\uFF0C\u4EC5\u6253\u5F00\u6574\u5F20\u539F\u6587\uFF1A${error instanceof Error ? error.message : String(error)}`);
       return;
     }
     if (!request.current()) return;
@@ -12549,18 +12975,18 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
     const validRange = Number.isInteger(source.lineStart) && source.lineStart >= 1 && Number.isInteger(source.lineEnd) && source.lineEnd >= source.lineStart && source.lineEnd <= lines.length;
     const span = validRange ? lines.slice(source.lineStart - 1, source.lineEnd).join("\n") : "";
     if (!validRange || !expected || !span.includes(expected.text.replace(/\r\n/g, "\n"))) {
-      new import_obsidian6.Notice("Case\u6765\u6E90\u5DF2\u53D8\u5316\u6216\u8D8A\u754C\uFF1B\u5DF2\u6253\u5F00\u6574\u5F20Case\u539F\u6587\u3002");
+      new import_obsidian7.Notice("Case\u6765\u6E90\u5DF2\u53D8\u5316\u6216\u8D8A\u754C\uFF1B\u5DF2\u6253\u5F00\u6574\u5F20Case\u539F\u6587\u3002");
       return;
     }
-    const view = this.app.workspace.getActiveViewOfType(import_obsidian6.MarkdownView);
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian7.MarkdownView);
     if (!view || ((_b = view.file) == null ? void 0 : _b.path) !== casePath || ((_c = view.getMode) == null ? void 0 : _c.call(view)) === "preview" || source.lineStart - 1 >= view.editor.lineCount()) {
-      new import_obsidian6.Notice("Case\u5DF2\u6253\u5F00\uFF1B\u5F53\u524D\u89C6\u56FE\u65E0\u6CD5\u786E\u8BA4\u7CBE\u786E\u4F4D\u7F6E\u3002");
+      new import_obsidian7.Notice("Case\u5DF2\u6253\u5F00\uFF1B\u5F53\u524D\u89C6\u56FE\u65E0\u6CD5\u786E\u8BA4\u7CBE\u786E\u4F4D\u7F6E\u3002");
       return;
     }
     const liveLines = view.editor.getValue().replace(/\r\n/g, "\n").split("\n");
     const liveSpan = liveLines.slice(source.lineStart - 1, source.lineEnd).join("\n");
     if (source.lineEnd > liveLines.length || expected && !liveSpan.includes(expected.text.replace(/\r\n/g, "\n"))) {
-      new import_obsidian6.Notice("Case\u7F16\u8F91\u5668\u539F\u6587\u5DF2\u53D8\u5316\uFF1B\u4E0D\u731C\u4F4D\u7F6E\u3002");
+      new import_obsidian7.Notice("Case\u7F16\u8F91\u5668\u539F\u6587\u5DF2\u53D8\u5316\uFF1B\u4E0D\u731C\u4F4D\u7F6E\u3002");
       return;
     }
     const position = { line: source.lineStart - 1, ch: 0 };
@@ -12584,12 +13010,12 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
   }
   async openCaseProperties(casePath, event) {
     const file = this.app.vault.getAbstractFileByPath(casePath);
-    if (!(file instanceof import_obsidian6.TFile) || file.path !== casePath || !["work-case", "session"].includes(this.plugin.workCaseType(file))) {
-      new import_obsidian6.Notice("\u65E0\u6CD5\u786E\u8BA4\u539FCase\u6587\u4EF6\uFF0C\u8BF7\u4ECE\u6587\u4EF6\u5217\u8868\u6838\u5BF9\u3002");
+    if (!(file instanceof import_obsidian7.TFile) || file.path !== casePath || !["work-case", "session"].includes(this.plugin.workCaseType(file))) {
+      new import_obsidian7.Notice("\u65E0\u6CD5\u786E\u8BA4\u539FCase\u6587\u4EF6\uFF0C\u8BF7\u4ECE\u6587\u4EF6\u5217\u8868\u6838\u5BF9\u3002");
       return;
     }
     await this.navigationLeaf("current", event).openFile(file, { active: true, state: { mode: "source" } });
-    new import_obsidian6.Notice("\u5728Case\u9876\u90E8\u5C5E\u6027\u4E2D\u7EF4\u62A4project\u3001plans\u3001docs\u548Crelated\uFF1B\u4FDD\u5B58\u540E\u770B\u677F\u4F1A\u5237\u65B0\u3002Dashboard\u4E0D\u4F1A\u4EE3\u5199\u8FD9\u4E9B\u5C5E\u6027\u3002");
+    new import_obsidian7.Notice("\u5728Case\u9876\u90E8\u5C5E\u6027\u4E2D\u7EF4\u62A4project\u3001plans\u3001docs\u548Crelated\uFF1B\u4FDD\u5B58\u540E\u770B\u677F\u4F1A\u5237\u65B0\u3002Dashboard\u4E0D\u4F1A\u4EE3\u5199\u8FD9\u4E9B\u5C5E\u6027\u3002");
   }
   async openRelated(raw, sourcePath, sourceError, direct = false, event) {
     var _a, _b, _c, _d, _e, _f;
@@ -12612,10 +13038,10 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
     if (target.kind === "vault") {
       const destination = (_a = target.resolvedPath) != null ? _a : this.vaultLinkResolver(sourcePath)(target.linkText);
       const baseFile = destination ? this.app.vault.getAbstractFileByPath(destination) : null;
-      if (!(baseFile instanceof import_obsidian6.TFile) || target.exactFile && baseFile.path !== target.resolvedPath) {
+      if (!(baseFile instanceof import_obsidian7.TFile) || target.exactFile && baseFile.path !== target.resolvedPath) {
         target = { kind: "unavailable", label: target.label, reason: `\u672A\u627E\u5230\u5DF2\u786E\u8BA4\u7684vault\u539F\u6587\u4EF6\uFF1A${target.linkText}\uFF1B\u4E0D\u4F1A\u521B\u5EFA\u6216\u6539\u9009\u540C\u540D\u7B14\u8BB0\u3002` };
       } else if (baseFile.extension.toLowerCase() === "json") {
-        const fragment = (_b = target.fragment) != null ? _b : target.exactFile ? void 0 : (0, import_obsidian6.parseLinktext)(target.linkText).subpath || void 0;
+        const fragment = (_b = target.fragment) != null ? _b : target.exactFile ? void 0 : (0, import_obsidian7.parseLinktext)(target.linkText).subpath || void 0;
         target = { ...target, resolvedPath: baseFile.path, ...fragment ? { fragment } : {} };
       } else {
         const directFile = target.exactFile === true && (((_c = target.resolvedPath) == null ? void 0 : _c.includes("#")) || target.resolvedPath && target.resolvedPath !== target.resolvedPath.trim() || target.fileUrl && (!target.fragment || ((_d = target.resolvedPath) == null ? void 0 : _d.includes("%"))));
@@ -12633,7 +13059,7 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
     if (direct && target.kind === "repository" && /\.md$/i.test(path8.extname(target.absolutePath))) {
       try {
         await this.plugin.openRepositoryInWorkspace(target.absolutePath, event, request.current);
-        if (request.current() && target.fragment) new import_obsidian6.Notice("\u5DF2\u6253\u5F00\u51C6\u786E\u539F\u6587\u4EF6\uFF0C\u7AE0\u8282\u4F4D\u7F6E\u5C1A\u672A\u5B9A\u4F4D\u3002");
+        if (request.current() && target.fragment) new import_obsidian7.Notice("\u5DF2\u6253\u5F00\u51C6\u786E\u539F\u6587\u4EF6\uFF0C\u7AE0\u8282\u4F4D\u7F6E\u5C1A\u672A\u5B9A\u4F4D\u3002");
         if (request.current()) return;
       } catch (error) {
         firstError = `\u53EA\u8BFB\u8BFB\u53D6\u5931\u8D25\uFF1A${error instanceof Error ? error.message : String(error)}`;
@@ -12681,7 +13107,7 @@ var FlowDeskDashboardView = class extends import_obsidian6.ItemView {
     }
   }
 };
-var DashboardSettingsModal = class extends import_obsidian6.Modal {
+var DashboardSettingsModal = class extends import_obsidian7.Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
@@ -12698,17 +13124,23 @@ var DashboardSettingsModal = class extends import_obsidian6.Modal {
     this.contentEl.empty();
   }
 };
-var FlowDeskDashboardSettingTab = class extends import_obsidian6.PluginSettingTab {
+var FlowDeskDashboardSettingTab = class extends import_obsidian7.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
   }
+  hide() {
+    var _a;
+    (_a = this.stopObservingWorkbench) == null ? void 0 : _a.call(this);
+    this.stopObservingWorkbench = void 0;
+  }
   display() {
+    this.hide();
     const { containerEl } = this;
     containerEl.empty();
     containerEl.addClass("flowdesk-dashboard-settings");
     containerEl.createEl("h2", { text: "FlowDesk Dashboard" });
-    new import_obsidian6.Setting(containerEl).setName("Core \u6765\u6E90").setDesc("\u8DDF\u968F\u6A21\u5F0F\u4F18\u5148\u4F7F\u7528 Claude \u5B89\u88C5\u767B\u8BB0\uFF0C\u7F3A\u5931\u65F6\u68C0\u67E5 Codex \u7F13\u5B58\uFF1B\u56FA\u5B9A\u6A21\u5F0F\u4F7F\u7528\u6307\u5B9A\u8DEF\u5F84\u3002").addDropdown((dropdown) => {
+    new import_obsidian7.Setting(containerEl).setName("Core \u6765\u6E90").setDesc("\u8DDF\u968F\u6A21\u5F0F\u4F18\u5148\u4F7F\u7528 Claude \u5B89\u88C5\u767B\u8BB0\uFF0C\u7F3A\u5931\u65F6\u68C0\u67E5 Codex \u7F13\u5B58\uFF1B\u56FA\u5B9A\u6A21\u5F0F\u4F7F\u7528\u6307\u5B9A\u8DEF\u5F84\u3002").addDropdown((dropdown) => {
       var _a;
       return dropdown.addOption("installed", "\u8DDF\u968F\u5DF2\u5B89\u88C5 Core").addOption("fixed", "\u56FA\u5B9A\u8DEF\u5F84").setValue((_a = this.plugin.settings.coreMode) != null ? _a : this.plugin.settings.flowdeskRoot ? "fixed" : "installed").onChange(async (value) => {
         this.plugin.settings.coreMode = value;
@@ -12740,15 +13172,15 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian6.PluginSettingTa
       }
     };
     inspect();
-    new import_obsidian6.Setting(containerEl).setName("\u56FA\u5B9A Core \u8DEF\u5F84").setDesc("\u4FDD\u7559\u539F\u8DEF\u5F84\uFF1B\u53EA\u6709\u56FA\u5B9A\u6A21\u5F0F\u4F7F\u7528\u3002\u9700\u5305\u542B Task \u4E0E Case producer\u3002").addText((text3) => text3.setPlaceholder("/Users/me/workspaces/flowdesk-plugin").setValue(this.plugin.settings.flowdeskRoot).onChange(async (value) => {
+    new import_obsidian7.Setting(containerEl).setName("\u56FA\u5B9A Core \u8DEF\u5F84").setDesc("\u4FDD\u7559\u539F\u8DEF\u5F84\uFF1B\u53EA\u6709\u56FA\u5B9A\u6A21\u5F0F\u4F7F\u7528\u3002\u9700\u5305\u542B Task \u4E0E Case producer\u3002").addText((text3) => text3.setPlaceholder("/Users/me/workspaces/flowdesk-plugin").setValue(this.plugin.settings.flowdeskRoot).onChange(async (value) => {
       this.plugin.settings.flowdeskRoot = value.trim();
       await this.plugin.saveSettings();
     }));
-    new import_obsidian6.Setting(containerEl).setName("\u5DE5\u4F5C\u76EE\u5F55").setDesc("\u4F20\u7ED9 Task snapshot \u7684 --working-directory\uFF1B\u7559\u7A7A\u65F6\u4F7F\u7528\u6240\u9009 Core \u8DEF\u5F84\u3002").addText((text3) => text3.setValue(this.plugin.settings.workingDirectory).onChange(async (value) => {
+    new import_obsidian7.Setting(containerEl).setName("\u5DE5\u4F5C\u76EE\u5F55").setDesc("\u4F20\u7ED9 Task snapshot \u7684 --working-directory\uFF1B\u7559\u7A7A\u65F6\u4F7F\u7528\u6240\u9009 Core \u8DEF\u5F84\u3002").addText((text3) => text3.setValue(this.plugin.settings.workingDirectory).onChange(async (value) => {
       this.plugin.settings.workingDirectory = value.trim();
       await this.plugin.saveSettings();
     }));
-    new import_obsidian6.Setting(containerEl).setName("TaskNotes API \u5730\u5740").setDesc("\u7559\u7A7A\u4F7F\u7528\u73AF\u5883\u914D\u7F6E\u6216\u672C\u673A\u9ED8\u8BA4\u5730\u5740\u3002").addText((text3) => text3.setPlaceholder("http://127.0.0.1:18090").setValue(this.plugin.settings.apiUrl).onChange(async (value) => {
+    new import_obsidian7.Setting(containerEl).setName("TaskNotes API \u5730\u5740").setDesc("\u7559\u7A7A\u4F7F\u7528\u73AF\u5883\u914D\u7F6E\u6216\u672C\u673A\u9ED8\u8BA4\u5730\u5740\u3002").addText((text3) => text3.setPlaceholder("http://127.0.0.1:18090").setValue(this.plugin.settings.apiUrl).onChange(async (value) => {
       this.plugin.settings.apiUrl = value.trim();
       await this.plugin.saveSettings();
     }));
@@ -12758,7 +13190,7 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian6.PluginSettingTa
       configured = parseTaskNotesEnvironment(this.plugin.settings.tasknotesEnv);
     } catch (e) {
     }
-    const token = new import_obsidian6.Setting(containerEl).setName("TaskNotes token").setDesc("\u9ED8\u8BA4\u906E\u4F4F\uFF0C\u4FDD\u5B58\u5728\u65E2\u6709\u73AF\u5883\u53D8\u91CF\u914D\u7F6E\u4E2D\u3002\u6709\u6548\u8BBE\u7F6E\u4FDD\u5B58\u540E\u4F1A\u81EA\u52A8\u5237\u65B0\u770B\u677F\u3002");
+    const token = new import_obsidian7.Setting(containerEl).setName("TaskNotes token").setDesc("\u9ED8\u8BA4\u906E\u4F4F\uFF0C\u4FDD\u5B58\u5728\u65E2\u6709\u73AF\u5883\u53D8\u91CF\u914D\u7F6E\u4E2D\u3002\u6709\u6548\u8BBE\u7F6E\u4FDD\u5B58\u540E\u4F1A\u81EA\u52A8\u5237\u65B0\u770B\u677F\u3002");
     const tokenError = token.descEl.createDiv({ attr: { role: "status" } });
     token.addText((text3) => {
       tokenInput = text3.inputEl;
@@ -12785,7 +13217,7 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian6.PluginSettingTa
     }));
     const advanced = containerEl.createEl("details", { cls: "flowdesk-advanced-settings" });
     advanced.createEl("summary", { text: "\u9AD8\u7EA7\u73AF\u5883\u53D8\u91CF JSON" });
-    const environmentSetting = new import_obsidian6.Setting(advanced).setName("TaskNotes \u73AF\u5883\u53D8\u91CF").setDesc("\u4FDD\u7559\u539F\u6709\u53D8\u91CF\u5408\u5E76\u89C4\u5219\uFF1B\u5C55\u5F00\u540E\u53EF\u67E5\u770B\u5E76\u7F16\u8F91\u5168\u90E8\u914D\u7F6E\u3002");
+    const environmentSetting = new import_obsidian7.Setting(advanced).setName("TaskNotes \u73AF\u5883\u53D8\u91CF").setDesc("\u4FDD\u7559\u539F\u6709\u53D8\u91CF\u5408\u5E76\u89C4\u5219\uFF1B\u5C55\u5F00\u540E\u53EF\u67E5\u770B\u5E76\u7F16\u8F91\u5168\u90E8\u914D\u7F6E\u3002");
     const error = environmentSetting.descEl.createDiv({ attr: { role: "status" } });
     environmentSetting.addTextArea((text3) => {
       jsonInput = text3.inputEl;
@@ -12803,6 +13235,12 @@ var FlowDeskDashboardSettingTab = class extends import_obsidian6.PluginSettingTa
           error.setText(`${failure instanceof Error ? failure.message : "\u73AF\u5883\u914D\u7F6E\u65E0\u6548"} \u5C1A\u672A\u4FDD\u5B58\u3002`);
         }
       });
+    });
+    this.stopObservingWorkbench = addWorkbenchSettings(containerEl, {
+      settings: this.plugin.settings.workbench,
+      service: this.plugin.workbench,
+      save: (changes) => this.plugin.saveWorkbenchSettings(changes),
+      open: () => this.plugin.openWorkbench()
     });
   }
 };
@@ -12831,8 +13269,8 @@ function taskTitleFromPath(taskPath) {
   return path8.basename(taskPath, path8.extname(taskPath));
 }
 function expandHomePath(value) {
-  if (value === "~") return (0, import_os.homedir)();
-  if (value.startsWith("~/")) return path8.join((0, import_os.homedir)(), value.slice(2));
+  if (value === "~") return (0, import_os2.homedir)();
+  if (value.startsWith("~/")) return path8.join((0, import_os2.homedir)(), value.slice(2));
   return value;
 }
 function formatSnapshotCommandError(error) {

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light">
+  <title>外部评审 · FlowDesk</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/external-review.css">
+  <script src="/external-review.js" defer></script>
+</head>
+<body class="external-page">
+  <header class="external-top">
+    <a href="/" class="external-brand" aria-label="返回 FlowDesk 工作台">
+      <span class="brand-symbol" aria-hidden="true"><i></i><i></i><i></i></span>
+      FlowDesk
+    </a>
+    <span class="external-top-title">外部评审</span>
+    <a href="/" class="external-back">返回工作台</a>
+  </header>
+  <div id="external-app" class="external-layout">
+    <p class="external-loading" role="status">正在读取外部评审…</p>
+  </div>
+  <div id="external-notice" class="external-toast" role="status" hidden></div>
+  <dialog id="external-dialog" aria-labelledby="external-dialog-title"></dialog>
+  <noscript>请启用 JavaScript 后使用外部评审。</noscript>
+</body>
+</html>

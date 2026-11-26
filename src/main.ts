@@ -114,6 +114,8 @@ import { FLOWDESK_REPOSITORY_VIEW_TYPE, RepositoryReaderView } from "./repositor
 import { DOC_HUB_HOVER_SOURCE, DOC_HUB_VIEW_TYPE, DocHubView, openDocHub } from "./doc-hub-view";
 import { AtlasPreview } from "./atlas-preview";
 import { normalizePrefs, type DocHubPrefs } from "./doc-hub-style";
+import { normalizeWorkbenchSettings, prepareWorkbenchLaunch, WorkbenchService, type WorkbenchSettings } from "./web-workbench";
+import { addWorkbenchSettings } from "./web-workbench-settings";
 
 export const FLOWDESK_DASHBOARD_VIEW_TYPE = "flowdesk-dashboard-view";
 
@@ -126,6 +128,7 @@ interface FlowDeskDashboardSettings {
   apiUrl: string;
   tasknotesEnv: string;
   docHub?: DocHubPrefs;
+  workbench: WorkbenchSettings;
 }
 
 const DEFAULT_SETTINGS: FlowDeskDashboardSettings = {
@@ -134,6 +137,7 @@ const DEFAULT_SETTINGS: FlowDeskDashboardSettings = {
   workingDirectory: "",
   apiUrl: "",
   tasknotesEnv: "{}",
+  workbench: normalizeWorkbenchSettings(undefined),
 };
 
 interface ExecFileFailure extends Error {
@@ -151,6 +155,13 @@ export default class FlowDeskDashboardPlugin extends Plugin {
   private openingRepository = 0;
   private readonly openingMainDashboards = new Map<string,Promise<void>>();
   private atlasPreview?: AtlasPreview;
+  readonly workbench = new WorkbenchService(signal => prepareWorkbenchLaunch({
+    vaultRoot: this.resolveVaultRoot(),
+    pluginDir: this.manifest.dir ?? path.join(this.app.vault.configDir, "plugins", this.manifest.id),
+    settings: this.settings.workbench,
+    tasknotesEnv: this.settings.tasknotesEnv,
+    apiUrl: this.settings.apiUrl,
+  }, signal));
 
   openRepositoryMarkdown(absolutePath: string): Promise<RepositoryOpenResult> {
     return new RepositoryMarkdownOpener(this.repositoryOpenDependencies).open(absolutePath);
@@ -216,6 +227,10 @@ export default class FlowDeskDashboardPlugin extends Plugin {
     });
     this.addCommand({id:"open-doc-hub",name:"打开文档中心",callback:()=>void openDocHub(this.app.workspace)});
     this.addCommand({id:"open-dashboard-in-main",name:"在主区域打开 Dashboard",callback:()=>this.openDashboardInMain()});
+    this.addCommand({ id: "start-web-workbench", name: "启动 Web 工作台", callback: () => this.runWorkbenchCommand("start") });
+    this.addCommand({ id: "stop-web-workbench", name: "停止 Web 工作台", callback: () => this.runWorkbenchCommand("stop") });
+    this.addCommand({ id: "restart-web-workbench", name: "重启 Web 工作台", callback: () => this.runWorkbenchCommand("restart") });
+    this.addCommand({ id: "open-web-workbench", name: "在浏览器打开 Web 工作台", callback: () => this.openWorkbench() });
     this.addCommand({
       id: "show-current-task-dashboard",
       name: "显示当前 Task 或 Case",
@@ -259,15 +274,40 @@ export default class FlowDeskDashboardPlugin extends Plugin {
       if(file instanceof TFile)for(const view of this.getDashboardViews())if(view.observesFile(file.path)||view.observesFile(oldPath))view.scheduleRefresh();
     }));
     this.addSettingTab(new FlowDeskDashboardSettingTab(this.app, this));
+    if (this.settings.workbench.autoStart) void this.runWorkbenchCommand("start", false);
   }
 
   async onunload() {
+    const stopWorkbench = this.workbench.dispose();
     this.atlasPreview?.dispose();
     this.atlasPreview = undefined;
     if (this.settingsRefresh) clearTimeout(this.settingsRefresh);
     this.app.workspace.detachLeavesOfType(FLOWDESK_DASHBOARD_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(FLOWDESK_REPOSITORY_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(DOC_HUB_VIEW_TYPE);
+    await stopWorkbench;
+  }
+
+  private async runWorkbenchCommand(action: "start" | "stop" | "restart", notifySuccess = true): Promise<void> {
+    await this.workbench[action]();
+    const status = this.workbench.status;
+    if (status.kind === "error") new Notice(status.message);
+    else if (notifySuccess && status.kind === "running") new Notice(`Web 工作台运行于 http://127.0.0.1:${status.port}/`);
+    else if (notifySuccess && action === "stop" && status.kind === "stopped") new Notice("Web 工作台已停止。");
+  }
+
+  openWorkbench(): void {
+    const status = this.workbench.status;
+    if (status.kind !== "running") {
+      new Notice("请先启动 Web 工作台。");
+      return;
+    }
+    window.open(`http://127.0.0.1:${status.port}/`, "_blank", "noopener,noreferrer");
+  }
+
+  async saveWorkbenchSettings(changes: Partial<WorkbenchSettings>): Promise<void> {
+    this.settings.workbench = { ...this.settings.workbench, ...changes };
+    await this.saveData(this.settings);
   }
 
   /** 文档中心偏好独立保存：不走 saveSettings，避免重置 Core 解析并触发 Dashboard 刷新。 */
@@ -434,6 +474,7 @@ export default class FlowDeskDashboardPlugin extends Plugin {
   async loadSettings() {
     const saved = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
+    this.settings.workbench = normalizeWorkbenchSettings(saved?.workbench);
     if (!saved?.coreMode && saved?.flowdeskRoot?.trim()) this.settings.coreMode = "fixed";
   }
 
@@ -1677,8 +1718,14 @@ class DashboardSettingsModal extends Modal {
 }
 
 class FlowDeskDashboardSettingTab extends PluginSettingTab {
+  private stopObservingWorkbench?: () => void;
   constructor(app: App, private plugin: FlowDeskDashboardPlugin) {super(app, plugin);}
+  hide(): void {
+    this.stopObservingWorkbench?.();
+    this.stopObservingWorkbench = undefined;
+  }
   display() {
+    this.hide();
     const {containerEl}=this;containerEl.empty();containerEl.addClass("flowdesk-dashboard-settings");containerEl.createEl("h2",{text:"FlowDesk Dashboard"});
     new Setting(containerEl).setName("Core 来源").setDesc("跟随模式优先使用 Claude 安装登记，缺失时检查 Codex 缓存；固定模式使用指定路径。").addDropdown(dropdown=>dropdown
       .addOption("installed","跟随已安装 Core").addOption("fixed","固定路径")
@@ -1729,6 +1776,12 @@ class FlowDeskDashboardSettingTab extends PluginSettingTab {
         error.setText("");if(tokenInput)tokenInput.value=environment.TASKNOTES_API_TOKEN||environment.TASKNOTES_AUTH_TOKEN||"";
         await this.plugin.saveSettings();
       }catch(failure){error.setText(`${failure instanceof Error?failure.message:"环境配置无效"} 尚未保存。`);}});
+    });
+    this.stopObservingWorkbench = addWorkbenchSettings(containerEl, {
+      settings: this.plugin.settings.workbench,
+      service: this.plugin.workbench,
+      save: changes => this.plugin.saveWorkbenchSettings(changes),
+      open: () => this.plugin.openWorkbench(),
     });
   }
 }

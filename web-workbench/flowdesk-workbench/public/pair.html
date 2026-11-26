@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light">
+  <title>作者配对 · FlowDesk</title>
+  <link rel="stylesheet" href="/pair.css">
+  <script src="/pair.js" defer></script>
+</head>
+<body>
+  <main class="pair-shell">
+    <section class="pair-panel" aria-labelledby="pair-title">
+      <div class="pair-brand">
+        <span class="pair-symbol" aria-hidden="true"><i></i><i></i><i></i></span>
+        FlowDesk
+      </div>
+      <h1 id="pair-title">作者配对</h1>
+      <p class="pair-help" id="pair-help">使用为此工作台设置的配对密钥。</p>
+      <form id="pair-form" method="post" action="/api/author-pairing" aria-busy="true">
+        <label for="pair-key">配对密钥</label>
+        <input id="pair-key" name="key" type="password" autocomplete="current-password"
+          autocapitalize="none" spellcheck="false" aria-describedby="pair-help pair-error" required disabled>
+        <button id="pair-submit" class="pair-submit" type="submit" disabled>开始匹配</button>
+      </form>
+      <p class="pair-feedback" id="pair-status" role="status">正在检查配对状态…</p>
+      <p class="pair-feedback pair-error" id="pair-error" role="alert"></p>
+      <button id="pair-retry" class="pair-retry" type="button" hidden>重新检查</button>
+      <noscript><p class="pair-feedback pair-error">请启用 JavaScript 后配对。</p></noscript>
+    </section>
+  </main>
+</body>
+</html>

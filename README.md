@@ -94,6 +94,28 @@ Directory 作为发布路径。
 - 已配置的固定路径不会自动切换；需要自动跟随后，在设置中选择“跟随已安装 Core”。固定模式继续使用指定目录。
 - `workingDirectory` 是任务 snapshot 的工程目录；已有设置保留，留空时使用所选 Core 路径。Case snapshot 的工作目录仍为 vault，工程位置以 Case 中的准确 cwd 为准。
 
+## Web 工作台
+
+在 Obsidian 的 FlowDesk Dashboard 设置里配置端口、局域网开关、Node 路径和自动启动。可在同一处启动、停止、重启或打开工作台。默认端口 `4327`，后台需要 Node.js 22 或更新版本。关闭局域网时监听 `127.0.0.1`。开启后使用单个 `0.0.0.0` 监听，本机和局域网共用端口，设置中列出可用的 IPv4 访问地址。
+
+开启「作者配对」后，首次从一个浏览器访问工作台需要打开同一工作台地址的 `/pair`，输入配对密钥并点「开始匹配」。初始密钥为 `qwe123`，可在插件设置中修改，重启服务后生效。配对由浏览器记住，同一地址后续可直接打开工作台。已有访客评审链接继续按各自的授权访问。
+
+从侧栏「外部评审」或文档、Case 的「发起外部评审」打开分享页。勾选资料、图集和附件，预览后生成评审链接。访客只能打开这次共享的只读版本并提交批注或结论，作者在外部评审页面查看回执、撤销链接或结束评审。发给 Agent 由作者在回执中手动确认。发布外部链接前需在 Obsidian 中将配对密钥改成自己的值并重启。有未结束的外部评审时，完整工作台继续要求作者配对。
+
+Web 工作台打开后进入项目概览，项目名取自 `Notes/Projects` 里的 Project 文件名，省略 `.md`。项目切换菜单支持搜索，并在当前浏览器里记住上次打开的项目。关联项目默认取当前卡片正文里指向其他 Project 的链接，以及 `parent_project`。在卡片属性中填写 `related_projects` 链接列表后，概览按名单显示，并保留父项目。设为 `[]` 时只显示父项目。
+
+侧栏「工作台」进入阶段视图，默认显示北京时间的本周及全部项目。可切换上周、自定义日期和阶段项目，筛选写入当前地址。阶段 Case 取创建日期和实际 Progress 日期，当前阶段也展示跨期的活跃或阻塞 Case。任务池显示当前待办，优先显示阶段内排期、到期或关联阶段 Case 的任务。阶段完成取 TaskNotes 的实际完成日期，本阶段取消单独标记。资料从这些 Case 和阶段相关任务的文档、图集链接归集。右上角刷新重读当前视图，切回标签页时也会检查是否达到刷新间隔。
+
+阶段资料默认显示 6 项，支持搜索、类型筛选和查看全部。通过 Case 或任务行的资料数量按钮，可直接筛到对应资料。返回工作台时会恢复当前页面的资料筛选和滚动位置。
+
+文档中心提供「最近」「按项目」「常驻」以及搜索和类型筛选，读取 `Notes/Docs`、`Notes/Plans` 和 `Notes/Research` 的顶层 Markdown，并从 `Attachments/archify` 收录图集。可直接打开图集总览、子页和关联文档。
+
+Case 正文中的 `![[Tasks.base#Session关联任务]]` 会按该 Case 文件名查询 TaskNotes，并显示只读任务表。阅读器也可显示 Vault 普通图片附件，包括相对路径和 Obsidian 图片嵌入。外部评审继续按发布时明确选择的文档和附件展示快照。
+
+在 Markdown 正文划选后，可以从「本次批注」删除单条、清空，或保存草稿到当前浏览器。刷新工作台时会保留本次尚在输入的批注或改文建议。发送面板按 Codex A（main）、B、C 列出 FlowDesk 已登记且经本机核实的会话。确认发送时，服务保存回执并交由 FlowDesk 向所选环境的会话投递。明确未送出时可以重新选择会话并投递原回执，或开始新批注。回执和投递状态保存在 `~/.flowdesk/workbench/review-data/<Vault 标识>/`。
+
+本地开发先运行 `npm ci`，再运行 `npm run build`。安装本地构建时，`main.js`、`manifest.json`、`styles.css` 以及生成的 `workbench-runtime/` 目录放在同一个插件目录。可通过 `npm run test:workbench` 运行工作台服务测试。ZIP 打包会带上生成的后台和静态文件。
+
 ## 共享 Dashboard UI
 
 Core 的 Task / Case Progress 写入北京时间 `YYYY-MM-DD HH:mm`，Dashboard 保留原有日期展示样式。共享解析器仅补充识别 `flowdesk.progress-time/1` 隐藏元数据，沿原始时刻精确排序；显示与原始时刻不匹配时保留 unknown。内部元数据不出现在正文展示中，普通清单、代码和源文件保持原样。
@@ -153,6 +175,7 @@ FLOWDESK_TEST_PYTHON="/path/to/python3" npm run release:prepare
 `release:prepare` 会依次执行：
 
 - `npm run test:release`
+- `npm run test:workbench`
 - `npm test`
 - `npm run build`
 - `npm run typecheck`
@@ -190,6 +213,8 @@ Release 必需文件：
 
 BRAT 更新依赖仓库中的 `manifest.json`、`main.js`、`styles.css` 和 `versions.json`。
 如果使用 release 资产分发，保持 GitHub Release 的 tag 与 `manifest.json` 版本一致。
+
+使用 Web 工作台时，请安装完整的 GitHub Release ZIP，其中包含 `workbench-runtime/` 和后台依赖。
 
 ## 手动安装
 
@@ -352,7 +377,7 @@ TaskNotes 地址被拒绝。guard 违规会令测试失败；不声称这是 nat
 Python 由 `FLOWDESK_TEST_PYTHON` 或当前 PATH 的 `python3` 选择，owned launcher 保留所选
 解释器路径与 venv prefix；不继承宿主凭据、PYTHONPATH 或 NODE_OPTIONS。
 
-公开 GitHub CI 使用 Node 20，仅运行现有 build/typecheck/check:syntax/release:verify/release:package，
+公开 GitHub CI 使用 Node 22，执行发布生命周期测试、Web 工作台测试和构建打包检查，
 不读取私有 Core、不运行完整测试。完整隔离 suite 与 Core 联调在本地 `release:prepare` 执行，
 CI 构建成功不能作为完整测试通过或真实 Obsidian 验收的证据。默认 suite 已无 live Task 探针。
 受控 HTTP→真实 producer→compiled Dashboard 的 host/DOM double 只证明 consumer 合同；
