@@ -1,5 +1,5 @@
 import {
-  closeSync, constants, existsSync, fstatSync, linkSync, mkdirSync, mkdtempSync, openSync,
+  closeSync, constants, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync,
   readFileSync, readdirSync, readSync, realpathSync, renameSync, rmSync, writeFileSync,
 } from 'node:fs';
 import {
@@ -566,6 +566,7 @@ export function createStore({ vaultDir, dataDir, defaultMode = 'snapshot' }) {
   if (!['live', 'snapshot'].includes(defaultMode)) throw new Error('无效的评审模式');
   const vault = realpathSync(vaultDir);
   const rounds = join(resolve(dataDir), 'rounds');
+  const trashRounds = join(resolve(dataDir), 'trash', 'rounds');
   mkdirSync(rounds, { recursive: true, mode: 0o700 });
   const legacySectionCache = new Map();
   const liveVersionCache = new Map();
@@ -757,9 +758,9 @@ export function createStore({ vaultDir, dataDir, defaultMode = 'snapshot' }) {
     return { documents: [...entries.values()], issues };
   }
 
-  function roundDir(id) {
+  function roundDir(id, parent = rounds) {
     if (typeof id !== 'string' || !uuidPattern.test(id)) throw error(404, '评审轮次不存在');
-    return join(rounds, id);
+    return join(parent, id);
   }
 
   function readRound(id) {
@@ -1229,6 +1230,141 @@ export function createStore({ vaultDir, dataDir, defaultMode = 'snapshot' }) {
     return get(id);
   }
 
+  function readTransferRound(id, parent) {
+    const path = roundDir(id, parent);
+    let directory;
+    try {
+      directory = lstatSync(path);
+    } catch (failure) {
+      if (failure.code === 'ENOENT') return null;
+      throw failure;
+    }
+    const invalid = () => error(409, '评审存储记录不完整，无法移动此轮评审。');
+    if (!directory.isDirectory()) throw invalid();
+    const metadata = join(path, 'round.json');
+    let round;
+    try {
+      if (!lstatSync(metadata).isFile() || !lstatSync(join(path, 'submissions')).isDirectory()) throw invalid();
+      round = readJson(metadata);
+    } catch (failure) {
+      if (failure.code === 'ENOENT' || failure instanceof SyntaxError) throw invalid();
+      throw failure;
+    }
+    if (round?.id !== id || typeof round.title !== 'string' || typeof round.createdAt !== 'string' ||
+      !Array.isArray(round.documents) || !Array.isArray(round.assets) || !Array.isArray(round.invites)) throw invalid();
+    return round;
+  }
+
+  function isExternalTransfer(round) {
+    return round?.external === true && round.direct !== true && round.mode !== 'live';
+  }
+
+  function requireExternalTransfer(round) {
+    if (!isExternalTransfer(round)) throw error(404, '未找到外部评审。');
+  }
+
+  function roundTransferConflict() {
+    return error(409, '评审与回收站中存在相同编号的记录，请核对后重试。');
+  }
+
+  function moveRound(source, destination) {
+    try {
+      renameSync(source, destination);
+    } catch (failure) {
+      if (['EEXIST', 'ENOTEMPTY', 'EISDIR', 'ENOTDIR'].includes(failure.code)) throw roundTransferConflict();
+      throw failure;
+    }
+  }
+
+  function listExternalTrash() {
+    let entries;
+    try {
+      entries = readdirSync(trashRounds, { withFileTypes: true });
+    } catch (failure) {
+      if (failure.code === 'ENOENT') return [];
+      throw failure;
+    }
+    return entries.filter(entry => entry.isDirectory() && uuidPattern.test(entry.name)).flatMap(entry => {
+      try {
+        const round = readTransferRound(entry.name, trashRounds);
+        if (!isExternalTransfer(round)) return [];
+        const { id, title, createdAt, closedAt } = round;
+        return [{ id, title, createdAt, closedAt: closedAt ?? null }];
+      } catch (failure) {
+        if (failure.status === 409) return [];
+        throw failure;
+      }
+    }).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  function hasTrashedExternalRound(id) {
+    if (typeof id !== 'string' || !uuidPattern.test(id)) return false;
+    try {
+      return isExternalTransfer(readTransferRound(id, trashRounds));
+    } catch (failure) {
+      if (failure.status === 409) return false;
+      throw failure;
+    }
+  }
+
+  function trashExternal(id) {
+    const active = readTransferRound(id, rounds);
+    const trashed = readTransferRound(id, trashRounds);
+    if (active && trashed) throw roundTransferConflict();
+    requireExternalTransfer(active ?? trashed);
+    if (active) {
+      mkdirSync(trashRounds, { recursive: true, mode: 0o700 });
+      moveRound(roundDir(id), roundDir(id, trashRounds));
+    }
+    return { id };
+  }
+
+  function restoreExternal(id) {
+    const active = readTransferRound(id, rounds);
+    const trashed = readTransferRound(id, trashRounds);
+    if (active && trashed) throw roundTransferConflict();
+    requireExternalTransfer(trashed ?? active);
+    if (!trashed) {
+      if (active.closedAt) return get(id);
+      throw error(404, '此评审不在回收站中。');
+    }
+    const source = roundDir(id, trashRounds);
+    if (!trashed.closedAt) {
+      // The active directory must never contain a restored round with usable old invitations.
+      writeJson(join(source, 'round.json'), { ...trashed, closedAt: new Date().toISOString() });
+    }
+    moveRound(source, roundDir(id));
+    return get(id);
+  }
+
+  function purgeExternal(ids) {
+    const selected = Array.isArray(ids) ? [...new Set(ids)] : [];
+    if (!selected.length || selected.some(id => typeof id !== 'string' || !uuidPattern.test(id))) {
+      throw error(400, '请选择要永久删除的评审，评审编号必须有效。');
+    }
+    const deletedIds = [];
+    const failures = [];
+    const trashRoot = join(realpathSync(resolve(dataDir)), 'trash', 'rounds');
+    for (const id of selected) {
+      try {
+        const active = readTransferRound(id, rounds);
+        const trashed = readTransferRound(id, trashRounds);
+        if (active && trashed) throw roundTransferConflict();
+        if (active) throw error(409, '此评审仍在评审列表中，请先移入回收站。');
+        requireExternalTransfer(trashed);
+        const path = roundDir(id, trashRounds);
+        const canonical = realpathSync(path);
+        if (canonical !== join(trashRoot, id)) throw error(409, '评审回收站位置无法核验。');
+        rmSync(canonical, { recursive: true, maxRetries: 2, retryDelay: 50 });
+        deletedIds.push(id);
+      } catch (failure) {
+        const message = failure.status ? failure.message : '未能永久删除此评审，请刷新回收站后重试。';
+        failures.push({ id, message });
+      }
+    }
+    return { deletedIds, failures };
+  }
+
   function get(id) {
     const round = readRound(id);
     const submissions = readSubmissions(id);
@@ -1426,5 +1562,6 @@ export function createStore({ vaultDir, dataDir, defaultMode = 'snapshot' }) {
     documents, preview, create, list, get, issueInvite, revokeInvite, close,
     authorize, reviewerView, asset, submit, openDirect, submitDirect,
     previewExternal, createExternal, getExternal, listExternalReviews, hasOpenExternalReviews, galleryAsset, galleryAssetWithAccess,
+    listExternalTrash, hasTrashedExternalRound, trashExternal, restoreExternal, purgeExternal,
   };
 }

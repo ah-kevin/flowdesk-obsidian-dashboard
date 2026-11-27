@@ -25,7 +25,7 @@ const reviewerApi = new RegExp('^/api/review/(' + idPattern + ')(?:/(session|sub
 const reviewerGalleryApi = new RegExp('^/api/review/(' + idPattern + ')/galleries/([^/]{1,768})/(.{1,4096})$');
 const galleryAccessApi = new RegExp('^/api/review/(' + idPattern + ')/gallery-access/([^/]{1,768})/([A-Za-z0-9_.-]{1,80})/(.{1,4096})$');
 const externalRoot = '/api/admin/external-reviews';
-const externalRoundApi = new RegExp('^' + externalRoot + '/(' + idPattern + ')(?:/(close|invites|invites/(' + idPattern + ')/revoke))?/?$');
+const externalRoundApi = new RegExp('^' + externalRoot + '/(' + idPattern + ')(?:/(close|trash|restore|invites|invites/(' + idPattern + ')/revoke))?/?$');
 const adminRoundApi = new RegExp('^/api/admin/reviews/(' + idPattern + ')(?:/(close|invites|invites/(' + idPattern + ')/revoke))?/?$');
 const adminAssetApi = new RegExp('^/api/admin/reviews/(' + idPattern + ')/assets/(' + idPattern + ')/?$');
 const adminTargetApi = new RegExp('^/api/admin/reviews/(' + idPattern + ')/target/?$');
@@ -271,7 +271,9 @@ export async function createReviewHandler({ vaultDir, dataDir, publicOrigin = nu
         }
         return await sendFile(response, htmlPath, 'text/html; charset=utf-8', request.method);
       }
-      if (readOnly && reviewerPage.test(pathname)) {
+      const guestPage = reviewerPage.exec(pathname);
+      if (readOnly && guestPage) {
+        if (await store.hasTrashedExternalRound?.(guestPage[1])) throw httpError(404, '评审轮次不存在。');
         return await sendFile(response, htmlPath, 'text/html; charset=utf-8', request.method);
       }
 
@@ -280,6 +282,15 @@ export async function createReviewHandler({ vaultDir, dataDir, publicOrigin = nu
         if (pathname === externalRoot || pathname.startsWith(externalRoot + '/')) {
           if (!externalReviewEnabled) throw httpError(403, '当前未启用外部评审。', 'external_review_unavailable');
           if (request.method === 'GET' && pathname === externalRoot) return json(response, { reviews: await store.listExternalReviews() });
+          if (request.method === 'GET' && pathname === externalRoot + '/trash') return json(response, { reviews: await store.listExternalTrash() });
+          if (request.method === 'POST' && pathname === externalRoot + '/trash/purge') {
+            if (canManage === adminRequest) throw httpError(403, '请先完成作者配对。');
+            const input = await bodyJson(request);
+            if (!Object.hasOwn(input, 'ids') || Object.keys(input).length !== 1) throw httpError(400, '请选择要永久删除的评审。');
+            const result = await store.purgeExternal(input.ids);
+            if (result.deletedIds.length) onChange?.();
+            return json(response, result);
+          }
           if (request.method === 'POST' && pathname === externalRoot + '/preview') {
             return json(response, await store.previewExternal(await externalInput(await bodyJson(request))));
           }
@@ -296,6 +307,16 @@ export async function createReviewHandler({ vaultDir, dataDir, publicOrigin = nu
             const [, roundId, action, inviteId] = externalRoute;
             if (request.method === 'GET' && !action) return json(response, { review: await store.getExternal(roundId) });
             if (request.method === 'POST' && action) {
+              if (action === 'trash') {
+                const result = await store.trashExternal(roundId);
+                onChange?.();
+                return json(response, result);
+              }
+              if (action === 'restore') {
+                const review = await store.restoreExternal(roundId);
+                onChange?.();
+                return json(response, { review });
+              }
               await store.getExternal(roundId);
               if (action === 'invites') {
                 requirePublication();

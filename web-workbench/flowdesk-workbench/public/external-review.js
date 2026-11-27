@@ -12,10 +12,14 @@ const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base'
 const state = {
   catalog: null,
   reviews: [],
+  historyView: 'history',
+  trashReviews: [],
+  purgeFailures: new Map(),
   round: null,
   roundId: query.get('round') || '',
   paths: new Set(),
   attachments: new Set(),
+  attachmentInput: '',
   galleries: new Set(),
   title: '',
   reviewer: '',
@@ -151,24 +155,89 @@ function updateRoundUrl(id) {
   history.replaceState({}, '', url.pathname + url.search);
 }
 
-function render() {
-  const rounds = element('ul', { className: 'ext-rounds' }, state.reviews.map((review) =>
-    element('li', {}, button([
-      element('strong', {}, review.title),
-      element('span', {}, (review.closedAt ? '已关闭' : '开放') + ' · ' + (review.submissionCount ?? 0) + ' 份提交'),
-    ], () => openRound(review.id), { 'aria-current': state.roundId === review.id ? 'page' : undefined }, 'round-link'))));
-  const sidebar = element('aside', { className: 'ext-sidebar', 'aria-label': '评审轮次' },
+function showHistoryView(view) {
+  if (state.historyView === view) return;
+  state.historyView = view;
+  if (view === 'trash' && !trashBusy()) void refreshTrash();
+  else updateSidebar();
+}
+
+function renderSidebar() {
+  const inTrash = state.historyView === 'trash';
+  const switcher = element('div', { className: 'ext-history-switch', role: 'group', 'aria-label': '轮次列表' },
+    [['history', '历史'], ['trash', '废纸篓']].map(([view, label]) =>
+      button(label, () => showHistoryView(view),
+        { 'aria-pressed': String(state.historyView === view), 'data-history-view': view }, 'history-switch-item')));
+  return element('aside', { className: 'ext-sidebar', 'aria-label': '评审轮次' },
     button('新建评审', () => {
-      if (state.publishing || !state.roundId) return;
+      if (state.publishing) return;
+      if (!state.roundId) {
+        showHistoryView('history');
+        return;
+      }
       state.roundId = '';
       state.roundRequest = null;
       state.round = null;
+      state.historyView = 'history';
       updateRoundUrl('');
       render();
     }, { disabled: state.publishing, 'aria-current': state.roundId ? undefined : 'page' }, 'new'),
-    element('div', { className: 'ext-sidebar-heading' }, '历史轮次'),
-    state.listError && element('p', { className: 'ext-error' }, state.listError),
-    state.reviews.length ? rounds : blank('暂无外部评审轮次。'));
+    switcher, inTrash ? renderTrash() : renderHistory());
+}
+
+function renderHistory() {
+  return [
+    state.listError && element('p', { className: 'ext-error', role: 'alert' }, state.listError),
+    state.reviews.length ? element('ul', { className: 'ext-rounds' }, state.reviews.map((review) =>
+      element('li', {}, button([
+        element('strong', {}, review.title),
+        element('span', {}, (review.closedAt ? '已关闭' : '开放') + ' · ' + (review.submissionCount ?? 0) + ' 份提交'),
+      ], () => openRound(review.id), { 'aria-current': state.roundId === review.id ? 'page' : undefined }, 'round-link'))))
+      : !state.listError && blank('暂无外部评审轮次。'),
+  ];
+}
+
+function trashBusy() {
+  return Boolean(state.trashRequest || state.restoringId || state.purgePending);
+}
+
+function renderTrash() {
+  const busy = trashBusy();
+  const rows = state.trashReviews;
+  const toolbar = element('div', { className: 'ext-trash-toolbar' },
+    button('刷新废纸篓', refreshTrash, { disabled: busy }, 'trash-refresh'),
+    rows.length > 0 && button('清空废纸篓', () => confirmPurge(rows, true), { disabled: busy }, 'trash-action purge'));
+  return [
+    toolbar,
+    state.trashError && element('p', { className: 'ext-error', role: 'alert' }, state.trashError),
+    state.restoreError && element('p', { className: 'ext-error', role: 'alert' }, state.restoreError),
+    state.purgePending && element('p', { className: 'ext-empty', role: 'status' }, '正在永久删除…'),
+    state.trashRequest && element('p', { className: 'ext-empty', role: 'status' }, '正在读取废纸篓…'),
+    rows.length ? element('ul', { className: 'ext-rounds ext-trash-rounds' }, rows.map((review) => {
+      const failure = state.purgeFailures.get(review.id);
+      return element('li', {},
+        element('div', { className: 'ext-trash-title' },
+          element('strong', {}, review.title),
+          element('span', { className: 'ext-meta' }, '创建于 ' + date(review.createdAt))),
+        element('div', { className: 'ext-trash-row-actions' },
+          button(state.restoringId === review.id ? '恢复中…' : '恢复', () => restoreRound(review),
+            { disabled: busy, title: '恢复为已关闭轮次' }, 'restore'),
+          button('永久删除', () => confirmPurge([review]), { disabled: busy }, 'trash-action purge')),
+        failure && element('p', { className: 'ext-error ext-purge-failure', role: 'alert' }, failure));
+    })) : !state.trashRequest && !state.trashError && blank('废纸篓为空。'),
+  ];
+}
+
+function updateSidebar() {
+  const previous = app.querySelector('.ext-sidebar');
+  if (!previous) return;
+  const focusedView = document.activeElement?.dataset?.historyView;
+  const next = renderSidebar();
+  previous.replaceWith(next);
+  if (focusedView) next.querySelector('[data-history-view="' + focusedView + '"]')?.focus({ preventScroll: true });
+}
+
+function render() {
   const main = element('main', { className: 'ext-main' });
   if (state.roundId) {
     if (state.round?.id === state.roundId) main.append(renderRound(state.round));
@@ -182,7 +251,7 @@ function render() {
     element('p', { className: 'ext-error', role: 'alert' }, state.catalogError),
     button('重新读取目录', async () => { await loadCatalog(); render(); }),
   ] : element('p', { className: 'external-loading', role: 'status' }, '正在读取资料目录…')));
-  app.replaceChildren(sidebar, main);
+  app.replaceChildren(renderSidebar(), main);
 }
 
 async function loadCatalog() {
@@ -222,11 +291,126 @@ async function refreshHistory() {
   }
 }
 
+async function refreshTrash() {
+  if (trashBusy()) return;
+  const request = {};
+  state.trashRequest = request;
+  state.trashError = '';
+  updateSidebar();
+  try {
+    const { reviews } = await api(apiRoot + '/trash');
+    if (state.trashRequest !== request) return;
+    state.trashReviews = items(reviews);
+    const remaining = new Set(state.trashReviews.map((review) => review.id));
+    for (const id of state.purgeFailures.keys()) {
+      if (!remaining.has(id)) state.purgeFailures.delete(id);
+    }
+  } catch (err) {
+    if (state.trashRequest === request) state.trashError = failed(err);
+  } finally {
+    if (state.trashRequest === request) {
+      state.trashRequest = null;
+      updateSidebar();
+    }
+  }
+}
+
+async function moveRoundToTrash(round) {
+  const { id } = await api(roundRoute(round.id) + '/trash', {});
+  if (id !== round.id) throw new Error('无法确认轮次是否已移到废纸篓，请重新读取。');
+  for (const invite of items(round.invites)) state.links.delete(invite.id);
+  state.reviews = state.reviews.filter((entry) => entry.id !== id);
+  const { title, createdAt, closedAt } = round;
+  state.trashReviews = [{ id, title, createdAt, closedAt }, ...state.trashReviews.filter((entry) => entry.id !== id)];
+  state.historyView = 'trash';
+  state.restoreError = '';
+  if (state.roundId === id) {
+    state.roundId = '';
+    state.roundRequest = null;
+    state.round = null;
+    state.roundError = '';
+    updateRoundUrl('');
+    render();
+  } else updateSidebar();
+  toast('已移到废纸篓。');
+  state.trashRequest = null;
+  void refreshTrash();
+}
+
+async function restoreRound(entry) {
+  if (trashBusy()) return;
+  state.restoringId = entry.id;
+  state.restoreError = '';
+  updateSidebar();
+  try {
+    const { review } = await api(roundRoute(entry.id) + '/restore', {});
+    if (review?.id !== entry.id) throw new Error('无法确认轮次是否已恢复，请重新读取。');
+    state.trashRequest = null;
+    state.trashReviews = state.trashReviews.filter((item) => item.id !== entry.id);
+    state.purgeFailures.delete(entry.id);
+    state.reviews = [...state.reviews.filter((item) => item.id !== entry.id), review]
+      .sort((left, right) => text(right.createdAt).localeCompare(text(left.createdAt)));
+    toast('轮次已恢复为关闭状态。');
+  } catch (err) {
+    state.restoreError = failed(err);
+  } finally {
+    state.restoringId = null;
+    updateSidebar();
+  }
+}
+
+function confirmPurge(rounds, bulk = false) {
+  if (trashBusy() || !rounds.length) return;
+  const ids = rounds.map((round) => round.id);
+  const subject = bulk ? '当前列出的 ' + ids.length + ' 轮评审' : '「' + rounds[0].title + '」';
+  actionDialog(bulk ? '清空废纸篓？' : '永久删除这轮评审？',
+    '将永久删除' + subject + '，包括共享快照、邀请和评审回执。此操作无法撤销。',
+    bulk ? '清空废纸篓' : '永久删除', () => purgeRounds(ids), '正在永久删除…');
+}
+
+async function purgeRounds(ids) {
+  if (trashBusy()) throw new Error('废纸篓正在处理其他操作，请稍后再试。');
+  state.purgePending = true;
+  updateSidebar();
+  try {
+    const { deletedIds, failures } = await api(apiRoot + '/trash/purge', { ids });
+    if (!Array.isArray(deletedIds) || !Array.isArray(failures)) {
+      throw new Error('删除回执不完整，请刷新废纸篓后核对。');
+    }
+    const requested = new Set(ids);
+    const deleted = new Set(deletedIds.filter((id) => requested.has(id)));
+    const errors = new Map(failures.map(({ id, message }) => [id, text(message)]));
+    for (const id of ids) {
+      if (deleted.has(id)) state.purgeFailures.delete(id);
+      else state.purgeFailures.set(id, errors.get(id) || '仍待确认，请刷新废纸篓后重试。');
+    }
+    state.trashReviews = state.trashReviews.filter((round) => !deleted.has(round.id));
+    state.reviews = state.reviews.filter((round) => !deleted.has(round.id));
+    if (deleted.has(state.roundId)) {
+      for (const invite of items(state.round?.invites)) state.links.delete(invite.id);
+      state.roundId = '';
+      state.roundRequest = null;
+      state.round = null;
+      state.roundError = '';
+      updateRoundUrl('');
+      render();
+    }
+    const remaining = ids.length - deleted.size;
+    toast(remaining ? '永久删除 ' + deleted.size + ' 轮，' + remaining + ' 轮待处理。'
+      : '已永久删除 ' + deleted.size + ' 轮评审。');
+  } finally {
+    state.purgePending = false;
+    if (state.historyView === 'trash') void refreshTrash();
+    else updateSidebar();
+  }
+}
+
 async function openRound(id) {
   if (state.publishing) return;
   const pending = {};
   state.roundRequest = pending;
   state.roundId = id;
+  state.historyView = 'history';
   state.previewing = null;
   state.round = null;
   state.roundError = '';
@@ -280,6 +464,8 @@ function renderCreation() {
   const previewError = element('p', { className: 'ext-error ext-inline-message', role: 'alert' });
   const publishError = element('p', { className: 'ext-error ext-inline-message', role: 'alert' });
   const attachment = element('input', { type: 'text', placeholder: '例如 Notes/Docs/附件.pdf', 'aria-label': '附件路径' });
+  attachment.value = state.attachmentInput;
+  attachment.addEventListener('input', () => { state.attachmentInput = attachment.value; });
   const attachmentButton = button('添加附件', addAttachment);
   const selectionMessage = element('p', { className: 'ext-error ext-inline-message', role: 'alert' });
   const previewButton = button('生成预览', makePreview, {}, 'secondary');
@@ -379,6 +565,7 @@ function renderCreation() {
     }
     selectionMessage.textContent = '';
     attachment.value = '';
+    state.attachmentInput = '';
     changeChoice(state.attachments, path, true);
     renderCandidates();
     updateControls();
@@ -439,11 +626,13 @@ function renderCreation() {
       if (!created.review?.id || !created.invite?.id) throw new Error('创建回执不完整，请先检查历史轮次。');
       state.round = created.review;
       state.roundId = created.review.id;
+      state.historyView = 'history';
       state.roundError = '';
       if (created.invite.url) state.links.set(created.invite.id, created.invite);
       state.reviews = [created.review, ...state.reviews.filter((review) => review.id !== created.review.id)];
       state.paths.clear();
       state.attachments.clear();
+      state.attachmentInput = '';
       state.galleries.clear();
       state.preview = null;
       state.revision += 1;
@@ -604,22 +793,38 @@ function showInvitation(invite) {
   link.select();
 }
 
-function actionDialog(title, summary, actionName, operation) {
+function actionDialog(title, summary, actionName, operation, pendingLabel) {
   const error = element('p', { className: 'ext-error ext-inline-message', role: 'alert' });
+  const cancel = button('取消', () => dialog.close());
+  const preventCancel = (event) => event.preventDefault();
   const act = button(actionName, async () => {
+    if (act.disabled) return;
     act.disabled = true;
     error.textContent = '';
+    const closeButton = pendingLabel && dialog.querySelector('.ext-dialog-heading button');
+    if (pendingLabel) {
+      act.textContent = pendingLabel;
+      cancel.disabled = true;
+      closeButton.disabled = true;
+      dialog.addEventListener('cancel', preventCancel);
+    }
     try {
       await operation();
-      dialog.close();
+      if (dialog.contains(act)) dialog.close();
     } catch (err) {
       error.textContent = failed(err);
     } finally {
       act.disabled = false;
+      if (pendingLabel) {
+        act.textContent = actionName;
+        cancel.disabled = false;
+        closeButton.disabled = false;
+        dialog.removeEventListener('cancel', preventCancel);
+      }
     }
-  }, {}, 'danger');
+  }, pendingLabel ? { 'aria-live': 'polite' } : {}, 'danger');
   setupDialog(title, element('div', {}, element('p', {}, summary), error,
-    element('div', { className: 'ext-dialog-actions' }, button('取消', () => dialog.close()), act)));
+    element('div', { className: 'ext-dialog-actions' }, cancel, act)));
 }
 
 function adoptRound(review) {
@@ -738,7 +943,10 @@ function renderRound(round) {
           '关闭后，本轮所有邀请将无法打开共享资料或提交反馈。', '关闭评审', async () => {
             const { review } = await api(roundRoute(round.id) + '/close', {});
             adoptRound(review);
-          })))),
+          })),
+        button('移到废纸篓', () => actionDialog('把这轮评审移到废纸篓？',
+          '原有邀请会立即失效，评审人将无法打开资料或提交反馈。恢复时轮次保持关闭，原有邀请仍然失效。',
+          '移到废纸篓', () => moveRoundToTrash(round)), {}, 'trash-action'))),
     renderInvites(round),
     renderFeedback(round),
     section('已纳入的资料', null, publication({ documents: round.documents, assets: assetList, galleries: round.galleries })));
